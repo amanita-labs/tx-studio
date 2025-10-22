@@ -1,0 +1,195 @@
+// src/features/inspector/tabs/OverviewTab.tsx
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { DomainTx } from '@/domain/tx';
+import { formatAda, formatLovelace } from '@/lib/utils/ada';
+import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
+interface OverviewTabProps {
+  tx: DomainTx;
+}
+
+export function OverviewTab({ tx }: OverviewTabProps) {
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard`);
+    } catch (error) {
+      toast.error('Failed to copy to clipboard');
+    }
+  };
+
+  return (
+    <div className="h-full overflow-auto p-4 space-y-4">
+      {/* Transaction Info */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Hash className="h-5 w-5" />
+            Transaction Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Transaction ID</span>
+            <div className="flex items-center gap-2">
+              <code className="text-xs bg-muted px-2 py-1 rounded">
+                {tx.id.slice(0, 16)}...
+              </code>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(tx.id, 'Transaction ID')}
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Era</span>
+            <Badge variant={tx.era === 'Unknown' ? 'destructive' : 'default'}>
+              {tx.era}
+            </Badge>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Size</span>
+            <span className="text-sm">{tx.sizeBytes.toLocaleString()} bytes</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Fee</span>
+            <span className="text-sm font-mono">{formatAda(tx.feeLovelace)} ADA</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Validity Window */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Validity Window
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {tx.slot && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Slot</span>
+              <span className="text-sm">{tx.slot.toLocaleString()}</span>
+            </div>
+          )}
+          
+          {tx.ttl && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">TTL</span>
+              <span className="text-sm">{tx.ttl.toLocaleString()}</span>
+            </div>
+          )}
+          
+          {tx.validity.start && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Valid From</span>
+              <span className="text-sm">{tx.validity.start.toLocaleString()}</span>
+            </div>
+          )}
+          
+          {tx.validity.end && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Valid Until</span>
+              <span className="text-sm">{tx.validity.end.toLocaleString()}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Value Summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Coins className="h-5 w-5" />
+            Value Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Inputs</span>
+            <span className="text-sm">{tx.inputs.length}</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Outputs</span>
+            <span className="text-sm">{tx.outputs.length}</span>
+          </div>
+          
+          {tx.mint && tx.mint.length > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Mint</span>
+              <span className="text-sm">{tx.mint.length} assets</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Scripts & Witnesses */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Scripts & Witnesses
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Scripts</span>
+            <span className="text-sm">{tx.scripts?.length || 0}</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Redeemers</span>
+            <span className="text-sm">{tx.redeemers?.length || 0}</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">VKey Witnesses</span>
+            <span className="text-sm">{tx.witnesses.vkeyCount}</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Native Scripts</span>
+            <span className="text-sm">{tx.witnesses.nativeCount}</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Plutus Scripts</span>
+            <span className="text-sm">{tx.witnesses.plutusCount}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Warnings */}
+      {tx.warnings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Warnings
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {tx.warnings.map((warning, index) => (
+                <li key={index} className="text-sm text-destructive">
+                  • {warning}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

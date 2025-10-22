@@ -1,0 +1,215 @@
+// src/features/inspector/tabs/IoValueTab.tsx
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { DomainTx } from '@/domain/tx';
+import { formatAda, formatAssetQuantity } from '@/lib/utils/ada';
+import { Copy, ArrowRight, Coins } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
+interface IoValueTabProps {
+  tx: DomainTx;
+}
+
+export function IoValueTab({ tx }: IoValueTabProps) {
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard`);
+    } catch (error) {
+      toast.error('Failed to copy to clipboard');
+    }
+  };
+
+  return (
+    <div className="h-full overflow-auto p-4 space-y-4">
+      {/* Inputs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ArrowRight className="h-5 w-5 rotate-180" />
+            Inputs ({tx.inputs.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {tx.inputs.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No inputs</p>
+          ) : (
+            <div className="space-y-3">
+              {tx.inputs.map((input, index) => (
+                <div key={index} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Input #{index}</span>
+                    {input.isCollateral && (
+                      <Badge variant="secondary">Collateral</Badge>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Transaction ID</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-muted px-2 py-1 rounded">
+                          {input.txId.slice(0, 16)}...
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Index</span>
+                      <span className="text-xs">{input.index}</span>
+                    </div>
+                    
+                    {input.resolved?.address && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Address</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {input.resolved.address.slice(0, 20)}...
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Outputs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ArrowRight className="h-5 w-5" />
+            Outputs ({tx.outputs.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {tx.outputs.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No outputs</p>
+          ) : (
+            <div className="space-y-3">
+              {tx.outputs.map((output, index) => (
+                <div key={index} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Output #{index}</span>
+                    <div className="flex gap-1">
+                      {output.datum && <Badge variant="outline">Datum</Badge>}
+                      {output.scriptRef && <Badge variant="outline">Script</Badge>}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Address</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-muted px-2 py-1 rounded">
+                          {output.address.slice(0, 20)}...
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(output.address, 'Address')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">ADA</span>
+                      <span className="text-xs font-mono">{formatAda(output.ada)}</span>
+                    </div>
+                    
+                    {output.assets.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Assets</span>
+                        <div className="space-y-1">
+                          {output.assets.map((asset, assetIndex) => (
+                            <div key={assetIndex} className="flex items-center justify-between text-xs">
+                              <span className="truncate">
+                                {asset.policyId.slice(0, 8)}...{asset.assetName}
+                              </span>
+                              <span className="font-mono">
+                                {formatAssetQuantity(asset.quantity)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {output.datum && (
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Datum</span>
+                        <div className="text-xs">
+                          {output.datum.inline ? 'Inline' : 'Hash'}
+                          {output.datum.hash && (
+                            <code className="ml-2 bg-muted px-1 py-0.5 rounded">
+                              {output.datum.hash.slice(0, 16)}...
+                            </code>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Mint */}
+      {tx.mint && tx.mint.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Coins className="h-5 w-5" />
+              Mint ({tx.mint.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {tx.mint.map((mint, index) => (
+                <div key={index} className="flex items-center justify-between border rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs bg-muted px-2 py-1 rounded">
+                      {mint.policyId.slice(0, 8)}...{mint.assetName}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(`${mint.policyId}${mint.assetName}`, 'Asset ID')}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <span className="text-sm font-mono">
+                    {mint.quantity > BigInt(0) ? '+' : ''}{formatAssetQuantity(mint.quantity)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
