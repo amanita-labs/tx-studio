@@ -8,6 +8,9 @@ import { HexInputPanel } from './HexInputPanel';
 import { InspectorTabs } from './InspectorTabs';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
+import { ExportDialog } from '@/components/export-dialog';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 
 export function TxInspector() {
   const searchParams = useSearchParams();
@@ -28,17 +31,9 @@ export function TxInspector() {
     }
   }, [searchParams, txHex, setTxHex]);
 
-  // Clear error when hex changes
-  useEffect(() => {
-    if (txHex && error) {
-      setError(null);
-    }
-  }, [txHex, error, setError]);
-
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-2rem)]">
+    <div className="container mx-auto p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-5rem)]">
           {/* Left Panel - Hex Input */}
           <div className="flex flex-col">
             <HexInputPanel />
@@ -51,7 +46,21 @@ export function TxInspector() {
             ) : error ? (
               <ErrorState error={error} />
             ) : parsedTx?.success ? (
-              <InspectorTabs tx={parsedTx.tx} />
+              <div className="h-full flex flex-col">
+                {/* Export Button */}
+                <div className="flex justify-end mb-4">
+                  <ExportDialog tx={parsedTx.tx} txHex={txHex}>
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </ExportDialog>
+                </div>
+                {/* Inspector Tabs */}
+                <div className="flex-1">
+                  <InspectorTabs tx={parsedTx.tx} txHex={txHex} />
+                </div>
+              </div>
             ) : isLoading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -63,7 +72,6 @@ export function TxInspector() {
               <EmptyState />
             )}
           </div>
-        </div>
       </div>
     </div>
   );

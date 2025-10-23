@@ -6,17 +6,19 @@ import { useAppStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Copy, Download, Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { HexEditor } from '@/components/hex-editor';
+import { Copy, Download, Upload, AlertCircle, CheckCircle2, Share2 } from 'lucide-react';
 import { isValidHex } from '@/lib/utils/hex';
 import { SAMPLE_TRANSACTIONS } from '@/lib/sample-data';
+import { useCSLWorker } from '@/hooks/use-csl-worker';
 import { toast } from 'sonner';
 
 export function HexInputPanel() {
-  const { txHex, network, setTxHex, setNetwork, setParsedTx, clearTx } = useAppStore();
+  const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setError, clearTx } = useAppStore();
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
+  const { parseTransaction } = useCSLWorker();
 
   const validateHex = useCallback((hex: string) => {
     if (!hex) {
@@ -33,7 +35,7 @@ export function HexInputPanel() {
     validateHex(value);
   };
 
-  const handleDissect = () => {
+  const handleDissect = async () => {
     if (!localHex.trim()) {
       toast.error('Please enter a transaction hex');
       return;
@@ -45,54 +47,25 @@ export function HexInputPanel() {
     }
 
     setTxHex(localHex.trim());
-    
-    // Mock transaction parsing for now
-    const mockTx = {
-      era: "Babbage" as const,
-      id: localHex.slice(0, 64),
-      sizeBytes: localHex.length / 2,
-      feeLovelace: BigInt(200000),
-      ttl: 12345678,
-      slot: 12345678,
-      validity: { start: null, end: null },
-      inputs: [
-        {
-          txId: "beb8a292312bda23888bcb238bc465abffcbe464db4a3203c2396ecc822a7fc5",
-          index: 0,
-          isCollateral: false,
-          resolved: {
-            address: "addr1q9...",
-            value: { ada: BigInt(1000000), assets: [] }
-          }
-        }
-      ],
-      outputs: [
-        {
-          address: "addr1q9...",
-          ada: BigInt(800000),
-          assets: [],
-          datum: undefined,
-          scriptRef: undefined
-        }
-      ],
-      mint: undefined,
-      certs: undefined,
-      withdrawals: undefined,
-      governance: null,
-      metadata: [
-        {
-          label: "721",
-          json: { "name": "Sample NFT", "description": "A sample NFT" },
-          cbor: "a1190e6ca173646f6e6174696f6e4261736973506f696e747305"
-        }
-      ],
-      scripts: [],
-      redeemers: [],
-      witnesses: { vkeyCount: 1, nativeCount: 0, plutusCount: 0 },
-      warnings: []
-    };
+    setLoading(true);
+    setError(null);
 
-    setParsedTx({ success: true, tx: mockTx });
+    try {
+      const result = await parseTransaction(localHex.trim());
+      setParsedTx(result);
+      
+      if (result.success) {
+        toast.success('Transaction parsed successfully');
+      } else {
+        toast.error(`Parsing failed: ${result.error}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(errorMessage);
+      toast.error(`Parsing failed: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePasteFromClipboard = async () => {
@@ -130,6 +103,34 @@ export function HexInputPanel() {
     URL.revokeObjectURL(url);
   };
 
+  const handleShare = async () => {
+    if (!txHex) return;
+    
+    const url = new URL(window.location.origin);
+    url.searchParams.set('hex', txHex);
+    
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Cardano Transaction Inspector',
+          text: 'Check out this Cardano transaction',
+          url: url.toString(),
+        });
+      } else {
+        await navigator.clipboard.writeText(url.toString());
+        toast.success('Share link copied to clipboard');
+      }
+    } catch (error) {
+      // Fallback to clipboard
+      try {
+        await navigator.clipboard.writeText(url.toString());
+        toast.success('Share link copied to clipboard');
+      } catch (clipboardError) {
+        toast.error('Failed to share');
+      }
+    }
+  };
+
   const sampleTransactions = SAMPLE_TRANSACTIONS;
 
   return (
@@ -161,17 +162,14 @@ export function HexInputPanel() {
         <div className="space-y-2">
           <Label htmlFor="hex-input">Transaction Hex</Label>
           <div className="relative">
-            <Textarea
-              id="hex-input"
+            <HexEditor
               value={localHex}
-              onChange={(e) => handleHexChange(e.target.value)}
+              onChange={handleHexChange}
               placeholder="Paste your hex-encoded Cardano transaction here..."
-              className={`min-h-[200px] font-mono text-sm ${
-                localHex && !isValid ? 'border-destructive' : ''
-              }`}
+              className={localHex && !isValid ? 'border-destructive' : ''}
             />
             {localHex && (
-              <div className="absolute top-2 right-2">
+              <div className="absolute top-2 right-2 z-10">
                 {isValid ? (
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
                 ) : (
@@ -200,6 +198,10 @@ export function HexInputPanel() {
               <Button variant="outline" onClick={handleCopyToClipboard}>
                 <Copy className="h-4 w-4 mr-2" />
                 Copy
+              </Button>
+              <Button variant="outline" onClick={handleShare}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Share
               </Button>
               <Button variant="outline" onClick={handleDownload}>
                 <Download className="h-4 w-4 mr-2" />

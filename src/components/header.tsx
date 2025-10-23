@@ -12,8 +12,7 @@ export function Header() {
   const pathname = usePathname();
 
   const navItems = [
-    { href: '/', label: 'Home', icon: Home },
-    { href: '/tx', label: 'Inspector', icon: FileText },
+    { href: '/', label: 'Inspector', icon: FileText },
     { href: '/build', label: 'Builder', icon: Code },
   ];
 
