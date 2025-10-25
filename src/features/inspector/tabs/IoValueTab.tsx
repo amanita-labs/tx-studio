@@ -28,21 +28,20 @@ export function IoValueTab({ tx }: IoValueTabProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ArrowRight className="h-5 w-5 rotate-180" />
-            Inputs ({tx.inputs.length})
+            Inputs ({tx.inputs.filter(input => !input.isCollateral).length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {tx.inputs.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No inputs</p>
+          {tx.inputs.filter(input => !input.isCollateral).length === 0 ? (
+            <p className="text-muted-foreground text-sm">No regular inputs</p>
           ) : (
             <div className="space-y-3">
-              {tx.inputs.map((input, index) => (
+              {tx.inputs
+                .filter(input => !input.isCollateral)
+                .map((input, index) => (
                 <div key={index} className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Input #{index}</span>
-                    {input.isCollateral && (
-                      <Badge variant="secondary">Collateral</Badge>
-                    )}
                   </div>
                   
                   <div className="space-y-1">
@@ -82,6 +81,33 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
+                      </div>
+                    )}
+
+                    {input.resolved?.value && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">ADA</span>
+                          <span className="text-xs font-mono">{formatAda(input.resolved.value.ada)}</span>
+                        </div>
+                        
+                        {input.resolved.value.assets.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-xs text-muted-foreground">Assets</span>
+                            <div className="space-y-1">
+                              {input.resolved.value.assets.map((asset, assetIndex) => (
+                                <div key={assetIndex} className="flex items-center justify-between text-xs">
+                                  <span className="truncate">
+                                    {asset.policyId.slice(0, 8)}...{asset.assetName}
+                                  </span>
+                                  <span className="font-mono">
+                                    {formatAssetQuantity(asset.quantity)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

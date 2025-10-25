@@ -841,7 +841,7 @@ async function parseTransaction(hex: string) {
               });
             } catch (error) {
               console.warn(`Error parsing metadata label ${label}:`, error);
-              metadata.push({
+      metadata.push({
                 label,
                 json: null,
                 cbor: metadatum.to_hex(),
@@ -905,7 +905,9 @@ async function parseTransaction(hex: string) {
           exUnits: {
             mem: redeemer.ex_units().mem(),
             steps: redeemer.ex_units().steps()
-          }
+          },
+          data: redeemer.data()?.to_hex() || undefined,
+          scriptHash: undefined // This would need to be associated with the corresponding script
         });
       }
     }

@@ -10,7 +10,6 @@ import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
 import { ExportDialog } from '@/components/export-dialog';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
 
 export function TxInspector() {
   const searchParams = useSearchParams();
@@ -47,15 +46,6 @@ export function TxInspector() {
               <ErrorState error={error} />
             ) : parsedTx?.success ? (
               <div className="h-full flex flex-col">
-                {/* Export Button */}
-                <div className="flex justify-end mb-4">
-                  <ExportDialog tx={parsedTx.tx} txHex={txHex}>
-                    <Button variant="outline" size="sm">
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
-                  </ExportDialog>
-                </div>
                 {/* Inspector Tabs */}
                 <div className="flex-1">
                   <InspectorTabs tx={parsedTx.tx} txHex={txHex} />

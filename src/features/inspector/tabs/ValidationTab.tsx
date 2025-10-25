@@ -16,8 +16,7 @@ import {
   Zap, 
   FileCheck, 
   Lightbulb,
-  Copy,
-  Download
+  Copy
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { TransactionValidator, ValidationReport, ValidationResult } from '@/lib/transaction-validator';
@@ -92,28 +91,6 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
     }
   };
 
-  const downloadReport = () => {
-    if (!report) return;
-    
-    const data = {
-      transaction: tx,
-      validation: report,
-      timestamp: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, (key, value) =>
-      typeof value === 'bigint' ? value.toString() : value, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `validation-report-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast.success('Validation report downloaded');
-  };
 
   if (isLoading) {
     return (
@@ -185,10 +162,6 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
           <Button variant="outline" size="sm" onClick={copyReport}>
             <Copy className="h-4 w-4 mr-2" />
             Copy Report
-          </Button>
-          <Button variant="outline" size="sm" onClick={downloadReport}>
-            <Download className="h-4 w-4 mr-2" />
-            Download
           </Button>
         </div>
       </div>

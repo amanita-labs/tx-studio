@@ -3,10 +3,49 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda, formatLovelace } from '@/lib/utils/ada';
-import { formatSlotWithTime, slotToLocalTime } from '@/lib/utils/slot-time';
+import { formatSlotWithTime, slotToLocalTime, formatValidityWindow, getTimeRemaining } from '@/lib/utils/slot-time';
 import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+
+// Helper component for validity status badge
+function ValidityStatus({ startSlot, endSlot }: { startSlot: number; endSlot: number }) {
+  const validityInfo = formatValidityWindow(startSlot, endSlot);
+  
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'not-started':
+        return <Badge variant="secondary" className="text-xs">Not Started</Badge>;
+      case 'active':
+        return <Badge variant="default" className="text-xs bg-green-500">Active</Badge>;
+      case 'expired':
+        return <Badge variant="destructive" className="text-xs">Expired</Badge>;
+      default:
+        return null;
+    }
+  };
+  
+  return getStatusBadge(validityInfo.status);
+}
+
+// Helper component for time remaining
+function ValidityTimeRemaining({ slot }: { slot: number }) {
+  const timeInfo = getTimeRemaining(slot);
+  
+  if (timeInfo.isExpired) {
+    return (
+      <div className="text-xs text-red-500 font-medium">
+        Expired
+      </div>
+    );
+  }
+  
+  return (
+    <div className="text-xs text-muted-foreground">
+      {timeInfo.timeRemaining} remaining
+    </div>
+  );
+}
 
 interface OverviewTabProps {
   tx: DomainTx;
@@ -74,6 +113,9 @@ export function OverviewTab({ tx }: OverviewTabProps) {
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
             Validity Window
+            {tx.validity.start && tx.validity.end && (
+              <ValidityStatus startSlot={tx.validity.start} endSlot={tx.validity.end} />
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -103,6 +145,7 @@ export function OverviewTab({ tx }: OverviewTabProps) {
               <div className="text-sm text-right">
                 <div className="font-mono">{tx.validity.start.toLocaleString()}</div>
                 <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.start)}</div>
+                <ValidityTimeRemaining slot={tx.validity.start} />
               </div>
             </div>
           )}
@@ -113,6 +156,7 @@ export function OverviewTab({ tx }: OverviewTabProps) {
               <div className="text-sm text-right">
                 <div className="font-mono">{tx.validity.end.toLocaleString()}</div>
                 <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.end)}</div>
+                <ValidityTimeRemaining slot={tx.validity.end} />
               </div>
             </div>
           )}

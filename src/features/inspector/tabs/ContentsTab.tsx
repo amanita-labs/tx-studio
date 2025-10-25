@@ -17,15 +17,33 @@ import {
   Clock,
   Hash,
   Copy,
-  Download,
   Info,
   CheckCircle2,
   AlertTriangle,
   ExternalLink
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
-import { slotToLocalTime } from '@/lib/utils/slot-time';
+import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
 import { toast } from 'sonner';
+
+// Helper component for time remaining
+function ValidityTimeRemaining({ slot }: { slot: number }) {
+  const timeInfo = getTimeRemaining(slot);
+  
+  if (timeInfo.isExpired) {
+    return (
+      <div className="text-xs text-red-500 font-medium">
+        Expired
+      </div>
+    );
+  }
+  
+  return (
+    <div className="text-xs text-muted-foreground">
+      {timeInfo.timeRemaining} remaining
+    </div>
+  );
+}
 
 interface ContentsTabProps {
   tx: DomainTx;
@@ -308,28 +326,6 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     }
   };
 
-  const downloadContents = () => {
-    if (!contents) return;
-    
-    const data = {
-      transaction: tx,
-      contents: contents,
-      timestamp: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, (key, value) =>
-      typeof value === 'bigint' ? value.toString() : value, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transaction-contents-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast.success('Transaction contents downloaded');
-  };
 
   if (isLoading) {
     return (
@@ -365,12 +361,6 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Transaction Contents</h3>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm" onClick={downloadContents}>
-            <Download className="h-4 w-4 mr-2" />
-            Download
-          </Button>
-        </div>
       </div>
 
       {/* Contents Overview */}
@@ -638,6 +628,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                       <span className="font-medium">Valid From:</span>
                       <div className="font-mono">{contents.validity.validityStart.toLocaleString()}</div>
                       <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityStart)}</div>
+                      <ValidityTimeRemaining slot={contents.validity.validityStart} />
                     </div>
                   )}
                   {contents.validity.validityEnd && (
@@ -645,6 +636,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                       <span className="font-medium">Valid Until:</span>
                       <div className="font-mono">{contents.validity.validityEnd.toLocaleString()}</div>
                       <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityEnd)}</div>
+                      <ValidityTimeRemaining slot={contents.validity.validityEnd} />
                     </div>
                   )}
                 </div>

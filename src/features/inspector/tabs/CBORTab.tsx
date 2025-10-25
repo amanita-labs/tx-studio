@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Copy, Download, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Copy, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { CBORAnnotator, CBORNode, CBORAnnotation } from '@/lib/cbor-annotator';
 import { ByteGutter } from '@/components/byte-gutter';
 import { AnnotatedTree } from '@/components/annotated-tree';
@@ -64,27 +64,6 @@ export function CBORTab({ txHex }: CBORTabProps) {
     }
   };
 
-  const downloadAnnotation = () => {
-    if (!annotation) return;
-    
-    const data = {
-      hex: txHex,
-      annotation: annotation,
-      timestamp: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cbor-annotation-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast.success('Annotation downloaded');
-  };
 
   if (isLoading) {
     return (
@@ -153,14 +132,6 @@ export function CBORTab({ txHex }: CBORTabProps) {
           >
             <Copy className="h-4 w-4 mr-2" />
             Copy JSON
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={downloadAnnotation}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Download
           </Button>
         </div>
       </div>

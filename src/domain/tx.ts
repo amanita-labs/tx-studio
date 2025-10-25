@@ -26,7 +26,7 @@ export type DomainTx = {
   governance?: GovernanceVM | null;       // Conway actions, drep votes, etc.
   metadata?: Array<{ label: string; json?: unknown; cbor?: string }>;
   scripts?: Array<{ type: string; hash: string; bytesLen: number }>;
-  redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number } }>;
+  redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }>;
   witnesses: { vkeyCount: number; nativeCount: number; plutusCount: number };
   warnings: string[];
 };

@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Copy,
-  Download,
   FileText
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
@@ -112,29 +111,6 @@ export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
     }
   };
 
-  const downloadDiff = () => {
-    if (!diff) return;
-    
-    const data = {
-      originalTransaction: tx,
-      comparisonTransaction: compareTx,
-      diff: diff,
-      timestamp: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, (key, value) =>
-      typeof value === 'bigint' ? value.toString() : value, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transaction-diff-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast.success('Comparison result downloaded');
-  };
 
   return (
     <div className="h-full flex flex-col space-y-4">
@@ -145,10 +121,6 @@ export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
           <Button variant="outline" size="sm" onClick={copyDiff} disabled={!diff}>
             <Copy className="h-4 w-4 mr-2" />
             Copy Diff
-          </Button>
-          <Button variant="outline" size="sm" onClick={downloadDiff} disabled={!diff}>
-            <Download className="h-4 w-4 mr-2" />
-            Download
           </Button>
         </div>
       </div>
