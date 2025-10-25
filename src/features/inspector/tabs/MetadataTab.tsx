@@ -5,10 +5,10 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, Hash, AlertTriangle, FileText, Image, Coins, Vote, Settings } from 'lucide-react';
+import { Copy, Download, Hash, AlertTriangle, FileText, Image, Coins, Vote, Settings, Eye, EyeOff } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { MetadataParser, MetadataAnalysis, ParsedMetadata } from '@/lib/metadata-parser';
+import { JsonViewer } from '@/components/json-viewer';
 import { toast } from 'sonner';
 
 interface MetadataTabProps {
@@ -114,100 +114,20 @@ export function MetadataTab({ tx }: MetadataTabProps) {
         </Card>
       ) : (
         <>
-          {/* Analysis Overview */}
-          {analysis && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Metadata Analysis</span>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant="outline">
-                      {analysis.totalSize} bytes
-                    </Badge>
-                    <Badge variant="outline">
-                      {analysis.parsedMetadata.length} entries
-                    </Badge>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                  {Object.entries(analysis.categories).map(([category, count]) => (
-                    <div key={category} className="text-center">
-                      <div className="flex items-center justify-center mb-1">
-                        {getCategoryIcon(category)}
-                      </div>
-                      <div className="text-2xl font-bold">{count}</div>
-                      <div className="text-sm text-muted-foreground capitalize">{category}</div>
-                    </div>
-                  ))}
-                </div>
-                
-                {analysis.warnings.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-yellow-600">Warnings</h4>
-                    {analysis.warnings.map((warning, index) => (
-                      <div key={index} className="flex items-start space-x-2 text-sm">
-                        <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
-                        <span>{warning}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-              </CardContent>
-            </Card>
-          )}
 
           {/* Metadata Entries */}
-          <Tabs defaultValue="list" className="flex-1 flex flex-col">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="list">List View</TabsTrigger>
-              <TabsTrigger value="categorized">Categorized</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="list" className="flex-1 overflow-auto">
-              <div className="space-y-4 p-4">
-                {tx.metadata.map((metadata, index) => (
-                  <MetadataCard 
-                    key={index} 
-                    metadata={metadata} 
-                    parsed={analysis?.parsedMetadata[index]}
-                    onCopy={copyToClipboard}
-                  />
-                ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="categorized" className="flex-1 overflow-auto">
-              <div className="space-y-4 p-4">
-                {analysis && Object.entries(analysis.categories).map(([category, count]) => (
-                  <div key={category}>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center">
-                      {getCategoryIcon(category)}
-                      <span className="ml-2 capitalize">{category}</span>
-                      <Badge variant="outline" className="ml-2">{count}</Badge>
-                    </h3>
-                    <div className="space-y-2">
-                      {analysis.parsedMetadata
-                        .filter(parsed => parsed.category === category)
-                        .map((parsed, index) => {
-                          const originalIndex = analysis.parsedMetadata.indexOf(parsed);
-                          return (
-                            <MetadataCard
-                              key={index}
-                              metadata={tx.metadata![originalIndex]}
-                              parsed={parsed}
-                              onCopy={copyToClipboard}
-                            />
-                          );
-                        })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
+          <div className="flex-1 overflow-auto">
+            <div className="space-y-4 p-4">
+              {tx.metadata.map((metadata, index) => (
+                <MetadataCard 
+                  key={index} 
+                  metadata={metadata} 
+                  parsed={analysis?.parsedMetadata[index]}
+                  onCopy={copyToClipboard}
+                />
+              ))}
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -278,48 +198,32 @@ function MetadataCard({ metadata, parsed, onCopy }: MetadataCardProps) {
         )}
         
         {metadata.json ? (
-          <div>
-            <h4 className="text-sm font-medium mb-2">JSON Data</h4>
-            <div className="bg-muted rounded-lg p-3">
-              <pre className="text-xs overflow-x-auto">
-                {JSON.stringify(metadata.json as any, null, 2)}
-              </pre>
-            </div>
-            <div className="flex justify-end mt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCopy(
-                  JSON.stringify(metadata.json, null, 2),
-                  'JSON metadata'
-                )}
-              >
-                <Copy className="h-3 w-3 mr-2" />
-                Copy JSON
-              </Button>
-            </div>
-          </div>
+          <JsonViewer
+            data={metadata.json}
+            title="JSON Data"
+            label={metadata.label}
+            category={parsed?.category}
+            description={parsed?.description}
+            onCopy={onCopy}
+          />
+        ) : null}
+        
+        {parsed?.decodedCbor ? (
+          <JsonViewer
+            data={parsed.decodedCbor}
+            title="CBOR Data (Decoded to JSON)"
+            label={metadata.label}
+            category={parsed?.category}
+            description={`${parsed?.description} - Decoded from CBOR`}
+            onCopy={onCopy}
+          />
         ) : null}
         
         {metadata.cbor && (
-          <div>
-            <h4 className="text-sm font-medium mb-2">CBOR Data</h4>
-            <div className="bg-muted rounded-lg p-3">
-              <code className="text-xs break-all">
-                {metadata.cbor}
-              </code>
-            </div>
-            <div className="flex justify-end mt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCopy(metadata.cbor!, 'CBOR metadata')}
-              >
-                <Copy className="h-3 w-3 mr-2" />
-                Copy CBOR
-              </Button>
-            </div>
-          </div>
+          <CborViewer
+            cborData={metadata.cbor}
+            onCopy={onCopy}
+          />
         )}
         
         {!metadata.json && !metadata.cbor && (
@@ -330,6 +234,61 @@ function MetadataCard({ metadata, parsed, onCopy }: MetadataCardProps) {
           </div>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+interface CborViewerProps {
+  cborData: string;
+  onCopy: (text: string, label: string) => void;
+}
+
+function CborViewer({ cborData, onCopy }: CborViewerProps) {
+  const [showCbor, setShowCbor] = useState(false);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Hash className="h-4 w-4" />
+            CBOR Data
+            <Badge variant="outline" className="text-xs">
+              Raw Format
+            </Badge>
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCbor(!showCbor)}
+            >
+              {showCbor ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showCbor ? 'Hide' : 'Show'} CBOR
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onCopy(cborData, 'CBOR metadata')}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Copy CBOR
+            </Button>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Raw CBOR data in hexadecimal format. Use the toggle to show/hide the data.
+        </p>
+      </CardHeader>
+      {showCbor && (
+        <CardContent>
+          <div className="bg-muted rounded-lg p-3">
+            <code className="text-xs break-all whitespace-pre-wrap">
+              {cborData}
+            </code>
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
 }

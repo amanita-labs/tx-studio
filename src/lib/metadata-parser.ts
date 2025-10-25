@@ -1,5 +1,6 @@
 // src/lib/metadata-parser.ts
 import { DomainTx } from '@/domain/tx';
+import { decode } from 'cbor-x';
 
 export interface ParsedMetadata {
   label: number;
@@ -9,6 +10,17 @@ export interface ParsedMetadata {
   description: string;
   category: 'nft' | 'token' | 'governance' | 'custom' | 'unknown';
   warnings: string[];
+  formattedData?: any;
+  decodedCbor?: any; // JSON representation of CBOR data
+  structure?: {
+    hasContext?: boolean;
+    hasHashAlgorithm?: boolean;
+    hasTxAuthor?: boolean;
+    hasInstance?: boolean;
+    hasBody?: boolean;
+    keyCount?: number;
+    depth?: number;
+  };
 }
 
 export interface MetadataAnalysis {
@@ -82,16 +94,33 @@ export class MetadataParser {
     }
 
     // Analyze content based on label and data
+    let structure: any = {};
+    let decodedCbor: any = undefined;
+    
     if (type === 'json') {
       const analysis = this.analyzeJsonMetadata(label, data);
       category = analysis.category;
       description = analysis.description;
       warnings.push(...analysis.warnings);
+      structure = analysis.structure || {};
     } else if (type === 'cbor') {
       const analysis = this.analyzeCborMetadata(label, data);
       category = analysis.category;
       description = analysis.description;
       warnings.push(...analysis.warnings);
+      
+      // Try to decode CBOR to JSON
+      try {
+        const cborBytes = this.hexToBytes(data);
+        decodedCbor = decode(cborBytes);
+        
+        // Analyze the decoded CBOR structure
+        if (typeof decodedCbor === 'object' && decodedCbor !== null) {
+          structure = this.analyzeMetadataStructure(decodedCbor);
+        }
+      } catch (error) {
+        warnings.push(`Failed to decode CBOR: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
 
     const size = this.calculateMetadataSize(metadata);
@@ -103,14 +132,22 @@ export class MetadataParser {
       size,
       description,
       category,
-      warnings
+      warnings,
+      structure,
+      decodedCbor
     };
   }
 
-  private analyzeJsonMetadata(label: number, data: any): { category: 'nft' | 'token' | 'governance' | 'custom' | 'unknown'; description: string; warnings: string[] } {
+  private analyzeJsonMetadata(label: number, data: any): { category: 'nft' | 'token' | 'governance' | 'custom' | 'unknown'; description: string; warnings: string[]; structure?: any } {
     const warnings: string[] = [];
     let category: 'nft' | 'token' | 'governance' | 'custom' | 'unknown' = 'unknown';
     let description = '';
+    let structure: any = {};
+
+    // Analyze structure
+    if (typeof data === 'object' && data !== null) {
+      structure = this.analyzeMetadataStructure(data);
+    }
 
     // Known metadata labels
     switch (label) {
@@ -158,7 +195,7 @@ export class MetadataParser {
       warnings.push(`Large metadata entry: ${dataSize} bytes`);
     }
 
-    return { category, description, warnings };
+    return { category, description, warnings, structure };
   }
 
   private analyzeCborMetadata(label: number, cbor: string): { category: 'nft' | 'token' | 'governance' | 'custom' | 'unknown'; description: string; warnings: string[] } {
@@ -241,5 +278,47 @@ export class MetadataParser {
     }
 
     return recommendations;
+  }
+
+  private analyzeMetadataStructure(data: any, depth: number = 0): any {
+    const structure: any = {
+      keyCount: 0,
+      depth: depth,
+      hasContext: false,
+      hasHashAlgorithm: false,
+      hasTxAuthor: false,
+      hasInstance: false,
+      hasBody: false
+    };
+
+    if (typeof data === 'object' && data !== null) {
+      const keys = Object.keys(data);
+      structure.keyCount = keys.length;
+
+      // Check for common metadata patterns
+      if (data['@context'] || data.context) structure.hasContext = true;
+      if (data.hashAlgorithm) structure.hasHashAlgorithm = true;
+      if (data.txAuthor) structure.hasTxAuthor = true;
+      if (data.instance) structure.hasInstance = true;
+      if (data.body) structure.hasBody = true;
+
+      // Analyze nested objects
+      for (const key of keys) {
+        if (typeof data[key] === 'object' && data[key] !== null) {
+          const nestedStructure = this.analyzeMetadataStructure(data[key], depth + 1);
+          structure[`${key}Structure`] = nestedStructure;
+        }
+      }
+    }
+
+    return structure;
+  }
+
+  private hexToBytes(hex: string): Uint8Array {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return bytes;
   }
 }
