@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda, formatLovelace } from '@/lib/utils/ada';
+import { formatSlotWithTime, slotToLocalTime } from '@/lib/utils/slot-time';
 import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -79,28 +80,40 @@ export function OverviewTab({ tx }: OverviewTabProps) {
           {tx.slot && (
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Slot</span>
-              <span className="text-sm">{tx.slot.toLocaleString()}</span>
+              <div className="text-sm text-right">
+                <div className="font-mono">{tx.slot.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.slot)}</div>
+              </div>
             </div>
           )}
           
           {tx.ttl && (
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">TTL</span>
-              <span className="text-sm">{tx.ttl.toLocaleString()}</span>
+              <div className="text-sm text-right">
+                <div className="font-mono">{tx.ttl.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.ttl)}</div>
+              </div>
             </div>
           )}
           
           {tx.validity.start && (
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Valid From</span>
-              <span className="text-sm">{tx.validity.start.toLocaleString()}</span>
+              <div className="text-sm text-right">
+                <div className="font-mono">{tx.validity.start.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.start)}</div>
+              </div>
             </div>
           )}
           
           {tx.validity.end && (
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Valid Until</span>
-              <span className="text-sm">{tx.validity.end.toLocaleString()}</span>
+              <div className="text-sm text-right">
+                <div className="font-mono">{tx.validity.end.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.end)}</div>
+              </div>
             </div>
           )}
         </CardContent>

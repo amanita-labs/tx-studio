@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, Hash, AlertTriangle, CheckCircle2, FileText, Image, Coins, Vote, Settings } from 'lucide-react';
+import { Copy, Download, Hash, AlertTriangle, FileText, Image, Coins, Vote, Settings } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { MetadataParser, MetadataAnalysis, ParsedMetadata } from '@/lib/metadata-parser';
 import { toast } from 'sonner';
@@ -155,17 +155,6 @@ export function MetadataTab({ tx }: MetadataTabProps) {
                   </div>
                 )}
                 
-                {analysis.recommendations.length > 0 && (
-                  <div className="space-y-2 mt-4">
-                    <h4 className="text-sm font-medium text-blue-600">Recommendations</h4>
-                    {analysis.recommendations.map((recommendation, index) => (
-                      <div key={index} className="flex items-start space-x-2 text-sm">
-                        <CheckCircle2 className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                        <span>{recommendation}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </CardContent>
             </Card>
           )}

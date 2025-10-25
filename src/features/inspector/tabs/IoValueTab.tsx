@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda, formatAssetQuantity } from '@/lib/utils/ada';
-import { Copy, ArrowRight, Coins } from 'lucide-react';
+import { Copy, ArrowRight, Coins, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
@@ -91,6 +91,100 @@ export function IoValueTab({ tx }: IoValueTabProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Collateral Inputs */}
+      {tx.inputs.some(input => input.isCollateral) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Collateral Inputs ({tx.inputs.filter(input => input.isCollateral).length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {tx.inputs
+                .filter(input => input.isCollateral)
+                .map((input, index) => (
+                  <div key={index} className="border rounded-lg p-3 space-y-2 bg-orange-50 dark:bg-orange-950/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Collateral Input #{index}</span>
+                      <Badge variant="secondary">Collateral</Badge>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Transaction ID</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {input.txId.slice(0, 16)}...
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Index</span>
+                        <span className="text-xs">{input.index}</span>
+                      </div>
+                      
+                      {input.resolved?.address && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Address</span>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded">
+                              {input.resolved.address.slice(0, 20)}...
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {input.resolved?.value && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">ADA</span>
+                            <span className="text-xs font-mono">{formatAda(input.resolved.value.ada)}</span>
+                          </div>
+                          
+                          {input.resolved.value.assets.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="text-xs text-muted-foreground">Assets</span>
+                              <div className="space-y-1">
+                                {input.resolved.value.assets.map((asset, assetIndex) => (
+                                  <div key={assetIndex} className="flex items-center justify-between text-xs">
+                                    <span className="truncate">
+                                      {asset.policyId.slice(0, 8)}...{asset.assetName}
+                                    </span>
+                                    <span className="font-mono">
+                                      {formatAssetQuantity(asset.quantity)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Outputs */}
       <Card>

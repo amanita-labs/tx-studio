@@ -24,6 +24,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
+import { slotToLocalTime } from '@/lib/utils/slot-time';
 import { toast } from 'sonner';
 
 interface ContentsTabProps {
@@ -159,28 +160,64 @@ export function ContentsTab({ tx }: ContentsTabProps) {
 
     const items: any[] = [];
     
-    // Analyze governance actions
-    if ((tx.governance as any).votingProcedures) {
-      (tx.governance as any).votingProcedures.forEach((procedure: any, index: number) => {
+    // Analyze DRep votes
+    if (tx.governance.drepVotes && tx.governance.drepVotes.length > 0) {
+      tx.governance.drepVotes.forEach((vote: any, index: number) => {
         items.push({
-          type: 'Voting Procedure',
-          description: `Vote on governance proposal`,
-          data: procedure,
+          type: 'DRep Vote',
+          description: `DRep ${vote.drepId.slice(0, 8)}... voted ${vote.action} on proposal ${vote.proposalId.slice(0, 16)}...`,
+          data: vote,
           icon: <Vote className="h-4 w-4" />,
           color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
         });
       });
     }
 
-    if ((tx.governance as any).proposalProcedures) {
-      (tx.governance as any).proposalProcedures.forEach((procedure: any, index: number) => {
+    // Analyze Committee votes
+    if (tx.governance.committeeVotes && tx.governance.committeeVotes.length > 0) {
+      tx.governance.committeeVotes.forEach((vote: any, index: number) => {
         items.push({
-          type: 'Proposal Procedure',
-          description: `Submit governance proposal`,
-          data: procedure,
+          type: 'Committee Vote',
+          description: `Committee member ${vote.memberId.slice(0, 8)}... voted ${vote.action} on proposal ${vote.proposalId.slice(0, 16)}...`,
+          data: vote,
+          icon: <Users className="h-4 w-4" />,
+          color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+        });
+      });
+    }
+
+    // Analyze governance proposals
+    if (tx.governance.proposals && tx.governance.proposals.length > 0) {
+      tx.governance.proposals.forEach((proposal: any, index: number) => {
+        items.push({
+          type: `${proposal.type} Proposal`,
+          description: `Governance proposal: ${proposal.type}`,
+          data: proposal,
           icon: <FileText className="h-4 w-4" />,
           color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
         });
+      });
+    }
+
+    // Analyze constitution
+    if (tx.governance.constitution) {
+      items.push({
+        type: 'Constitution',
+        description: `Constitution hash: ${tx.governance.constitution.hash.slice(0, 16)}...`,
+        data: tx.governance.constitution,
+        icon: <Shield className="h-4 w-4" />,
+        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+      });
+    }
+
+    // Analyze committee
+    if (tx.governance.committee) {
+      items.push({
+        type: 'Committee',
+        description: `Committee with ${tx.governance.committee.members.length} members`,
+        data: tx.governance.committee,
+        icon: <Users className="h-4 w-4" />,
+        color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200'
       });
     }
 
@@ -348,14 +385,6 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         
         <Card>
           <CardContent className="p-4 text-center">
-            <Coins className="h-8 w-8 mx-auto mb-2 text-green-600" />
-            <div className="text-2xl font-bold">{contents.withdrawals.count}</div>
-            <div className="text-sm text-muted-foreground">Withdrawals</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4 text-center">
             <Vote className="h-8 w-8 mx-auto mb-2 text-purple-600" />
             <div className="text-2xl font-bold">{contents.governance.count}</div>
             <div className="text-sm text-muted-foreground">Governance</div>
@@ -369,14 +398,22 @@ export function ContentsTab({ tx }: ContentsTabProps) {
             <div className="text-sm text-muted-foreground">Minting</div>
           </CardContent>
         </Card>
+        
+        <Card>
+          <CardContent className="p-4 text-center">
+            <Coins className="h-8 w-8 mx-auto mb-2 text-green-600" />
+            <div className="text-2xl font-bold">{contents.withdrawals.count}</div>
+            <div className="text-sm text-muted-foreground">Withdrawals</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Detailed Contents */}
       <Tabs defaultValue="certificates" className="flex-1 flex flex-col">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="certificates">Certificates</TabsTrigger>
-          <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
           <TabsTrigger value="governance">Governance</TabsTrigger>
+          <TabsTrigger value="minting">Minting</TabsTrigger>
           <TabsTrigger value="other">Other</TabsTrigger>
         </TabsList>
         
@@ -432,47 +469,6 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           </div>
         </TabsContent>
         
-        <TabsContent value="withdrawals" className="flex-1 overflow-auto">
-          <div className="space-y-4 p-4">
-            {contents.withdrawals.count === 0 ? (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <div className="text-center">
-                    <Coins className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No withdrawals found</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              contents.withdrawals.items.map((withdrawal: any, index: number) => (
-                <Card key={index}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium">Withdrawal {withdrawal.index + 1}</h4>
-                        <p className="text-sm text-muted-foreground">{withdrawal.description}</p>
-                      </div>
-                      <Badge variant="outline">
-                        {Number(withdrawal.amount).toLocaleString()} lovelace
-                      </Badge>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium">Reward Account:</span>
-                        <div className="font-mono text-xs mt-1 break-all">{withdrawal.rewardAccount}</div>
-                      </div>
-                      <div>
-                        <span className="font-medium">Amount:</span>
-                        <div className="font-mono text-xs mt-1">{withdrawal.amount} lovelace</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </TabsContent>
-        
         <TabsContent value="governance" className="flex-1 overflow-auto">
           <div className="space-y-4 p-4">
             {contents.governance.count === 0 ? (
@@ -510,29 +506,74 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           </div>
         </TabsContent>
         
+        <TabsContent value="minting" className="flex-1 overflow-auto">
+          <div className="space-y-4 p-4">
+            {contents.minting.count === 0 ? (
+              <Card>
+                <CardContent className="flex items-center justify-center h-32">
+                  <div className="text-center">
+                    <Hash className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No minting actions found</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              contents.minting.items.map((mint: any, index: number) => (
+                <Card key={index}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">Minting Action {mint.index + 1}</h4>
+                        <p className="text-sm text-muted-foreground">{mint.description}</p>
+                      </div>
+                      <Badge variant={Number(mint.quantity) > 0 ? "default" : "destructive"}>
+                        {Number(mint.quantity) > 0 ? '+' : ''}{mint.quantity}
+                      </Badge>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">Asset Name:</span>
+                        <div className="font-mono text-xs mt-1">{mint.assetName}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium">Policy ID:</span>
+                        <div className="font-mono text-xs mt-1 break-all">{mint.policyId}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium">Quantity:</span>
+                        <div className="font-mono text-xs mt-1">{mint.quantity}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </TabsContent>
+        
         <TabsContent value="other" className="flex-1 overflow-auto">
           <div className="space-y-4 p-4">
-            {/* Minting */}
-            {contents.minting.count > 0 && (
+            {/* Withdrawals */}
+            {contents.withdrawals.count > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center">
-                    <Hash className="h-5 w-5 mr-2" />
-                    Minting Actions ({contents.minting.count})
+                    <Coins className="h-5 w-5 mr-2" />
+                    Withdrawals ({contents.withdrawals.count})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {contents.minting.items.map((mint: any, index: number) => (
+                    {contents.withdrawals.items.map((withdrawal: any, index: number) => (
                       <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
                         <div>
-                          <span className="font-medium">{mint.assetName}</span>
+                          <span className="font-medium">Withdrawal {withdrawal.index + 1}</span>
                           <div className="text-sm text-muted-foreground">
-                            Policy: {mint.policyId.slice(0, 8)}...
+                            Account: {withdrawal.rewardAccount.slice(0, 20)}...
                           </div>
                         </div>
-                        <Badge variant={Number(mint.quantity) > 0 ? "default" : "destructive"}>
-                          {Number(mint.quantity) > 0 ? '+' : ''}{mint.quantity}
+                        <Badge variant="outline">
+                          {Number(withdrawal.amount).toLocaleString()} lovelace
                         </Badge>
                       </div>
                     ))}
@@ -580,22 +621,30 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="font-medium">TTL:</span>
-                    <div className="font-mono">{contents.validity.ttl}</div>
+                    <div className="font-mono">{contents.validity.ttl?.toLocaleString()}</div>
+                    {contents.validity.ttl && (
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.ttl)}</div>
+                    )}
                   </div>
                   <div>
                     <span className="font-medium">Slot:</span>
-                    <div className="font-mono">{contents.validity.slot}</div>
+                    <div className="font-mono">{contents.validity.slot?.toLocaleString()}</div>
+                    {contents.validity.slot && (
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.slot)}</div>
+                    )}
                   </div>
                   {contents.validity.validityStart && (
                     <div>
                       <span className="font-medium">Valid From:</span>
-                      <div className="font-mono">{contents.validity.validityStart}</div>
+                      <div className="font-mono">{contents.validity.validityStart.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityStart)}</div>
                     </div>
                   )}
                   {contents.validity.validityEnd && (
                     <div>
                       <span className="font-medium">Valid Until:</span>
-                      <div className="font-mono">{contents.validity.validityEnd}</div>
+                      <div className="font-mono">{contents.validity.validityEnd.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityEnd)}</div>
                     </div>
                   )}
                 </div>

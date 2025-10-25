@@ -19,29 +19,162 @@ async function initializeParser() {
   }
 }
 
+// Enhanced metadata parsing helper functions
+function parseMetadatum(metadatum: any): any {
+  const kind = metadatum.kind();
+  
+  switch (kind) {
+    case 0: // Text
+      return metadatum.as_text();
+    case 1: // Int
+      return metadatum.as_int().to_str();
+    case 2: // Bytes
+      return Array.from(metadatum.as_bytes()).map((b: unknown) => (b as number).toString(16).padStart(2, '0')).join('');
+    case 3: // List
+      return parseMetadataList(metadatum.as_list());
+    case 4: // Map
+      return parseMetadataMap(metadatum.as_map());
+    default:
+      return null;
+  }
+}
+
+function parseMetadataList(list: any): any[] {
+  const result = [];
+  for (let i = 0; i < list.len(); i++) {
+    result.push(parseMetadatum(list.get(i)));
+  }
+  return result;
+}
+
+function parseMetadataMap(map: any): Record<string, any> {
+  const result: Record<string, any> = {};
+  const keys = map.keys();
+  for (let i = 0; i < keys.len(); i++) {
+    const key = parseMetadatum(keys.get(i));
+    const value = parseMetadatum(map.get(keys.get(i)));
+    result[String(key)] = value;
+  }
+  return result;
+}
+
+function getMetadatumType(metadatum: any): string {
+  const kind = metadatum.kind();
+  const types = ['text', 'int', 'bytes', 'list', 'map'];
+  return types[kind] || 'unknown';
+}
+
+// Enhanced datum parsing helper functions
+function getDatumType(plutusData: any): string {
+  try {
+    const kind = plutusData.kind();
+    const types = ['constr', 'map', 'list', 'int', 'bytes'];
+    return types[kind] || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function parseDatumContent(plutusData: any): any {
+  try {
+    const kind = plutusData.kind();
+    
+    switch (kind) {
+      case 0: // Constr
+        return {
+          constructor: plutusData.as_constr()?.constr_index() || 0,
+          fields: plutusData.as_constr()?.fields() ? 
+            Array.from({ length: plutusData.as_constr().fields().len() }, (_, i) => 
+              parseDatumContent(plutusData.as_constr().fields().get(i))
+            ) : []
+        };
+      case 1: // Map
+        return parseDatumMap(plutusData.as_map());
+      case 2: // List
+        return parseDatumList(plutusData.as_list());
+      case 3: // Int
+        return plutusData.as_int().to_str();
+      case 4: // Bytes
+        return Array.from(plutusData.as_bytes()).map((b: unknown) => (b as number).toString(16).padStart(2, '0')).join('');
+      default:
+        return null;
+    }
+  } catch (error) {
+    console.warn('Error parsing datum content:', error);
+    return null;
+  }
+}
+
+function parseDatumList(list: any): any[] {
+  const result = [];
+  for (let i = 0; i < list.len(); i++) {
+    result.push(parseDatumContent(list.get(i)));
+  }
+  return result;
+}
+
+function parseDatumMap(map: any): Record<string, any> {
+  const result: Record<string, any> = {};
+  const keys = map.keys();
+  for (let i = 0; i < keys.len(); i++) {
+    const key = parseDatumContent(keys.get(i));
+    const value = parseDatumContent(map.get(keys.get(i)));
+    result[String(key)] = value;
+  }
+  return result;
+}
+
 // Real CSL-based transaction parsing
 async function parseTransaction(hex: string) {
+  let transaction: any = null;
+  let body: any = null;
+  let witnessSet: any = null;
+  let auxiliaryData: any = null;
+  
   try {
     await initializeParser();
     
-    // Basic validation
-    if (!hex || hex.length < 100) {
-      throw new Error('Transaction hex too short to be valid');
+    // Enhanced validation
+    if (!hex || typeof hex !== 'string') {
+      throw new Error('Transaction hex is required and must be a string');
+    }
+    
+    if (hex.length < 100) {
+      throw new Error('Transaction hex too short to be valid (minimum 100 characters)');
+    }
+    
+    if (hex.length > 1000000) {
+      throw new Error('Transaction hex too long (maximum 1MB)');
     }
     
     if (!/^[0-9a-fA-F]+$/.test(hex)) {
-      throw new Error('Invalid hex format');
+      throw new Error('Invalid hex format - only hexadecimal characters allowed');
     }
     
     if (hex.length % 2 !== 0) {
       throw new Error('Hex string must have even length');
     }
     
+    // Check for common prefixes and clean if needed
+    const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+    if (cleanHex !== hex) {
+      console.warn('Removed 0x prefix from transaction hex');
+    }
+    
     // Parse transaction using CSL
-    const transaction = CSL.Transaction.from_hex(hex);
-    const body = transaction.body();
-    const witnessSet = transaction.witness_set();
-    const auxiliaryData = transaction.auxiliary_data();
+    transaction = CSL.Transaction.from_hex(cleanHex);
+    body = transaction.body();
+    witnessSet = transaction.witness_set();
+    auxiliaryData = transaction.auxiliary_data();
+    
+    // Validate transaction structure
+    if (!body) {
+      throw new Error('Failed to parse transaction body');
+    }
+    
+    if (!witnessSet) {
+      throw new Error('Failed to parse witness set');
+    }
     
     // Get transaction size
     const size = hex.length / 2;
@@ -147,22 +280,41 @@ async function parseTransaction(hex: string) {
         }
       }
       
-      // Parse datum
+      // Parse datum with enhanced detection
       let datum = undefined;
       const dataHash = output.data_hash();
       const plutusData = output.plutus_data();
       
       if (plutusData) {
-        // Inline datum
-        datum = {
-          inline: true,
-          hash: dataHash?.to_hex() || undefined
-        };
+        // Inline datum - try to parse the content
+        try {
+          const datumType = getDatumType(plutusData);
+          const datumContent = parseDatumContent(plutusData);
+          
+          datum = {
+            inline: true,
+            hash: dataHash?.to_hex() || undefined,
+            type: datumType,
+            content: datumContent,
+            size: plutusData.to_bytes().length
+          };
+        } catch (error) {
+          console.warn('Error parsing inline datum:', error);
+          datum = {
+            inline: true,
+            hash: dataHash?.to_hex() || undefined,
+            type: 'unknown',
+            content: null,
+            error: error instanceof Error ? error.message : 'Parse error'
+          };
+        }
       } else if (dataHash) {
         // Datum hash
         datum = {
           inline: false,
-          hash: dataHash.to_hex()
+          hash: dataHash.to_hex(),
+          type: 'hash',
+          content: null
         };
       }
       
@@ -247,132 +399,182 @@ async function parseTransaction(hex: string) {
         let details: Record<string, unknown> = {};
         
         try {
-          switch (certType) {
-            case 0: // StakeRegistration
-              type = "StakeRegistration";
-              details = {
-                stakeCredential: cert.as_stake_registration()?.stake_credential().to_hex() || "",
-                coin: cert.as_stake_registration()?.coin()?.to_str() || "0"
-              };
-              break;
-            case 1: // StakeDeregistration
-              type = "StakeDeregistration";
-              details = {
-                stakeCredential: cert.as_stake_deregistration()?.stake_credential().to_hex() || "",
-                coin: cert.as_stake_deregistration()?.coin()?.to_str() || "0"
-              };
-              break;
-            case 2: // StakeDelegation
-              type = "StakeDelegation";
-              details = {
-                stakeCredential: cert.as_stake_delegation()?.stake_credential().to_hex() || "",
-                poolKeyHash: cert.as_stake_delegation()?.pool_keyhash().to_hex() || ""
-              };
-              break;
-            case 3: // PoolRegistration
-              type = "PoolRegistration";
-              const poolParams = cert.as_pool_registration()?.pool_params();
-              if (poolParams) {
-                details = {
-                  operator: poolParams.operator().to_hex(),
-                  vrfKeyHash: poolParams.vrf_keyhash().to_hex(),
-                  pledge: poolParams.pledge().to_str(),
-                  cost: poolParams.cost().to_str(),
-                  margin: poolParams.margin().to_js_value(),
-                  rewardAccount: poolParams.reward_account().to_address().to_bech32(),
-                  poolOwners: Array.from({ length: poolParams.pool_owners().len() }, (_, i) => 
-                    poolParams.pool_owners().get(i).to_hex()
-                  ),
-                  relays: Array.from({ length: poolParams.relays().len() }, (_, i) => 
-                    poolParams.relays().get(i).to_js_value()
-                  )
-                };
+          // Try to parse certificate as JSON first to get the actual structure
+          const certJson = cert.to_js_value();
+          
+          if (certJson.StakeRegistration) {
+            type = "StakeRegistration";
+            const stakeReg = certJson.StakeRegistration;
+            details = {
+              stakeCredential: {
+                type: stakeReg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: stakeReg.stake_credential?.Key || stakeReg.stake_credential?.Script || "",
+                bech32: stakeReg.stake_credential?.Key || stakeReg.stake_credential?.Script || ""
+              },
+              coin: stakeReg.coin || "0",
+              deposit: stakeReg.coin || "0"
+            };
+          } else if (certJson.StakeDeregistration) {
+            type = "StakeDeregistration";
+            const stakeDereg = certJson.StakeDeregistration;
+            details = {
+              stakeCredential: {
+                type: stakeDereg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: stakeDereg.stake_credential?.Key || stakeDereg.stake_credential?.Script || "",
+                bech32: stakeDereg.stake_credential?.Key || stakeDereg.stake_credential?.Script || ""
+              },
+              coin: stakeDereg.coin || "0",
+              refund: stakeDereg.coin || "0"
+            };
+          } else if (certJson.StakeDelegation) {
+            type = "StakeDelegation";
+            const stakeDeleg = certJson.StakeDelegation;
+            details = {
+              stakeCredential: {
+                type: stakeDeleg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: stakeDeleg.stake_credential?.Key || stakeDeleg.stake_credential?.Script || "",
+                bech32: stakeDeleg.stake_credential?.Key || stakeDeleg.stake_credential?.Script || ""
+              },
+              poolKeyHash: stakeDeleg.pool_keyhash || "",
+              poolId: stakeDeleg.pool_keyhash || ""
+            };
+          } else if (certJson.PoolRegistration) {
+            type = "PoolRegistration";
+            const poolReg = certJson.PoolRegistration;
+            details = {
+              operator: {
+                type: "KeyHash",
+                hash: poolReg.operator || "",
+                bech32: poolReg.operator || ""
+              },
+              vrfKeyHash: {
+                type: "VRFKeyHash",
+                hash: poolReg.vrf_keyhash || ""
+              },
+              pledge: poolReg.pledge || "0",
+              cost: poolReg.cost || "0",
+              margin: poolReg.margin || {},
+              rewardAccount: {
+                address: poolReg.reward_account || "",
+                credential: {
+                  type: "KeyHash",
+                  hash: poolReg.reward_account || ""
+                }
+              },
+              poolOwners: poolReg.pool_owners || [],
+              relays: poolReg.relays || [],
+              poolId: poolReg.operator || ""
+            };
+          } else if (certJson.PoolRetirement) {
+            type = "PoolRetirement";
+            const poolRet = certJson.PoolRetirement;
+            details = {
+              poolOperator: {
+                type: "KeyHash",
+                hash: poolRet.pool_keyhash || "",
+                bech32: poolRet.pool_keyhash || ""
+              },
+              epoch: poolRet.epoch || 0,
+              poolId: poolRet.pool_keyhash || ""
+            };
+          } else if (certJson.GenesisKeyDelegation) {
+            type = "GenesisKeyDelegation";
+            const genesisDeleg = certJson.GenesisKeyDelegation;
+            details = {
+              genesisHash: {
+                type: "GenesisKeyHash",
+                hash: genesisDeleg.genesishash || ""
+              },
+              genesisDelegateHash: {
+                type: "GenesisDelegateHash",
+                hash: genesisDeleg.genesis_delegate_hash || ""
+              },
+              vrfKeyHash: {
+                type: "VRFKeyHash",
+                hash: genesisDeleg.vrf_keyhash || ""
               }
-              break;
-            case 4: // PoolRetirement
-              type = "PoolRetirement";
-              details = {
-                poolKeyHash: cert.as_pool_retirement()?.pool_keyhash().to_hex() || "",
-                epoch: cert.as_pool_retirement()?.epoch()
-              };
-              break;
-            case 5: // GenesisKeyDelegation
-              type = "GenesisKeyDelegation";
-              details = {
-                genesisHash: cert.as_genesis_key_delegation()?.genesishash().to_hex() || "",
-                genesisDelegateHash: cert.as_genesis_key_delegation()?.genesis_delegate_hash().to_hex() || "",
-                vrfKeyHash: cert.as_genesis_key_delegation()?.vrf_keyhash().to_hex() || ""
-              };
-              break;
-            case 6: // MoveInstantaneousRewardsCert
-              type = "MoveInstantaneousRewards";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 7: // CommitteeHotAuth
-              type = "CommitteeHotAuth";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 8: // CommitteeColdResign
-              type = "CommitteeColdResign";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 9: // DRepDeregistration
-              type = "DRepDeregistration";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 10: // DRepRegistration
-              type = "DRepRegistration";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 11: // DRepUpdate
-              type = "DRepUpdate";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 12: // StakeAndVoteDelegation
-              type = "StakeAndVoteDelegation";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 13: // StakeRegistrationAndDelegation
-              type = "StakeRegistrationAndDelegation";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 14: // StakeVoteRegistrationAndDelegation
-              type = "StakeVoteRegistrationAndDelegation";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 15: // VoteDelegation
-              type = "VoteDelegation";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            case 16: // VoteRegistrationAndDelegation
-              type = "VoteRegistrationAndDelegation";
-              details = {
-                raw: cert.to_hex()
-              };
-              break;
-            default:
-              type = "Unknown";
-              details = { raw: cert.to_hex() };
+            };
+          } else if (certJson.VoteDelegation) {
+            type = "VoteDelegation";
+            const voteDeleg = certJson.VoteDelegation;
+            details = {
+              stakeCredential: {
+                type: voteDeleg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: voteDeleg.stake_credential?.Key || voteDeleg.stake_credential?.Script || "",
+                bech32: voteDeleg.stake_credential?.Key || voteDeleg.stake_credential?.Script || ""
+              },
+              drepCredential: {
+                type: voteDeleg.drep?.KeyHash ? "KeyHash" : "ScriptHash",
+                hash: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || "",
+                bech32: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || ""
+              },
+              drepId: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || ""
+            };
+          } else if (certJson.DRepRegistration) {
+            type = "DRepRegistration";
+            const drepReg = certJson.DRepRegistration;
+            details = {
+              drepCredential: {
+                type: drepReg.drep_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: drepReg.drep_credential?.Key || drepReg.drep_credential?.Script || "",
+                bech32: drepReg.drep_credential?.Key || drepReg.drep_credential?.Script || ""
+              },
+              coin: drepReg.coin || "0",
+              deposit: drepReg.coin || "0",
+              drepId: drepReg.drep_credential?.Key || drepReg.drep_credential?.Script || ""
+            };
+          } else if (certJson.DRepDeregistration) {
+            type = "DRepDeregistration";
+            const drepDereg = certJson.DRepDeregistration;
+            details = {
+              drepCredential: {
+                type: drepDereg.drep_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: drepDereg.drep_credential?.Key || drepDereg.drep_credential?.Script || "",
+                bech32: drepDereg.drep_credential?.Key || drepDereg.drep_credential?.Script || ""
+              },
+              epoch: drepDereg.epoch || 0,
+              drepId: drepDereg.drep_credential?.Key || drepDereg.drep_credential?.Script || ""
+            };
+          } else if (certJson.DRepUpdate) {
+            type = "DRepUpdate";
+            const drepUpdate = certJson.DRepUpdate;
+            details = {
+              drepCredential: {
+                type: drepUpdate.drep_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: drepUpdate.drep_credential?.Key || drepUpdate.drep_credential?.Script || "",
+                bech32: drepUpdate.drep_credential?.Key || drepUpdate.drep_credential?.Script || ""
+              },
+              anchor: drepUpdate.anchor || null,
+              drepId: drepUpdate.drep_credential?.Key || drepUpdate.drep_credential?.Script || ""
+            };
+          } else if (certJson.CommitteeHotAuth) {
+            type = "CommitteeHotAuth";
+            const committeeHot = certJson.CommitteeHotAuth;
+            details = {
+              hotCredential: {
+                type: committeeHot.hot_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: committeeHot.hot_credential?.Key || committeeHot.hot_credential?.Script || "",
+                bech32: committeeHot.hot_credential?.Key || committeeHot.hot_credential?.Script || ""
+              },
+              epoch: committeeHot.epoch || 0,
+              committeeMember: committeeHot.hot_credential?.Key || committeeHot.hot_credential?.Script || ""
+            };
+          } else if (certJson.CommitteeColdResign) {
+            type = "CommitteeColdResign";
+            const committeeCold = certJson.CommitteeColdResign;
+            details = {
+              coldCredential: {
+                type: committeeCold.cold_credential?.Key ? "KeyHash" : "ScriptHash",
+                hash: committeeCold.cold_credential?.Key || committeeCold.cold_credential?.Script || "",
+                bech32: committeeCold.cold_credential?.Key || committeeCold.cold_credential?.Script || ""
+              },
+              epoch: committeeCold.epoch || 0,
+              committeeMember: committeeCold.cold_credential?.Key || committeeCold.cold_credential?.Script || ""
+            };
+          } else {
+            // Fallback to original parsing method for unknown certificate types
+            type = "Unknown";
+            details = { raw: cert.to_hex() };
           }
         } catch (error) {
           console.warn('Error parsing certificate:', error);
@@ -429,7 +631,6 @@ async function parseTransaction(hex: string) {
           try {
             // Try to parse voting procedures
             const procedures = votingProcedures.to_js_value();
-            console.log('Voting procedures structure:', JSON.stringify(procedures, null, 2));
             if (Array.isArray(procedures)) {
               procedures.forEach((procedure: any) => {
                 if (procedure.voter && procedure.votes && Array.isArray(procedure.votes)) {
@@ -478,7 +679,6 @@ async function parseTransaction(hex: string) {
           try {
             // Try to parse voting proposals
             const proposals = votingProposals.to_js_value();
-            console.log('Voting proposals structure:', JSON.stringify(proposals, null, 2));
             if (Array.isArray(proposals)) {
               proposals.forEach((proposal: any) => {
                 let proposalType = 'Unknown';
@@ -576,7 +776,7 @@ async function parseTransaction(hex: string) {
                         const constitutionBytes = metadatum.as_bytes();
                         if (constitutionBytes) {
                           governance.constitution = {
-                            hash: Array.from(constitutionBytes).map(b => b.toString(16).padStart(2, '0')).join(''),
+                            hash: Array.from(constitutionBytes).map((b: unknown) => (b as number).toString(16).padStart(2, '0')).join(''),
                             url: ''
                           };
                         }
@@ -620,7 +820,7 @@ async function parseTransaction(hex: string) {
       // Governance parsing is optional, so we don't throw
     }
     
-    // Parse metadata
+    // Parse metadata with enhanced handling
     const metadata = [];
     if (auxiliaryData) {
       const metadataMap = auxiliaryData.metadata();
@@ -631,30 +831,24 @@ async function parseTransaction(hex: string) {
           const metadatum = metadataMap.get(keys.get(i));
           
           if (metadatum) {
-            // Try to parse as JSON based on metadatum type
-            let jsonData = undefined;
             try {
-              const kind = metadatum.kind();
-              if (kind === 0) { // Text
-                jsonData = metadatum.as_text();
-              } else if (kind === 1) { // Int
-                jsonData = metadatum.as_int().to_str();
-              } else if (kind === 2) { // Bytes
-                jsonData = Array.from(metadatum.as_bytes()).map(b => b.toString(16).padStart(2, '0')).join('');
-              } else if (kind === 3) { // List
-                jsonData = "List"; // Simplified for now
-              } else if (kind === 4) { // Map
-                jsonData = "Map"; // Simplified for now
-              }
-            } catch {
-              // If parsing fails, store as raw
+              const parsedData = parseMetadatum(metadatum);
+              metadata.push({
+                label,
+                json: parsedData,
+                cbor: metadatum.to_hex(),
+                type: getMetadatumType(metadatum)
+              });
+            } catch (error) {
+              console.warn(`Error parsing metadata label ${label}:`, error);
+              metadata.push({
+                label,
+                json: null,
+                cbor: metadatum.to_hex(),
+                type: 'unknown',
+                error: error instanceof Error ? error.message : 'Parse error'
+              });
             }
-            
-      metadata.push({
-              label,
-              json: jsonData,
-              cbor: metadatum.to_hex()
-            });
           }
         }
       }
@@ -721,22 +915,84 @@ async function parseTransaction(hex: string) {
     const nativeCount = witnessSet.native_scripts()?.len() || 0;
     const plutusCount = witnessSet.plutus_scripts()?.len() || 0;
     
-    // Generate warnings
-    const warnings = [];
+    // Enhanced validation and warnings
+    const warnings: string[] = [];
+    const validation = {
+      isValid: true,
+      errors: [] as string[],
+      warnings: [] as string[]
+    };
+    
+    // Size validation
     if (size > 16384) {
       warnings.push("Transaction size exceeds recommended limit");
+      validation.warnings.push("Large transaction size may impact network performance");
     }
+    
+    // Basic structure validation
     if (inputs.length === 0) {
       warnings.push("No inputs found in transaction");
+      validation.errors.push("Transaction must have at least one input");
+      validation.isValid = false;
     }
+    
     if (outputs.length === 0) {
       warnings.push("No outputs found in transaction");
+      validation.errors.push("Transaction must have at least one output");
+      validation.isValid = false;
+    }
+    
+    // Fee validation
+    if (fee < 0n) {
+      validation.errors.push("Transaction fee cannot be negative");
+      validation.isValid = false;
+    }
+    
+    // TTL validation
+    if (ttl && ttl < 0) {
+      validation.errors.push("TTL cannot be negative");
+      validation.isValid = false;
+    }
+    
+    // Validity interval validation
+    if (validityStart && ttl && validityStart >= ttl) {
+      validation.errors.push("Validity start must be before TTL");
+      validation.isValid = false;
+    }
+    
+    // Input/Output consistency
+    const totalInputValue = inputs.reduce((sum, input) => {
+      // This would need actual UTXO resolution to be accurate
+      return sum;
+    }, 0n);
+    
+    const totalOutputValue = outputs.reduce((sum, output) => {
+      return sum + output.ada;
+    }, 0n);
+    
+    // Check for potential dust outputs
+    outputs.forEach((output, index) => {
+      if (output.ada < 1000000n) { // Less than 1 ADA
+        validation.warnings.push(`Output ${index} may be dust (${output.ada} lovelace)`);
+      }
+    });
+    
+    // Script validation
+    if (scripts.length > 0 && redeemers.length === 0) {
+      validation.warnings.push("Scripts present but no redeemers found");
+    }
+    
+    // Governance validation
+    if (governance) {
+      if (governance.drepVotes.length > 0 && governance.proposals.length === 0) {
+        validation.warnings.push("DRep votes present but no governance proposals found");
+      }
     }
     
     // Clean up CSL objects
-    transaction.free();
-    body.free();
-    witnessSet.free();
+    if (transaction) transaction.free();
+    if (body) body.free();
+    if (witnessSet) witnessSet.free();
     if (auxiliaryData) auxiliaryData.free();
     
     return {
@@ -760,10 +1016,32 @@ async function parseTransaction(hex: string) {
         redeemers,
         witnesses: { vkeyCount, nativeCount, plutusCount },
         warnings,
+        validation,
+        stats: {
+          inputCount: inputs.length,
+          outputCount: outputs.length,
+          assetCount: outputs.reduce((sum, output) => sum + output.assets.length, 0),
+          scriptCount: scripts.length,
+          redeemerCount: redeemers.length,
+          metadataCount: metadata.length,
+          governanceActionCount: governance ? 
+            (governance.drepVotes.length + governance.committeeVotes.length + governance.proposals.length) : 0
+        }
       },
     };
   } catch (error) {
     console.error('Transaction parsing error:', error);
+    
+    // Clean up CSL objects on error
+    try {
+      if (transaction) transaction.free();
+      if (body) body.free();
+      if (witnessSet) witnessSet.free();
+      if (auxiliaryData) auxiliaryData.free();
+    } catch (cleanupError) {
+      console.warn('Error during cleanup:', cleanupError);
+    }
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown parsing error',
