@@ -364,7 +364,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       </div>
 
       {/* Contents Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <Award className="h-8 w-8 mx-auto mb-2 text-blue-600" />
@@ -396,14 +396,23 @@ export function ContentsTab({ tx }: ContentsTabProps) {
             <div className="text-sm text-muted-foreground">Withdrawals</div>
           </CardContent>
         </Card>
+        
+        <Card>
+          <CardContent className="p-4 text-center">
+            <Users className="h-8 w-8 mx-auto mb-2 text-indigo-600" />
+            <div className="text-2xl font-bold">{tx.signers?.length || 0}</div>
+            <div className="text-sm text-muted-foreground">Signers</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Detailed Contents */}
       <Tabs defaultValue="certificates" className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="certificates">Certificates</TabsTrigger>
           <TabsTrigger value="governance">Governance</TabsTrigger>
           <TabsTrigger value="minting">Minting</TabsTrigger>
+          <TabsTrigger value="signers">Signers</TabsTrigger>
           <TabsTrigger value="other">Other</TabsTrigger>
         </TabsList>
         
@@ -541,6 +550,153 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           </div>
         </TabsContent>
         
+        <TabsContent value="signers" className="flex-1 overflow-auto">
+          <div className="space-y-4 p-4">
+            {(!tx.signers || tx.signers.length === 0) ? (
+              <Card>
+                <CardContent className="flex items-center justify-center h-32">
+                  <div className="text-center">
+                    <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No signers found</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Required Signers Section */}
+                {tx.signers.filter(s => s.isRequired && !s.isWitness).length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-lg font-semibold flex items-center gap-2">
+                      <Shield className="h-5 w-5 text-red-600" />
+                      Required Signers ({tx.signers.filter(s => s.isRequired && !s.isWitness).length})
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      These signers must provide signatures for the transaction to be valid.
+                    </p>
+                    {tx.signers.filter(s => s.isRequired && !s.isWitness).map((signer, index) => (
+                      <Card key={`required-${index}`}>
+                        <CardHeader>
+                          <CardTitle className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Users className="h-5 w-5 text-red-600" />
+                              <span className="capitalize">{signer.type} Signer</span>
+                              <Badge variant="destructive" className="text-xs">
+                                Required
+                              </Badge>
+                            </div>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">Hash</span>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded">
+                                  {signer.hash.slice(0, 16)}...
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(signer.hash, 'Required signer hash')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {/* Witnesses Section */}
+                {tx.signers.filter(s => s.isWitness).length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-lg font-semibold flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      Provided Witnesses ({tx.signers.filter(s => s.isWitness).length})
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      These signatures and scripts have been provided with the transaction.
+                    </p>
+                    {tx.signers.filter(s => s.isWitness).map((signer, index) => (
+                      <Card key={`witness-${index}`}>
+                        <CardHeader>
+                          <CardTitle className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {signer.type === 'vkey' && <Users className="h-5 w-5 text-blue-600" />}
+                              {signer.type === 'native' && <Shield className="h-5 w-5 text-green-600" />}
+                              {signer.type === 'plutus' && <Hash className="h-5 w-5 text-purple-600" />}
+                              <span className="capitalize">{signer.type} Witness</span>
+                              <Badge variant="secondary" className="text-xs">
+                                Witness
+                              </Badge>
+                              {signer.isRequired && (
+                                <Badge variant="destructive" className="text-xs">
+                                  Required
+                                </Badge>
+                              )}
+                            </div>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">Type</span>
+                              <Badge className={
+                                signer.type === 'vkey' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                signer.type === 'native' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                              }>
+                                {signer.type}
+                              </Badge>
+                            </div>
+                            
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">Hash</span>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded">
+                                  {signer.hash.slice(0, 16)}...
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(signer.hash, 'Witness hash')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            {signer.address && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">Address</span>
+                                <div className="flex items-center gap-2">
+                                  <code className="text-xs bg-muted px-2 py-1 rounded">
+                                    {signer.address.slice(0, 16)}...
+                                  </code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => copyToClipboard(signer.address!, 'Witness address')}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </TabsContent>
+        
         <TabsContent value="other" className="flex-1 overflow-auto">
           <div className="space-y-4 p-4">
             {/* Withdrawals */}
@@ -657,7 +813,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="grid grid-cols-3 gap-4 text-center mb-4">
                   <div>
                     <div className="text-2xl font-bold text-blue-600">{contents.witnesses.vkeyCount}</div>
                     <div className="text-sm text-muted-foreground">VKey Witnesses</div>
@@ -671,6 +827,47 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                     <div className="text-sm text-muted-foreground">Plutus Scripts</div>
                   </div>
                 </div>
+                
+                {/* Required Signers Summary */}
+                {tx.signers && tx.signers.length > 0 && (
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium mb-3 flex items-center">
+                      <Shield className="h-4 w-4 mr-2" />
+                      Signers ({tx.signers.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {tx.signers.slice(0, 3).map((signer, index) => (
+                        <div key={index} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            {signer.type === 'vkey' && <Users className="h-3 w-3 text-blue-600" />}
+                            {signer.type === 'native' && <Shield className="h-3 w-3 text-green-600" />}
+                            {signer.type === 'plutus' && <Hash className="h-3 w-3 text-purple-600" />}
+                            <span className="capitalize">{signer.type}</span>
+                            {signer.isRequired && (
+                              <Badge variant="destructive" className="text-xs px-1 py-0">
+                                Required
+                              </Badge>
+                            )}
+                            {signer.isWitness && (
+                              <Badge variant="secondary" className="text-xs px-1 py-0">
+                                Witness
+                              </Badge>
+                            )}
+                          </div>
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {signer.hash.slice(0, 12)}...
+                          </code>
+                        </div>
+                      ))}
+                      {tx.signers.length > 3 && (
+                        <div className="text-xs text-muted-foreground text-center">
+                          +{tx.signers.length - 3} more signers
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="mt-4 text-sm text-muted-foreground">
                   {contents.witnesses.description}
                 </div>

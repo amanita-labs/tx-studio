@@ -113,6 +113,55 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
         </div>
       </div>
 
+      {/* Script Data Hash and Total Collateral */}
+      {(tx.scriptDataHash || tx.totalCollateral) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tx.scriptDataHash && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Hash className="h-5 w-5" />
+                  Script Data Hash
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 mr-2">
+                    {tx.scriptDataHash.slice(0, 32)}...
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {tx.totalCollateral && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Total Collateral
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-mono">
+                  {Number(tx.totalCollateral).toLocaleString()} lovelace
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {(Number(tx.totalCollateral) / 1000000).toFixed(6)} ADA
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       {/* Scripts */}
       {tx.scripts && tx.scripts.length > 0 && (
         <Card>

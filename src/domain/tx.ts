@@ -28,6 +28,11 @@ export type DomainTx = {
   scripts?: Array<{ type: string; hash: string; bytesLen: number }>;
   redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }>;
   witnesses: { vkeyCount: number; nativeCount: number; plutusCount: number };
+  signers?: Array<{ type: 'vkey' | 'native' | 'plutus'; hash: string; address?: string; isWitness?: boolean; isRequired?: boolean }>;
+  scriptDataHash?: string;
+  totalCollateral?: bigint;
+  collateralReturn?: { address: string; ada: bigint; assets: Array<{ policyId: string; assetName: string; quantity: bigint }> };
+  referenceInputs?: Array<{ txId: string; index: number }>;
   warnings: string[];
 };
 

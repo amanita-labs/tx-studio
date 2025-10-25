@@ -854,6 +854,60 @@ async function parseTransaction(hex: string) {
       }
     }
     
+    // Parse script data hash and total collateral
+    const scriptDataHash = body.script_data_hash()?.to_hex();
+    const totalCollateral = body.total_collateral()?.to_str();
+    
+    // Parse collateral return
+    let collateralReturn = undefined;
+    const collateralReturnOutput = body.collateral_return();
+    if (collateralReturnOutput) {
+      const address = collateralReturnOutput.address().to_bech32();
+      const amount = collateralReturnOutput.amount();
+      const ada = amount.coin();
+      const assets = [];
+      
+      const multiasset = amount.multiasset();
+      if (multiasset) {
+        const policies = multiasset.keys();
+        for (let i = 0; i < policies.len(); i++) {
+          const policy = policies.get(i);
+          const policyId = policy.to_hex();
+          const assetsMap = multiasset.get(policy);
+          const assetNames = assetsMap.keys();
+          
+          for (let j = 0; j < assetNames.len(); j++) {
+            const assetName = assetNames.get(j);
+            const quantity = assetsMap.get(assetName);
+            assets.push({
+              policyId,
+              assetName: assetName.to_hex(),
+              quantity: BigInt(quantity.to_str())
+            });
+          }
+        }
+      }
+      
+      collateralReturn = {
+        address,
+        ada: BigInt(ada.to_str()),
+        assets
+      };
+    }
+    
+    // Parse reference inputs
+    const referenceInputs = [];
+    const refInputs = body.reference_inputs();
+    if (refInputs) {
+      for (let i = 0; i < refInputs.len(); i++) {
+        const refInput = refInputs.get(i);
+        referenceInputs.push({
+          txId: refInput.transaction_id().to_hex(),
+          index: refInput.index()
+        });
+      }
+    }
+    
     // Parse scripts and redeemers
     const scripts = [];
     const redeemers = [];
@@ -912,10 +966,96 @@ async function parseTransaction(hex: string) {
       }
     }
     
-    // Count witnesses
+    // Count witnesses and extract signer details
     const vkeyCount = witnessSet.vkeys()?.len() || 0;
     const nativeCount = witnessSet.native_scripts()?.len() || 0;
     const plutusCount = witnessSet.plutus_scripts()?.len() || 0;
+    
+    // Extract detailed signer information
+    const signers = [];
+    
+    // Get required signers from transaction body
+    const requiredSigners = body.required_signers();
+    if (requiredSigners) {
+      for (let i = 0; i < requiredSigners.len(); i++) {
+        const keyHash = requiredSigners.get(i);
+        try {
+          const hash = keyHash.to_hex();
+          signers.push({
+            type: 'vkey' as const,
+            hash,
+            address: undefined,
+            isWitness: false,
+            isRequired: true
+          });
+        } catch (error) {
+          console.warn('Error extracting required signer:', error);
+        }
+      }
+    }
+    
+    // Get actual VKey witnesses (signatures provided)
+    const vkeys = witnessSet.vkeys();
+    if (vkeys) {
+      for (let i = 0; i < vkeys.len(); i++) {
+        const vkey = vkeys.get(i);
+        try {
+          const hash = vkey.hash().to_hex();
+          // Check if this witness corresponds to a required signer
+          const isRequired = requiredSigners ? 
+            Array.from({ length: requiredSigners.len() }, (_, j) => requiredSigners.get(j).to_hex()).includes(hash) : 
+            false;
+          
+          signers.push({
+            type: 'vkey' as const,
+            hash,
+            address: undefined,
+            isWitness: true,
+            isRequired
+          });
+        } catch (error) {
+          console.warn('Error extracting vkey witness:', error);
+        }
+      }
+    }
+    
+    // Native script witnesses
+    if (nativeScripts) {
+      for (let i = 0; i < nativeScripts.len(); i++) {
+        const script = nativeScripts.get(i);
+        try {
+          const hash = script.hash().to_hex();
+          signers.push({
+            type: 'native' as const,
+            hash,
+            address: undefined,
+            isWitness: true,
+            isRequired: false
+          });
+        } catch (error) {
+          console.warn('Error extracting native script witness:', error);
+        }
+      }
+    }
+    
+    // Plutus script witnesses
+    if (plutusScripts) {
+      for (let i = 0; i < plutusScripts.len(); i++) {
+        const script = plutusScripts.get(i);
+        try {
+          const hash = script.hash().to_hex();
+          signers.push({
+            type: 'plutus' as const,
+            hash,
+            address: undefined,
+            isWitness: true,
+            isRequired: false
+          });
+        } catch (error) {
+          console.warn('Error extracting plutus script witness:', error);
+        }
+      }
+    }
     
     // Enhanced validation and warnings
     const warnings: string[] = [];
@@ -1017,6 +1157,11 @@ async function parseTransaction(hex: string) {
         scripts,
         redeemers,
         witnesses: { vkeyCount, nativeCount, plutusCount },
+        signers,
+        scriptDataHash,
+        totalCollateral: totalCollateral ? BigInt(totalCollateral) : undefined,
+        collateralReturn,
+        referenceInputs,
         warnings,
         validation,
         stats: {

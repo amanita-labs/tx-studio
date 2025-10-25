@@ -330,6 +330,117 @@ export function IoValueTab({ tx }: IoValueTabProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Reference Inputs */}
+      {tx.referenceInputs && tx.referenceInputs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Copy className="h-5 w-5" />
+              Reference Inputs ({tx.referenceInputs.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground mb-3">
+                Reference inputs provide data to Plutus scripts without consuming the UTXO. They can be read by scripts but don't affect the transaction's value transfer.
+              </p>
+              {tx.referenceInputs.map((refInput, index) => (
+                <div key={index} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Reference Input #{index + 1}</span>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Transaction ID</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-muted px-2 py-1 rounded">
+                          {refInput.txId.slice(0, 16)}...
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(refInput.txId, 'Reference input TX ID')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Index</span>
+                      <span className="text-xs font-mono">{refInput.index}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Collateral Return */}
+      {tx.collateralReturn && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Collateral Return
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                The collateral return output specifies where any unused collateral should be returned after script execution.
+              </p>
+              
+              <div className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Address</span>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs bg-muted px-2 py-1 rounded">
+                      {tx.collateralReturn.address.slice(0, 20)}...
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(tx.collateralReturn!.address, 'Collateral return address')}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">ADA</span>
+                  <span className="text-sm font-mono">
+                    {formatAda(tx.collateralReturn.ada)}
+                  </span>
+                </div>
+                
+                {tx.collateralReturn.assets.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium">Assets</span>
+                    <div className="space-y-1">
+                      {tx.collateralReturn.assets.map((asset, index) => (
+                        <div key={index} className="flex items-center justify-between">
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {asset.policyId.slice(0, 8)}...{asset.assetName}
+                          </code>
+                          <span className="text-xs font-mono">
+                            {formatAssetQuantity(asset.quantity)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
