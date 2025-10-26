@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Copy, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import React from 'react';
 
 interface JsonViewerProps {
   data: any;
@@ -53,7 +54,7 @@ export function JsonViewer({
     }
   };
 
-  const formatValue = (value: any, key: string = '', depth: number = 0): JSX.Element => {
+  const formatValue = (value: any, key: string = '', depth: number = 0): React.JSX.Element => {
     const indent = '  '.repeat(depth);
     const keyStr = key ? `"${key}": ` : '';
     

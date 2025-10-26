@@ -75,13 +75,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                           <code className="text-xs bg-muted px-2 py-1 rounded">
                             {input.resolved.address.slice(0, 20)}...
                           </code>
-                          <Button
+                          <BlockExplorerLink 
+                            type="address" 
+                            params={{ address: input.resolved.address }}
                             variant="ghost"
                             size="sm"
-                            onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
                           >
                             <Copy className="h-3 w-3" />
-                          </Button>
+                          </BlockExplorerLink>
                         </div>
                       </div>
                     )}
@@ -147,13 +148,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                           <code className="text-xs bg-muted px-2 py-1 rounded">
                             {input.txId.slice(0, 16)}...
                           </code>
-                          <Button
+                          <BlockExplorerLink 
+                            type="transaction" 
+                            params={{ txHash: input.txId }}
                             variant="ghost"
                             size="sm"
-                            onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
                           >
                             <Copy className="h-3 w-3" />
-                          </Button>
+                          </BlockExplorerLink>
                         </div>
                       </div>
                       
@@ -169,13 +171,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                             <code className="text-xs bg-muted px-2 py-1 rounded">
                               {input.resolved.address.slice(0, 20)}...
                             </code>
-                            <Button
+                            <BlockExplorerLink 
+                              type="address" 
+                              params={{ address: input.resolved.address }}
                               variant="ghost"
                               size="sm"
-                              onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
                             >
                               <Copy className="h-3 w-3" />
-                            </Button>
+                            </BlockExplorerLink>
                           </div>
                         </div>
                       )}
@@ -244,13 +247,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                         <code className="text-xs bg-muted px-2 py-1 rounded">
                           {output.address.slice(0, 20)}...
                         </code>
-                        <Button
+                        <BlockExplorerLink 
+                          type="address" 
+                          params={{ address: output.address }}
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(output.address, 'Address')}
                         >
                           <Copy className="h-3 w-3" />
-                        </Button>
+                        </BlockExplorerLink>
                       </div>
                     </div>
                     
@@ -360,13 +364,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                         <code className="text-xs bg-muted px-2 py-1 rounded">
                           {refInput.txId.slice(0, 16)}...
                         </code>
-                        <Button
+                        <BlockExplorerLink 
+                          type="transaction" 
+                          params={{ txHash: refInput.txId }}
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(refInput.txId, 'Reference input TX ID')}
                         >
                           <Copy className="h-3 w-3" />
-                        </Button>
+                        </BlockExplorerLink>
                       </div>
                     </div>
                     
@@ -404,13 +409,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                     <code className="text-xs bg-muted px-2 py-1 rounded">
                       {tx.collateralReturn.address.slice(0, 20)}...
                     </code>
-                    <Button
+                    <BlockExplorerLink 
+                      type="address" 
+                      params={{ address: tx.collateralReturn.address }}
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(tx.collateralReturn!.address, 'Collateral return address')}
                     >
                       <Copy className="h-3 w-3" />
-                    </Button>
+                    </BlockExplorerLink>
                   </div>
                 </div>
                 

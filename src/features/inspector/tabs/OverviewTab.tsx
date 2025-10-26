@@ -7,6 +7,7 @@ import { formatSlotWithTime, slotToLocalTime, formatValidityWindow, getTimeRemai
 import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { BlockExplorerLink } from '@/components/block-explorer-link';
 
 // Helper component for validity status badge
 function ValidityStatus({ startSlot, endSlot }: { startSlot: number; endSlot: number }) {
@@ -78,13 +79,14 @@ export function OverviewTab({ tx }: OverviewTabProps) {
               <code className="text-xs bg-muted px-2 py-1 rounded">
                 {tx.id.slice(0, 16)}...
               </code>
-              <Button
+              <BlockExplorerLink 
+                type="transaction" 
+                params={{ txHash: tx.id }}
                 variant="ghost"
                 size="sm"
-                onClick={() => copyToClipboard(tx.id, 'Transaction ID')}
               >
                 <Copy className="h-3 w-3" />
-              </Button>
+              </BlockExplorerLink>
             </div>
           </div>
           

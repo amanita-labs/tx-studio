@@ -25,6 +25,7 @@ import {
 import { DomainTx } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
 import { toast } from 'sonner';
+import { BlockExplorerLink } from '@/components/block-explorer-link';
 
 // Helper component for time remaining
 function ValidityTimeRemaining({ slot }: { slot: number }) {
@@ -444,12 +445,40 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                      {Object.entries(cert.details).map(([key, value]) => (
-                        <div key={key}>
-                          <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                          <div className="font-mono text-xs mt-1 break-all">{String(value)}</div>
-                        </div>
-                      ))}
+                      {Object.entries(cert.details).map(([key, value]) => {
+                        const isPoolId = key === 'poolId' && value !== 'N/A';
+                        const isStakeKey = key === 'stakeKey' && value !== 'N/A';
+                        const isRewardAccount = key === 'rewardAccount' && value !== 'N/A';
+                        
+                        return (
+                          <div key={key}>
+                            <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                            <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                              <span>{String(value)}</span>
+                              {isPoolId && (
+                                <BlockExplorerLink 
+                                  type="stakePool" 
+                                  params={{ poolId: String(value) }}
+                                  variant="ghost"
+                                  size="sm"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </BlockExplorerLink>
+                              )}
+                              {(isStakeKey || isRewardAccount) && (
+                                <BlockExplorerLink 
+                                  type="address" 
+                                  params={{ address: String(value) }}
+                                  variant="ghost"
+                                  size="sm"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </BlockExplorerLink>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="flex justify-end mt-4">
                       <Button
@@ -676,13 +705,14 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                                   <code className="text-xs bg-muted px-2 py-1 rounded">
                                     {signer.address.slice(0, 16)}...
                                   </code>
-                                  <Button
+                                  <BlockExplorerLink 
+                                    type="address" 
+                                    params={{ address: signer.address }}
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => copyToClipboard(signer.address!, 'Witness address')}
                                   >
                                     <Copy className="h-3 w-3" />
-                                  </Button>
+                                  </BlockExplorerLink>
                                 </div>
                               </div>
                             )}
@@ -714,8 +744,16 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                       <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
                         <div>
                           <span className="font-medium">Withdrawal {withdrawal.index + 1}</span>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-muted-foreground flex items-center gap-2">
                             Account: {withdrawal.rewardAccount.slice(0, 20)}...
+                            <BlockExplorerLink 
+                              type="address" 
+                              params={{ address: withdrawal.rewardAccount }}
+                              variant="ghost"
+                              size="sm"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </BlockExplorerLink>
                           </div>
                         </div>
                         <Badge variant="outline">
