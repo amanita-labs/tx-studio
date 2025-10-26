@@ -8,19 +8,13 @@ import { Button } from '@/components/ui/button';
 interface BlockExplorerLinkProps {
   type: 'address' | 'transaction' | 'stakePool' | 'epoch' | 'slot';
   params: Record<string, string>;
-  children: React.ReactNode;
   className?: string;
-  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
-  size?: 'default' | 'sm' | 'lg' | 'icon';
 }
 
 export function BlockExplorerLink({ 
   type, 
   params, 
-  children, 
-  className,
-  variant = 'link',
-  size = 'sm'
+  className
 }: BlockExplorerLinkProps) {
   const { getUrl } = useBlockExplorer();
   
@@ -29,17 +23,16 @@ export function BlockExplorerLink({
   return (
     <Button
       asChild
-      variant={variant}
-      size={size}
+      variant="ghost"
+      size="sm"
       className={className}
     >
       <a 
         href={url} 
         target="_blank" 
         rel="noopener noreferrer"
-        className="inline-flex items-center space-x-1"
+        title="View in explorer"
       >
-        <span>{children}</span>
         <ExternalLink className="h-3 w-3" />
       </a>
     </Button>

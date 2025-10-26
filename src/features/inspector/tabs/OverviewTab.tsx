@@ -79,14 +79,17 @@ export function OverviewTab({ tx }: OverviewTabProps) {
               <code className="text-xs bg-muted px-2 py-1 rounded">
                 {tx.id.slice(0, 16)}...
               </code>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(tx.id, 'Transaction ID')}
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
               <BlockExplorerLink 
                 type="transaction" 
                 params={{ txHash: tx.id }}
-                variant="ghost"
-                size="sm"
-              >
-                <Copy className="h-3 w-3" />
-              </BlockExplorerLink>
+              />
             </div>
           </div>
           

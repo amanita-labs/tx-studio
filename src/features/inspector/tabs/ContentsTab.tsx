@@ -459,21 +459,13 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                                 <BlockExplorerLink 
                                   type="stakePool" 
                                   params={{ poolId: String(value) }}
-                                  variant="ghost"
-                                  size="sm"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </BlockExplorerLink>
+                                />
                               )}
                               {(isStakeKey || isRewardAccount) && (
                                 <BlockExplorerLink 
                                   type="address" 
                                   params={{ address: String(value) }}
-                                  variant="ghost"
-                                  size="sm"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </BlockExplorerLink>
+                                />
                               )}
                             </div>
                           </div>
@@ -705,14 +697,17 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                                   <code className="text-xs bg-muted px-2 py-1 rounded">
                                     {signer.address.slice(0, 16)}...
                                   </code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => copyToClipboard(signer.address!, 'Witness address')}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
                                   <BlockExplorerLink 
                                     type="address" 
                                     params={{ address: signer.address }}
-                                    variant="ghost"
-                                    size="sm"
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </BlockExplorerLink>
+                                  />
                                 </div>
                               </div>
                             )}
@@ -749,11 +744,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             <BlockExplorerLink 
                               type="address" 
                               params={{ address: withdrawal.rewardAccount }}
-                              variant="ghost"
-                              size="sm"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                            </BlockExplorerLink>
+                            />
                           </div>
                         </div>
                         <Badge variant="outline">
