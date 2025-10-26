@@ -498,6 +498,7 @@ async function parseTransaction(hex: string) {
             console.log('VoteDelegation', certJson.VoteDelegation);
             type = "VoteDelegation";
             const voteDeleg = certJson.VoteDelegation;
+            
             details = {
               stakeCredential: {
                 type: voteDeleg.stake_credential?.Key ? "KeyHash" : "ScriptHash",

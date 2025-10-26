@@ -17,6 +17,8 @@ export interface BlockExplorer {
     address: string;
     transaction: string;
     stakePool: string;
+    stakeKey: string;
+    drep: string;
     epoch: string;
     slot: string;
   };
@@ -35,6 +37,8 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       address: '/address/{address}',
       transaction: '/transaction/{txHash}',
       stakePool: '/pool/{poolId}',
+      stakeKey: '/stakeKey/{stakeKey}',
+      drep: '/drep/{drepId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
     },
@@ -51,6 +55,8 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       address: '/address/{address}',
       transaction: '/tx/{txHash}',
       stakePool: '/pool/{poolId}',
+      stakeKey: '/stake/{stakeKey}',
+      drep: '/governance/drep/{drepId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
     },

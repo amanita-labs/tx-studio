@@ -117,46 +117,52 @@ export function OverviewTab({ tx }: OverviewTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {tx.slot && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Slot</span>
-              <div className="text-sm text-right">
-                <div className="font-mono">{tx.slot.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.slot)}</div>
-              </div>
-            </div>
-          )}
-          
-          {tx.ttl && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">TTL</span>
-              <div className="text-sm text-right">
-                <div className="font-mono">{tx.ttl.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.ttl)}</div>
-              </div>
-            </div>
-          )}
-          
-          {tx.validity.start && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Valid From</span>
-              <div className="text-sm text-right">
-                <div className="font-mono">{tx.validity.start.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.start)}</div>
-                <ValidityTimeRemaining slot={tx.validity.start} />
-              </div>
-            </div>
-          )}
-          
-          {tx.validity.end && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Valid Until</span>
-              <div className="text-sm text-right">
-                <div className="font-mono">{tx.validity.end.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.end)}</div>
-                <ValidityTimeRemaining slot={tx.validity.end} />
-              </div>
-            </div>
+          {!tx.slot && !tx.ttl && !tx.validity.start && !tx.validity.end ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No validity window</p>
+          ) : (
+            <>
+              {tx.slot && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Slot</span>
+                  <div className="text-sm text-right">
+                    <div className="font-mono">{tx.slot.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.slot)}</div>
+                  </div>
+                </div>
+              )}
+              
+              {tx.ttl && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">TTL</span>
+                  <div className="text-sm text-right">
+                    <div className="font-mono">{tx.ttl.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.ttl)}</div>
+                  </div>
+                </div>
+              )}
+              
+              {tx.validity.start && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Valid From</span>
+                  <div className="text-sm text-right">
+                    <div className="font-mono">{tx.validity.start.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.start)}</div>
+                    <ValidityTimeRemaining slot={tx.validity.start} />
+                  </div>
+                </div>
+              )}
+              
+              {tx.validity.end && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Valid Until</span>
+                  <div className="text-sm text-right">
+                    <div className="font-mono">{tx.validity.end.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.end)}</div>
+                    <ValidityTimeRemaining slot={tx.validity.end} />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

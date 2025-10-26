@@ -94,6 +94,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
 
       // Determine certificate type based on structure
       const certType = (cert as any).type || 'Unknown';
+      const certDetails = (cert as any).details || {};
       
       if (certType === 'StakeRegistration') {
         type = 'Stake Registration';
@@ -114,17 +115,65 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         type = 'Pool Registration';
         description = 'Registers a stake pool';
         icon = <Users className="h-4 w-4" />;
-        color = 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+        color = 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-purple-200';
       } else if (certType === 'PoolRetirement') {
         type = 'Pool Retirement';
         description = 'Retires a stake pool';
         icon = <Clock className="h-4 w-4" />;
         color = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      } else if (certType === 'VoteDelegation') {
+        type = 'Vote Delegation';
+        description = 'Delegates voting rights to a DRep';
+        icon = <Vote className="h-4 w-4" />;
+        color = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       } else {
         type = certType;
         description = 'Certificate';
         icon = <Award className="h-4 w-4" />;
         color = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      }
+
+      // Extract certificate details dynamically based on certificate type
+      const extractedDetails: Record<string, any> = {};
+      
+      // Stake-related certificates
+      if (certDetails.stakeCredential) {
+        // Prefer bech32 representation if available
+        const credHash = certDetails.stakeCredential.bech32 || certDetails.stakeCredential.hash || 'N/A';
+        const credType = certDetails.stakeCredential.type || 'Unknown';
+        extractedDetails.stakeKey = credHash;
+        extractedDetails.stakeKeyType = credType === 'KeyHash' ? 'Key' : credType === 'ScriptHash' ? 'Script' : credType;
+      }
+      
+      // Vote delegation
+      if (certDetails.drepCredential) {
+        // Prefer bech32 representation if available
+        const drepId = certDetails.drepId || certDetails.drepCredential.bech32 || certDetails.drepCredential.hash || 'N/A';
+        const drepType = certDetails.drepCredential.type || 'Unknown';
+        extractedDetails.drepId = drepId;
+        extractedDetails.drepIdType = drepType === 'KeyHash' ? 'Key' : drepType === 'ScriptHash' ? 'Script' : drepType;
+        
+        if (certDetails.stakeCredential) {
+          const credHash = certDetails.stakeCredential.bech32 || certDetails.stakeCredential.hash || 'N/A';
+          const credType = certDetails.stakeCredential.type || 'Unknown';
+          extractedDetails.stakeKey = credHash;
+          extractedDetails.stakeKeyType = credType === 'KeyHash' ? 'Key' : credType === 'ScriptHash' ? 'Script' : credType;
+        }
+      }
+      
+      // Pool-related
+      if (certDetails.poolId) {
+        extractedDetails.poolId = certDetails.poolId;
+      }
+      
+      // Epoch (for pool retirement)
+      if (certDetails.epoch) {
+        extractedDetails.epoch = certDetails.epoch;
+      }
+      
+      // Reward account
+      if (certDetails.rewardAccount) {
+        extractedDetails.rewardAccount = certDetails.rewardAccount;
       }
 
       return {
@@ -134,12 +183,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         icon,
         color,
         data: cert,
-        details: {
-          stakeKey: (cert as any).stakeKey || 'N/A',
-          poolId: (cert as any).poolId || 'N/A',
-          epoch: (cert as any).epoch || 'N/A',
-          rewardAccount: (cert as any).rewardAccount || 'N/A'
-        }
+        details: extractedDetails
       };
     });
 
@@ -445,42 +489,79 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                      {Object.entries(cert.details).map(([key, value]) => {
-                        const isPoolId = key === 'poolId' && value !== 'N/A';
-                        const isStakeKey = key === 'stakeKey' && value !== 'N/A';
-                        const isRewardAccount = key === 'rewardAccount' && value !== 'N/A';
-                        
-                        return (
-                          <div key={key}>
-                            <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                            <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
-                              <span>{String(value)}</span>
-                              {isPoolId && (
-                                <BlockExplorerLink 
-                                  type="stakePool" 
-                                  params={{ poolId: String(value) }}
-                                />
-                              )}
-                              {(isStakeKey || isRewardAccount) && (
-                                <BlockExplorerLink 
-                                  type="address" 
-                                  params={{ address: String(value) }}
-                                />
-                              )}
+                      {Object.keys(cert.details).length === 0 ? (
+                        <div className="col-span-2 text-center text-muted-foreground py-4">
+                          No additional details available
+                        </div>
+                      ) : (
+                        Object.entries(cert.details).map(([key, value]) => {
+                          if (value === null || value === undefined || String(value) === 'N/A') {
+                            return null;
+                          }
+                          
+                          // Skip type fields (we'll display them as badges next to their values)
+                          if (key.endsWith('Type')) {
+                            return null;
+                          }
+                          
+                          const isPoolId = key === 'poolId' && value !== 'N/A';
+                          const isStakeKey = key === 'stakeKey' && value !== 'N/A' && String(value).startsWith('stake1');
+                          const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
+                          const isRewardAccount = key === 'rewardAccount' && value !== 'N/A';
+                          
+                          // Get the type badge for this field
+                          const typeKey = `${key}Type`;
+                          const typeValue = cert.details[typeKey];
+                          
+                          return (
+                            <div key={key}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                                {typeValue && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {typeValue}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                                <span>{String(value)}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2"
+                                  onClick={() => copyToClipboard(String(value), key)}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                {isPoolId && (
+                                  <BlockExplorerLink 
+                                    type="stakePool" 
+                                    params={{ poolId: String(value) }}
+                                  />
+                                )}
+                                {isStakeKey && (
+                                  <BlockExplorerLink 
+                                    type="stakeKey" 
+                                    params={{ stakeKey: String(value) }}
+                                  />
+                                )}
+                                {isDrepId && (
+                                  <BlockExplorerLink 
+                                    type="drep" 
+                                    params={{ drepId: String(value) }}
+                                  />
+                                )}
+                                {isRewardAccount && (
+                                  <BlockExplorerLink 
+                                    type="address" 
+                                    params={{ address: String(value) }}
+                                  />
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-end mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(JSON.stringify(cert.data, null, 2), 'Certificate data')}
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy Data
-                      </Button>
+                          );
+                        })
+                      )}
                     </div>
                   </CardContent>
                 </Card>
