@@ -147,7 +147,6 @@ export function HexInputPanel() {
                 <SelectItem value="mainnet">Mainnet</SelectItem>
                 <SelectItem value="preprod">Preprod</SelectItem>
                 <SelectItem value="preview">Preview</SelectItem>
-                <SelectItem value="testnet">Testnet</SelectItem>
               </SelectContent>
             </Select>
             {txHex && (

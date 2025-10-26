@@ -73,7 +73,7 @@ export type GovernanceVM = {
   }>;
 };
 
-export type Network = "mainnet" | "preprod" | "preview" | "testnet";
+export type Network = "mainnet" | "preprod" | "preview";
 
 export type TxParseResult = {
   success: true;

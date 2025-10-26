@@ -9,7 +9,7 @@ export const txHexSchema = z.string()
   .refine((hex) => hex.length % 2 === 0, 'Hex string must have even length')
   .refine((hex) => hex.length >= 100, 'Transaction hex too short to be valid');
 
-export const networkSchema = z.enum(['mainnet', 'preprod', 'preview', 'testnet']);
+export const networkSchema = z.enum(['mainnet', 'preprod', 'preview']);
 
 export const urlParamsSchema = z.object({
   hex: txHexSchema.optional(),
