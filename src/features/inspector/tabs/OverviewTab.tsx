@@ -194,9 +194,16 @@ export function OverviewTab({ tx }: OverviewTabProps) {
       {/* Scripts & Witnesses */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Scripts & Witnesses
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Scripts & Witnesses
+            </div>
+            {tx.witnesses.vkeyCount === 0 && tx.witnesses.nativeCount === 0 && tx.witnesses.plutusCount === 0 && (
+              <Badge variant="secondary" className="text-xs">
+                Unsigned Transaction
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

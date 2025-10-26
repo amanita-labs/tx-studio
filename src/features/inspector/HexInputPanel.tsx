@@ -203,10 +203,6 @@ export function HexInputPanel() {
                 <Share2 className="h-4 w-4 mr-2" />
                 Share
               </Button>
-              <Button variant="outline" onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </Button>
             </>
           )}
         </div>
