@@ -24,7 +24,7 @@ export function Header() {
           <div className="flex items-center space-x-8">
             <Link href="/" className="flex items-center space-x-2">
               <FileText className="h-6 w-6" />
-              <span className="font-bold">TX Inspector</span>
+              <span className="font-bold">Transaction Studio</span>
             </Link>
             
             <nav className="flex items-center space-x-4">

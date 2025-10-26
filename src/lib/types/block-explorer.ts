@@ -11,7 +11,6 @@ export interface BlockExplorer {
     mainnet: string;
     preview: string;
     preprod: string;
-    testnet: string;
   };
   // URL templates for different types of queries
   urls: {
@@ -31,7 +30,6 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       mainnet: 'https://cardanoscan.io',
       preview: 'https://preview.cardanoscan.io',
       preprod: 'https://preprod.cardanoscan.io',
-      testnet: 'https://testnet.cardanoscan.io',
     },
     urls: {
       address: '/address/{address}',
@@ -48,7 +46,6 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       mainnet: 'https://cexplorer.io',
       preview: 'https://preview.cexplorer.io',
       preprod: 'https://preprod.cexplorer.io',
-      testnet: 'https://testnet.cexplorer.io',
     },
     urls: {
       address: '/address/{address}',
@@ -70,7 +67,9 @@ export function getExplorerUrl(
   params: Record<string, string>
 ): string {
   const explorer = BLOCK_EXPLORERS[explorerId];
-  const baseUrl = explorer.networks[network];
+  // Fall back to mainnet for unsupported networks
+  const networkKey = network in explorer.networks ? network : 'mainnet';
+  const baseUrl = explorer.networks[networkKey as keyof typeof explorer.networks];
   let url = baseUrl + explorer.urls[type];
   
   // Replace placeholders with actual values

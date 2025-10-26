@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cardano Transaction Inspector",
+  title: "Transaction Studio",
   description: "A zero-backend, delightful web app for decoding and inspecting Cardano transactions",
 };
 

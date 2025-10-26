@@ -1,6 +1,6 @@
-# Cardano Transaction Inspector
+# Transaction Studio
 
-This app is used to inspect Cardano transactions.
+A zero-backend, delightful web app for decoding and inspecting Cardano transactions.
 
 ## Getting Started
 

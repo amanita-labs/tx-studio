@@ -495,6 +495,7 @@ async function parseTransaction(hex: string) {
               }
             };
           } else if (certJson.VoteDelegation) {
+            console.log('VoteDelegation', certJson.VoteDelegation);
             type = "VoteDelegation";
             const voteDeleg = certJson.VoteDelegation;
             details = {
@@ -510,6 +511,7 @@ async function parseTransaction(hex: string) {
               },
               drepId: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || ""
             };
+            console.log('VoteDelegation details', details);
           } else if (certJson.DRepRegistration) {
             type = "DRepRegistration";
             const drepReg = certJson.DRepRegistration;
