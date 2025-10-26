@@ -7,7 +7,7 @@ export default function BuildPage() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-4">Transaction Builder</h1>
         <p className="text-muted-foreground">
-          This feature is coming soon! You'll be able to build and sign Cardano transactions here.
+          todo
         </p>
       </div>
     </div>
