@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DomainTx, Network, TxParseResult } from '@/domain/tx';
+import { BlockExplorerId } from '@/lib/types/block-explorer';
 
 interface AppState {
   // Transaction data
@@ -17,6 +18,9 @@ interface AppState {
   // Theme
   theme: 'light' | 'dark' | 'system';
   
+  // Block explorer preference
+  blockExplorer: BlockExplorerId;
+  
   // Actions
   setTxHex: (hex: string) => void;
   setParsedTx: (result: TxParseResult | null) => void;
@@ -25,6 +29,7 @@ interface AppState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  setBlockExplorer: (explorer: BlockExplorerId) => void;
   clearTx: () => void;
 }
 
@@ -39,6 +44,7 @@ export const useAppStore = create<AppState>()(
       isLoading: false,
       error: null,
       theme: 'system',
+      blockExplorer: 'cardanoscan',
       
       // Actions
       setTxHex: (hex: string) => set({ txHex: hex }),
@@ -48,6 +54,7 @@ export const useAppStore = create<AppState>()(
       setLoading: (loading: boolean) => set({ isLoading: loading }),
       setError: (error: string | null) => set({ error }),
       setTheme: (theme: 'light' | 'dark' | 'system') => set({ theme }),
+      setBlockExplorer: (explorer: BlockExplorerId) => set({ blockExplorer: explorer }),
       clearTx: () => set({ 
         txHex: '', 
         parsedTx: null, 
@@ -60,6 +67,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         theme: state.theme,
         network: state.network,
+        blockExplorer: state.blockExplorer,
       }),
     }
   )

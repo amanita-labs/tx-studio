@@ -6,6 +6,7 @@ import { formatAda, formatAssetQuantity } from '@/lib/utils/ada';
 import { Copy, ArrowRight, Coins, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { BlockExplorerLink } from '@/components/block-explorer-link';
 
 interface IoValueTabProps {
   tx: DomainTx;
@@ -51,13 +52,14 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                         <code className="text-xs bg-muted px-2 py-1 rounded">
                           {input.txId.slice(0, 16)}...
                         </code>
-                        <Button
+                        <BlockExplorerLink 
+                          type="transaction" 
+                          params={{ txHash: input.txId }}
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
                         >
                           <Copy className="h-3 w-3" />
-                        </Button>
+                        </BlockExplorerLink>
                       </div>
                     </div>
                     
