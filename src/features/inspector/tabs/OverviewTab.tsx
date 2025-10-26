@@ -94,13 +94,6 @@ export function OverviewTab({ tx }: OverviewTabProps) {
           </div>
           
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Era</span>
-            <Badge variant={tx.era === 'Unknown' ? 'destructive' : 'default'}>
-              {tx.era}
-            </Badge>
-          </div>
-          
-          <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Size</span>
             <span className="text-sm">{tx.sizeBytes.toLocaleString()} bytes</span>
           </div>

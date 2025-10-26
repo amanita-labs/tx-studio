@@ -103,7 +103,6 @@ export class ExportManager {
     // Transaction basic info
     csvRows.push('Field,Value');
     csvRows.push(`ID,${data.transaction.id}`);
-    csvRows.push(`Era,${data.transaction.era}`);
     csvRows.push(`Size (bytes),${data.transaction.sizeBytes}`);
     csvRows.push(`Fee (lovelace),${data.transaction.feeLovelace}`);
     csvRows.push(`TTL,${data.transaction.ttl}`);
@@ -148,7 +147,6 @@ export class ExportManager {
     // Basic info
     txtLines.push('TRANSACTION DETAILS:');
     txtLines.push(`  ID: ${data.transaction.id}`);
-    txtLines.push(`  Era: ${data.transaction.era}`);
     txtLines.push(`  Size: ${data.transaction.sizeBytes} bytes`);
     txtLines.push(`  Fee: ${data.transaction.feeLovelace} lovelace`);
     txtLines.push(`  TTL: ${data.transaction.ttl}`);
@@ -216,7 +214,6 @@ export class ExportManager {
     
     lines.push('transaction:');
     lines.push(`  id: "${data.transaction.id}"`);
-    lines.push(`  era: "${data.transaction.era}"`);
     lines.push(`  sizeBytes: ${data.transaction.sizeBytes}`);
     lines.push(`  feeLovelace: "${data.transaction.feeLovelace}"`);
     lines.push(`  ttl: ${data.transaction.ttl}`);
@@ -239,7 +236,6 @@ export class ExportManager {
     lines.push('<?xml version="1.0" encoding="UTF-8"?>');
     lines.push('<transaction>');
     lines.push(`  <id>${data.transaction.id}</id>`);
-    lines.push(`  <era>${data.transaction.era}</era>`);
     lines.push(`  <sizeBytes>${data.transaction.sizeBytes}</sizeBytes>`);
     lines.push(`  <feeLovelace>${data.transaction.feeLovelace}</feeLovelace>`);
     lines.push(`  <ttl>${data.transaction.ttl}</ttl>`);
@@ -302,10 +298,6 @@ export class ExportManager {
           
           <div class="section">
             <h3>Transaction Details</h3>
-            <div class="item">
-              <span class="label">Era:</span>
-              <span class="value">${data.transaction.era}</span>
-            </div>
             <div class="item">
               <span class="label">Size:</span>
               <span class="value">${data.transaction.sizeBytes} bytes</span>

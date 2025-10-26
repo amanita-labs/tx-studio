@@ -1,6 +1,5 @@
 // src/domain/tx.ts
 export type DomainTx = {
-  era: "Alonzo" | "Babbage" | "Conway" | "Unknown";
   id: string;
   sizeBytes: number;
   feeLovelace: bigint;

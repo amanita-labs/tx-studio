@@ -281,18 +281,6 @@ export class TransactionSearch {
         score: this.calculateScore(tx.id, query)
       });
     }
-
-    // Search in era
-    const era = filter.caseSensitive ? tx.era : tx.era.toLowerCase();
-    if (this.matchesQuery(era, query, filter.exactMatch)) {
-      results.push({
-        field: 'era',
-        value: tx.era,
-        match: tx.era,
-        context: 'Transaction era',
-        score: this.calculateScore(tx.era, query)
-      });
-    }
   }
 
   private matchesQuery(text: string, query: string, exactMatch: boolean): boolean {
