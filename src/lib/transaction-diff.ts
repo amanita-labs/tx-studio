@@ -68,7 +68,7 @@ export class TransactionDiffAnalyzer {
 
   private compareBasicProperties(tx1: DomainTx, tx2: DomainTx, changes: DiffItem[]) {
     const basicProps = [
-      'era', 'id', 'sizeBytes', 'feeLovelace', 'ttl', 'slot'
+      'id', 'sizeBytes', 'feeLovelace', 'ttl', 'slot'
     ] as const;
 
     for (const prop of basicProps) {
