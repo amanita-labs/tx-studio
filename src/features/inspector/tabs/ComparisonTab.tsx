@@ -46,7 +46,6 @@ export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
     try {
       // Parse the comparison transaction (simplified - in real app would use proper parser)
       const mockCompareTx: DomainTx = {
-        era: 'Babbage',
         id: 'mock-comparison-tx',
         sizeBytes: compareHex.length / 2,
         feeLovelace: BigInt(200000),
