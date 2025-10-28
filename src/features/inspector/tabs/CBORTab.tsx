@@ -11,6 +11,7 @@ import { CBORAnnotator, CBORNode, CBORAnnotation } from '@/lib/cbor-annotator';
 import { ByteGutter } from '@/components/byte-gutter';
 import { AnnotatedTree } from '@/components/annotated-tree';
 import { toast } from 'sonner';
+import { safeStringify } from '@/lib/utils';
 
 interface CBORTabProps {
   txHex: string;
@@ -128,7 +129,7 @@ export function CBORTab({ txHex }: CBORTabProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => copyToClipboard(JSON.stringify(annotation, null, 2), 'CBOR annotation')}
+            onClick={() => copyToClipboard(safeStringify(annotation, 2), 'CBOR annotation')}
           >
             <Copy className="h-4 w-4 mr-2" />
             Copy JSON
