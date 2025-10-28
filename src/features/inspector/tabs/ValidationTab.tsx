@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   CheckCircle2, 
@@ -16,7 +15,10 @@ import {
   Zap, 
   FileCheck, 
   Lightbulb,
-  Copy
+  Copy,
+  Vote,
+  FileText,
+  Users
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { TransactionValidator, ValidationReport, ValidationResult } from '@/lib/transaction-validator';
@@ -80,6 +82,15 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
     }
   };
 
+  const getValidationTypeIcon = (validationType: string) => {
+    switch (validationType) {
+      case 'voter': return <Vote className="h-4 w-4" />;
+      case 'proposer': return <FileText className="h-4 w-4" />;
+      case 'generic': 
+      default: return <CheckCircle2 className="h-4 w-4" />;
+    }
+  };
+
   const copyReport = async () => {
     if (!report) return;
     
@@ -134,14 +145,6 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
     );
   }
 
-  const groupedResults = report.results.reduce((acc, result) => {
-    const category = result.rule.category;
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(result);
-    return acc;
-  }, {} as Record<string, ValidationResult[]>);
 
   return (
     <div className="h-full flex flex-col space-y-4">
@@ -153,9 +156,6 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
             <Badge variant={report.isValid ? "default" : "destructive"}>
               {report.isValid ? "Valid" : "Issues Found"}
             </Badge>
-            <Badge variant="outline">
-              Score: {report.score}/100
-            </Badge>
           </div>
         </div>
         <div className="flex items-center space-x-2">
@@ -166,37 +166,31 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
         </div>
       </div>
 
-      {/* Score Overview */}
+      {/* Validation Summary */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
             <CheckCircle2 className="h-5 w-5 mr-2" />
-            Validation Score
+            Validation Summary
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center space-x-4">
-              <Progress value={report.score} className="flex-1" />
-              <span className="text-2xl font-bold">{report.score}/100</span>
+          <div className="grid grid-cols-4 gap-4 text-sm">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{report.summary.passed}</div>
+              <div className="text-muted-foreground">Passed</div>
             </div>
-            <div className="grid grid-cols-4 gap-4 text-sm">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{report.summary.passed}</div>
-                <div className="text-muted-foreground">Passed</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-destructive">{report.summary.errors}</div>
-                <div className="text-muted-foreground">Errors</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-yellow-600">{report.summary.warnings}</div>
-                <div className="text-muted-foreground">Warnings</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{report.summary.info}</div>
-                <div className="text-muted-foreground">Info</div>
-              </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-destructive">{report.summary.errors}</div>
+              <div className="text-muted-foreground">Errors</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">{report.summary.warnings}</div>
+              <div className="text-muted-foreground">Warnings</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{report.summary.info}</div>
+              <div className="text-muted-foreground">Info</div>
             </div>
           </div>
         </CardContent>
@@ -204,12 +198,11 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
 
       {/* Detailed Results */}
       <Tabs defaultValue="all" className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="compliance">Compliance</TabsTrigger>
-          <TabsTrigger value="best-practice">Best Practice</TabsTrigger>
+          <TabsTrigger value="generic">Generic</TabsTrigger>
+          <TabsTrigger value="voter">Voter</TabsTrigger>
+          <TabsTrigger value="proposer">Proposer</TabsTrigger>
         </TabsList>
         
         <TabsContent value="all" className="flex-1">
@@ -220,15 +213,24 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
           </div>
         </TabsContent>
         
-        {Object.entries(groupedResults).map(([category, results]) => (
-          <TabsContent key={category} value={category} className="flex-1">
-            <div className="space-y-2">
-              {results.map((result, index) => (
-                <ValidationResultCard key={index} result={result} />
-              ))}
-            </div>
-          </TabsContent>
-        ))}
+        {['generic', 'voter', 'proposer'].map((validationType) => {
+          const typeResults = report.results.filter(result => result.rule.validationType === validationType);
+          return (
+            <TabsContent key={validationType} value={validationType} className="flex-1">
+              <div className="space-y-2">
+                {typeResults.length > 0 ? (
+                  typeResults.map((result, index) => (
+                    <ValidationResultCard key={index} result={result} />
+                  ))
+                ) : (
+                  <div className="text-center text-muted-foreground py-8">
+                    <p>No {validationType} validations applicable for this transaction</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          );
+        })}
       </Tabs>
     </div>
   );
@@ -267,6 +269,15 @@ function ValidationResultCard({ result }: ValidationResultCardProps) {
     }
   };
 
+  const getValidationTypeIcon = (validationType: string) => {
+    switch (validationType) {
+      case 'voter': return <Vote className="h-4 w-4" />;
+      case 'proposer': return <FileText className="h-4 w-4" />;
+      case 'generic': 
+      default: return <CheckCircle2 className="h-4 w-4" />;
+    }
+  };
+
   return (
     <Card className={`border-l-4 ${getSeverityColor(result.rule.severity)}`}>
       <CardContent className="p-4">
@@ -278,6 +289,10 @@ function ValidationResultCard({ result }: ValidationResultCardProps) {
             <div className="flex items-center space-x-2 mb-1">
               <h4 className="font-medium">{result.rule.name}</h4>
               <Badge variant="outline" className="text-xs">
+                {result.rule.validationType}
+              </Badge>
+              {getValidationTypeIcon(result.rule.validationType)}
+              <Badge variant="secondary" className="text-xs">
                 {result.rule.category}
               </Badge>
               {getCategoryIcon(result.rule.category)}
