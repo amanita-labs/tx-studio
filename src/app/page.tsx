@@ -2,7 +2,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { TxInspector } from '@/features/inspector/TxInspector';
+import { TxInspector } from '@/domain/features/inspector/TxInspector';
 
 export default function HomePage() {
   return (
