@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Copy, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import React from 'react';
+import { safeStringify, isBigInt } from '@/lib/utils';
 
 interface JsonViewerProps {
   data: any;
@@ -29,7 +30,7 @@ export function JsonViewer({
   className = ""
 }: JsonViewerProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const [showRaw, setShowRaw] = useState(false);
+  const [showRaw, setShowRaw] = useState(true);
 
   const toggleKey = (key: string) => {
     const newExpanded = new Set(expandedKeys);
@@ -72,6 +73,10 @@ export function JsonViewer({
     
     if (typeof value === 'number') {
       return <span className="text-green-600">{value}</span>;
+    }
+    
+    if (isBigInt(value)) {
+      return <span className="text-green-600 font-bold" title={`BigInt: ${value.toString()}`}>{value.toString()}n</span>;
     }
     
     if (typeof value === 'string') {
@@ -201,7 +206,7 @@ export function JsonViewer({
               variant="outline"
               size="sm"
               onClick={() => copyToClipboard(
-                JSON.stringify(data, null, 2),
+                safeStringify(data, 2),
                 'JSON metadata'
               )}
             >
@@ -218,7 +223,7 @@ export function JsonViewer({
         <div className="bg-muted rounded-lg p-4 overflow-auto max-h-96">
           {showRaw ? (
             <pre className="text-xs whitespace-pre-wrap">
-              {JSON.stringify(data, null, 2)}
+              {safeStringify(data, 2)}
             </pre>
           ) : (
             <div className="text-sm font-mono">

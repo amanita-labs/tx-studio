@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { TransactionSearch, SearchFilter, SearchResults, SearchResult } from '@/lib/transaction-search';
-import { cn } from '@/lib/utils';
+import { cn, safeStringify } from '@/lib/utils';
 
 interface TransactionSearchProps {
   tx: DomainTx;
@@ -268,7 +268,7 @@ export function TransactionSearchComponent({ tx, txHex, onResultClick }: Transac
                                   </Button>
                                   {expandedResults.has(index) && (
                                     <div className="mt-2 p-2 bg-muted/30 rounded text-xs font-mono break-all">
-                                      {JSON.stringify(result.value, null, 2)}
+                                      {safeStringify(result.value, 2)}
                                     </div>
                                   )}
                                 </div>

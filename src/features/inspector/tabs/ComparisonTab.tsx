@@ -21,6 +21,7 @@ import {
 import { DomainTx } from '@/domain/tx';
 import { TransactionDiffAnalyzer, TransactionDiff, DiffItem } from '@/lib/transaction-diff';
 import { toast } from 'sonner';
+import { safeStringify } from '@/lib/utils';
 
 interface ComparisonTabProps {
   tx: DomainTx;
@@ -102,8 +103,7 @@ export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
     if (!diff) return;
     
     try {
-      await navigator.clipboard.writeText(JSON.stringify(diff, (key, value) =>
-        typeof value === 'bigint' ? value.toString() : value, 2));
+      await navigator.clipboard.writeText(safeStringify(diff, 2));
       toast.success('Comparison result copied to clipboard');
     } catch (error) {
       toast.error('Failed to copy comparison');
@@ -300,7 +300,7 @@ function DiffItemCard({ change }: DiffItemCardProps) {
                     <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded mt-1">
                       <code className="text-xs break-all">
                         {typeof change.oldValue === 'object' 
-                          ? JSON.stringify(change.oldValue, null, 2)
+                          ? safeStringify(change.oldValue, 2)
                           : String(change.oldValue)
                         }
                       </code>
@@ -313,7 +313,7 @@ function DiffItemCard({ change }: DiffItemCardProps) {
                     <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded mt-1">
                       <code className="text-xs break-all">
                         {typeof change.newValue === 'object' 
-                          ? JSON.stringify(change.newValue, null, 2)
+                          ? safeStringify(change.newValue, 2)
                           : String(change.newValue)
                         }
                       </code>

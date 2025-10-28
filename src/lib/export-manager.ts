@@ -1,5 +1,6 @@
 // src/lib/export-manager.ts
 import { DomainTx } from '@/domain/tx';
+import { safeStringify } from '@/lib/utils';
 
 export interface ExportOptions {
   format: 'json' | 'yaml' | 'csv' | 'xml' | 'txt' | 'html' | 'pdf';
@@ -82,10 +83,7 @@ export class ExportManager {
   }
 
   private exportAsJSON(data: ExportData, options: ExportOptions): Blob {
-    const jsonString = JSON.stringify(data, (key, value) =>
-      typeof value === 'bigint' ? value.toString() : value,
-      options.prettyPrint ? 2 : 0
-    );
+    const jsonString = safeStringify(data, options.prettyPrint ? 2 : 0);
     
     return new Blob([jsonString], { type: 'application/json' });
   }
@@ -183,7 +181,7 @@ export class ExportManager {
       data.metadata.forEach((meta, index) => {
         txtLines.push(`  ${index + 1}. Label ${meta.label}`);
         if (meta.json) {
-          txtLines.push(`     JSON: ${JSON.stringify(meta.json, null, 2).replace(/\n/g, '\n     ')}`);
+          txtLines.push(`     JSON: ${safeStringify(meta.json, 2).replace(/\n/g, '\n     ')}`);
         }
       });
       txtLines.push('');
@@ -359,7 +357,7 @@ export class ExportManager {
             ${data.metadata.map((meta, index) => `
               <div class="item">
                 <div class="label">Label ${meta.label}:</div>
-                <div class="value">${meta.json ? JSON.stringify(meta.json, null, 2) : 'No JSON data'}</div>
+                <div class="value">${meta.json ? safeStringify(meta.json, 2) : 'No JSON data'}</div>
               </div>
             `).join('')}
           </div>

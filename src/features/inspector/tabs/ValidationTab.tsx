@@ -21,6 +21,7 @@ import {
 import { DomainTx } from '@/domain/tx';
 import { TransactionValidator, ValidationReport, ValidationResult } from '@/lib/transaction-validator';
 import { toast } from 'sonner';
+import { safeStringify } from '@/lib/utils';
 
 interface ValidationTabProps {
   tx: DomainTx;
@@ -83,8 +84,7 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
     if (!report) return;
     
     try {
-      await navigator.clipboard.writeText(JSON.stringify(report, (key, value) =>
-        typeof value === 'bigint' ? value.toString() : value, 2));
+      await navigator.clipboard.writeText(safeStringify(report, 2));
       toast.success('Validation report copied to clipboard');
     } catch (error) {
       toast.error('Failed to copy report');
@@ -294,8 +294,7 @@ function ValidationResultCard({ result }: ValidationResultCardProps) {
                   View Details
                 </summary>
                 <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">
-                  {JSON.stringify(result.details, (key, value) =>
-                    typeof value === 'bigint' ? value.toString() : value, 2)}
+                  {safeStringify(result.details, 2)}
                 </pre>
               </details>
             )}
