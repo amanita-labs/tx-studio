@@ -30,7 +30,7 @@ export function JsonViewer({
   className = ""
 }: JsonViewerProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const [showRaw, setShowRaw] = useState(false);
+  const [showRaw, setShowRaw] = useState(true);
 
   const toggleKey = (key: string) => {
     const newExpanded = new Set(expandedKeys);
