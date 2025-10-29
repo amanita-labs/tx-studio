@@ -956,14 +956,91 @@ async function parseTransaction(hex: string) {
                        redeemer.tag().kind() === 2 ? "cert" :
                        redeemer.tag().kind() === 3 ? "reward" : "unknown";
         
+        // Parse redeemer data from PlutusData to JSON format
+        let parsedData = undefined;
+        const redeemerData = redeemer.data();
+        if (redeemerData) {
+          try {
+            // Check if it's a valid PlutusData object
+            if (typeof redeemerData.kind === 'function') {
+              const datumContent = parseDatumContent(redeemerData);
+              // Only stringify if we got valid content, otherwise fall back to hex
+              if (datumContent !== null && datumContent !== undefined) {
+                try {
+                  parsedData = JSON.stringify(datumContent);
+                } catch (stringifyError) {
+                  console.warn('Error stringifying redeemer datum content:', stringifyError);
+                  // Fall back to hex if stringification fails
+                  parsedData = redeemerData.to_hex();
+                }
+              } else {
+                // If parsing returned null but we have data, fall back to hex
+                console.warn('parseDatumContent returned null for redeemer, falling back to hex');
+                try {
+                  parsedData = redeemerData.to_hex();
+                } catch (hexError) {
+                  console.warn('Error converting redeemer data to hex:', hexError);
+                }
+              }
+            } else {
+              // If it's not a PlutusData object, try to convert to hex
+              try {
+                parsedData = redeemerData.to_hex();
+              } catch (hexError) {
+                console.warn('Redeemer data is not PlutusData and cannot convert to hex:', hexError);
+              }
+            }
+          } catch (error) {
+            console.warn('Error parsing redeemer data:', error);
+            // Fallback to hex if parsing fails
+            try {
+              parsedData = redeemerData.to_hex();
+            } catch (hexError) {
+              console.warn('Error converting redeemer data to hex:', hexError);
+              parsedData = undefined;
+            }
+          }
+        }
+        
+        // Extract execution units with proper type conversion
+        const exUnitsObj = redeemer.ex_units();
+        let mem = 0;
+        let steps = 0;
+        if (exUnitsObj) {
+          try {
+            // CSL ex_units return BigNum objects that need to_str()
+            const memValue = exUnitsObj.mem();
+            const stepsValue = exUnitsObj.steps();
+            
+            // Convert BigNum to string then to number
+            if (typeof memValue === 'object' && typeof memValue.to_str === 'function') {
+              mem = Number(memValue.to_str()) || 0;
+            } else {
+              mem = typeof memValue === 'bigint' ? Number(memValue) : 
+                    typeof memValue === 'string' ? parseInt(memValue, 10) : 
+                    Number(memValue) || 0;
+            }
+            
+            if (typeof stepsValue === 'object' && typeof stepsValue.to_str === 'function') {
+              steps = Number(stepsValue.to_str()) || 0;
+            } else {
+              steps = typeof stepsValue === 'bigint' ? Number(stepsValue) : 
+                      typeof stepsValue === 'string' ? parseInt(stepsValue, 10) : 
+                      Number(stepsValue) || 0;
+            }
+          } catch (error) {
+            console.warn('Error extracting execution units:', error);
+          }
+        }
+        
         redeemers.push({
           purpose,
           index: redeemer.index(),
           exUnits: {
-            mem: redeemer.ex_units().mem(),
-            steps: redeemer.ex_units().steps()
+            mem,
+            steps
           },
-          data: redeemer.data()?.to_hex() || undefined,
+          data: parsedData,
           scriptHash: undefined // This would need to be associated with the corresponding script
         });
       }
