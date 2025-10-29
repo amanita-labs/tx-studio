@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, FileCode, Code, Hash, Zap, CheckCircle2, Cpu } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { toast } from 'sonner';
+import { BlockExplorerLink } from '@/components/block-explorer-link';
 
 interface ScriptsTabProps {
   tx: DomainTx;
@@ -187,17 +188,23 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
-                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 mr-2">
-                    {tx.scriptDataHash.slice(0, 32)}...
+                <div className="flex items-center justify-between gap-2">
+                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+                    {tx.scriptDataHash.slice(0, 20)}...
                   </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                    <BlockExplorerLink
+                      type="script"
+                      params={{ scriptHash: tx.scriptDataHash }}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -252,11 +259,11 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                     </div>
                     
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-muted-foreground">Hash</span>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs bg-muted px-2 py-1 rounded">
-                            {safeHash.slice(0, 16)}...
+                        <div className="flex items-center gap-1">
+                          <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[120px]">
+                            {safeHash.slice(0, 12)}...
                           </code>
                           <Button
                             variant="ghost"
@@ -268,6 +275,10 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                           >
                             <Copy className="h-3 w-3" />
                           </Button>
+                          <BlockExplorerLink
+                            type="script"
+                            params={{ scriptHash: safeHash }}
+                          />
                         </div>
                       </div>
                       

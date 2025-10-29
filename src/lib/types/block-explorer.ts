@@ -21,6 +21,7 @@ export interface BlockExplorer {
     drep: string;
     epoch: string;
     slot: string;
+    script: string;
   };
 }
 
@@ -41,6 +42,7 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       drep: '/drep/{drepId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
+      script: '/script/{scriptHash}',
     },
   },
   cexplorer: {
@@ -59,6 +61,7 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       drep: '/governance/drep/{drepId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
+      script: '/script/{scriptHash}',
     },
   },
 };
