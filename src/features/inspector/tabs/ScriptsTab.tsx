@@ -83,6 +83,29 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
 
   const hasScripts = (tx.scripts && tx.scripts.length > 0) || (tx.redeemers && tx.redeemers.length > 0);
 
+  // Calculate total execution units from all redeemers
+  const totalExecutionUnits = tx.redeemers?.reduce((acc, redeemer) => {
+    if (redeemer.exUnits) {
+      const mem = isNaN(Number(redeemer.exUnits.mem)) ? 0 : Number(redeemer.exUnits.mem);
+      const steps = isNaN(Number(redeemer.exUnits.steps)) ? 0 : Number(redeemer.exUnits.steps);
+      return {
+        mem: acc.mem + mem,
+        steps: acc.steps + steps
+      };
+    }
+    return acc;
+  }, { mem: 0, steps: 0 }) || { mem: 0, steps: 0 };
+
+  // Helper to check if data is JSON and parse it
+  const tryParseJSON = (str: string): { isJSON: boolean; parsed?: any } => {
+    try {
+      const parsed = JSON.parse(str);
+      return { isJSON: true, parsed };
+    } catch {
+      return { isJSON: false };
+    }
+  };
+
   if (!hasScripts) {
     return (
       <Card className="h-full">
@@ -121,6 +144,36 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
           </Button>
         </div>
       </div>
+
+      {/* Total Execution Units - Highlighted */}
+      {tx.redeemers && tx.redeemers.length > 0 && (totalExecutionUnits.mem > 0 || totalExecutionUnits.steps > 0) && (
+        <Card className="border-2 border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              Total Execution Units
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Total Memory</div>
+                <div className="text-2xl font-mono font-bold">
+                  {totalExecutionUnits.mem.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">memory units</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Total Steps</div>
+                <div className="text-2xl font-mono font-bold">
+                  {totalExecutionUnits.steps.toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">CPU steps</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Script Data Hash and Total Collateral */}
       {(tx.scriptDataHash || tx.totalCollateral) && (
@@ -285,12 +338,9 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                       )}
                       
                       {safeData && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Data</span>
-                          <div className="flex items-center gap-2">
-                            <code className="text-xs bg-muted px-2 py-1 rounded">
-                              {safeData.slice(0, 16)}...
-                            </code>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Data</span>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -302,6 +352,22 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                               <Copy className="h-3 w-3" />
                             </Button>
                           </div>
+                          {(() => {
+                            const { isJSON, parsed } = tryParseJSON(safeData);
+                            if (isJSON && parsed) {
+                              return (
+                                <code className="text-xs bg-muted px-2 py-1 rounded block whitespace-pre-wrap break-all">
+                                  {JSON.stringify(parsed, null, 2)}
+                                </code>
+                              );
+                            }
+                            // If not JSON or hex string, show truncated
+                            return (
+                              <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
+                                {safeData.length > 64 ? `${safeData.slice(0, 64)}...` : safeData}
+                              </code>
+                            );
+                          })()}
                         </div>
                       )}
                       
