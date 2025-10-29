@@ -188,23 +188,17 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between gap-2">
-                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
-                    {tx.scriptDataHash.slice(0, 20)}...
+                <div className="flex items-center justify-between">
+                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 mr-2">
+                    {tx.scriptDataHash.slice(0, 32)}...
                   </code>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                    <BlockExplorerLink
-                      type="script"
-                      params={{ scriptHash: tx.scriptDataHash }}
-                    />
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
