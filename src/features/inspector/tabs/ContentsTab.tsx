@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
+import { formatLovelace, formatAda } from '@/lib/utils/ada';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 
@@ -86,6 +87,41 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       return { count: 0, items: [], summary: 'No certificates found' };
     }
 
+    const formatAmountDetail = (value: any) => {
+      if (value === undefined || value === null) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
+      try {
+        const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+        return `${formatAda(bigintValue)} ada`;
+      } catch {
+        try {
+          return String(value);
+        } catch {
+          return null;
+        }
+      }
+    };
+
+    const addAnchorDetails = (
+      anchorInfo: any,
+      isAnchorMissing: boolean | undefined,
+      details: Record<string, any>
+    ) => {
+      if (anchorInfo) {
+        if (anchorInfo.url) {
+          details.anchorUrl = anchorInfo.url;
+        }
+        if (anchorInfo.hash) {
+          details.anchorHash = anchorInfo.hash;
+        }
+        if (anchorInfo.bytes) {
+          details.anchorBytes = anchorInfo.bytes;
+        }
+      } else if (isAnchorMissing) {
+        details.anchorStatus = 'No anchor provided';
+      }
+    };
+
     const items = tx.certs.map((cert, index) => {
       let type = 'Unknown';
       let description = 'Certificate';
@@ -126,6 +162,21 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         description = 'Delegates voting rights to a DRep';
         icon = <Vote className="h-4 w-4" />;
         color = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      } else if (certType === 'DRepRegistration') {
+        type = 'DRep Registration';
+        description = 'Registers a DRep';
+        icon = <Shield className="h-4 w-4" />;
+        color = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      } else if (certType === 'DRepDeregistration') {
+        type = 'DRep Deregistration';
+        description = 'Deregisters a DRep';
+        icon = <Shield className="h-4 w-4" />;
+        color = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      } else if (certType === 'DRepUpdate') {
+        type = 'DRep Update';
+        description = 'Updates a DReps metadata';
+        icon = <Shield className="h-4 w-4" />;
+        color = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       } else {
         type = certType;
         description = 'Certificate';
@@ -153,6 +204,13 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         extractedDetails.drepId = drepId;
         extractedDetails.drepIdType = drepType === 'KeyHash' ? 'Key' : drepType === 'ScriptHash' ? 'Script' : drepType;
         
+        // If bech32 differs from hash, include both representations
+        const drepBech32 = certDetails.drepCredential.bech32;
+        const drepHash = certDetails.drepCredential.hash;
+        if (drepBech32 && drepHash && drepBech32 !== drepHash && drepBech32 !== drepId) {
+          extractedDetails.drepHash = drepHash;
+        }
+        
         if (certDetails.stakeCredential) {
           const credHash = certDetails.stakeCredential.bech32 || certDetails.stakeCredential.hash || 'N/A';
           const credType = certDetails.stakeCredential.type || 'Unknown';
@@ -174,6 +232,31 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       // Reward account
       if (certDetails.rewardAccount) {
         extractedDetails.rewardAccount = certDetails.rewardAccount;
+      }
+
+      if (certType === 'DRepRegistration') {
+        const depositFormatted = formatAmountDetail(certDetails.deposit ?? certDetails.coin);
+        if (depositFormatted) {
+          extractedDetails.deposit = depositFormatted;
+        }
+
+        const coinFormatted = formatAmountDetail(certDetails.coin);
+        if (coinFormatted && coinFormatted !== depositFormatted) {
+          extractedDetails.coin = coinFormatted;
+        }
+
+        addAnchorDetails(certDetails.anchor, certDetails.anchorMissing, extractedDetails);
+      }
+
+      if (certType === 'DRepDeregistration') {
+        const refundFormatted = formatAmountDetail(certDetails.refund ?? certDetails.coin);
+        if (refundFormatted) {
+          extractedDetails.refund = refundFormatted;
+        }
+      }
+
+      if (certType === 'DRepUpdate') {
+        addAnchorDetails(certDetails.anchor, certDetails.anchorMissing, extractedDetails);
       }
 
       return {
@@ -495,6 +578,21 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                         </div>
                       ) : (
                         Object.entries(cert.details).map(([key, value]) => {
+                          if (key === 'anchorStatus') {
+                            if (!value) {
+                              return null;
+                            }
+
+                            return (
+                              <div key={key} className="col-span-2">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <span>{String(value)}</span>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           if (value === null || value === undefined || String(value) === 'N/A') {
                             return null;
                           }
@@ -508,15 +606,30 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                           const isStakeKey = key === 'stakeKey' && value !== 'N/A' && String(value).startsWith('stake1');
                           const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
                           const isRewardAccount = key === 'rewardAccount' && value !== 'N/A';
+                          const isDrepHash = key === 'drepHash' && value !== 'N/A';
                           
                           // Get the type badge for this field
                           const typeKey = `${key}Type`;
                           const typeValue = cert.details[typeKey];
                           
+                          // Custom label formatting for specific fields
+                          const customLabels: Record<string, string> = {
+                            'drepId': 'DRep ID',
+                            'poolId': 'Pool ID',
+                            'stakeKey': 'Stake Credential',
+                            'rewardAccount': 'Reward Account',
+                            'drepHash': 'DRep Hash',
+                            'anchorUrl': 'Anchor URL',
+                            'anchorHash': 'Anchor Hash',
+                            'anchorBytes': 'Anchor Bytes'
+                          };
+                          
+                          const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                          
                           return (
                             <div key={key}>
                               <div className="flex items-center gap-2">
-                                <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                                <span className="font-medium">{displayLabel}:</span>
                                 {typeValue && (
                                   <Badge variant="outline" className="text-xs">
                                     {typeValue}

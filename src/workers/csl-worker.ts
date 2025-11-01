@@ -58,6 +58,185 @@ function parseMetadataMap(map: any): Record<string, any> {
   return result;
 }
 
+function normalizeAmount(value: any, defaultValue = '0'): string {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'number') return value.toString();
+  if (typeof value === 'object') {
+    try {
+      if (typeof value.to_str === 'function') {
+        return value.to_str();
+      }
+      if (typeof value.toString === 'function') {
+        const stringified = value.toString();
+        if (stringified !== '[object Object]') {
+          return stringified;
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return String(value ?? defaultValue);
+}
+
+type CredentialInfo = {
+  type: string;
+  hash: string;
+  bech32?: string;
+  raw: any;
+};
+
+type AnchorInfo = {
+  url?: string;
+  hash?: string;
+  bytes?: string;
+  raw: any;
+} | null;
+
+function createBech32Credential(hash: string, type: string, context?: 'stake' | 'drep' | 'committee' | 'unknown', networkId?: number): string | null {
+  if (!hash || hash.length === 0) return null;
+
+  try {
+    const isKeyType = type === 'Key' || type === 'KeyHash';
+    const isScriptType = type === 'Script' || type === 'ScriptHash';
+    
+    if (!isKeyType && !isScriptType) return null;
+    
+    try {
+      // Convert hex hash to bytes
+      const hexBytes = new Uint8Array(Buffer.from(hash, 'hex'));
+      
+      if (hexBytes.length !== 28) return null;
+      
+      // For stake context, use RewardAddress which creates proper stake1 addresses
+      if (context === 'stake') {
+        const effectiveNetworkId = networkId ?? 1; // Default to mainnet if not provided
+        if (isKeyType) {
+          const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
+          const stakeCredential = CSL.Credential.from_keyhash(keyHash);
+          const rewardAddress = CSL.RewardAddress.new(effectiveNetworkId, stakeCredential);
+          return rewardAddress.to_address().to_bech32();
+        } else {
+          const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
+          const stakeCredential = CSL.Credential.from_scripthash(scriptHash);
+          const rewardAddress = CSL.RewardAddress.new(effectiveNetworkId, stakeCredential);
+          return rewardAddress.to_address().to_bech32();
+        }
+      } else {
+        // For drep, committee, and other contexts, use simple to_bech32 with HRP
+        const hrp = context === 'drep' ? 'drep' : 
+                    context === 'committee' ? 'cc' : 
+                    ''; // empty for unknown context
+        
+        // Try to create Ed25519KeyHash or ScriptHash from bytes
+        if (isKeyType) {
+          const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
+          return keyHash.to_bech32(hrp);
+        } else {
+          const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
+          return scriptHash.to_bech32(hrp);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to create Bech32 from hash:', error);
+      return null;
+    }
+  } catch (error) {
+    console.warn('Error creating Bech32 credential:', error);
+    return null;
+  }
+}
+
+function normalizeCredential(
+  credential: any,
+  context: 'stake' | 'drep' | 'committee' | 'unknown' = 'unknown',
+  networkId?: number
+): CredentialInfo {
+  const info: CredentialInfo = {
+    type: 'Unknown',
+    hash: '',
+    bech32: undefined,
+    raw: credential
+  };
+
+  if (!credential) {
+    return info;
+  }
+
+  if (typeof credential === 'string') {
+    info.hash = credential;
+    info.type = 'KeyHash';
+  } else if (typeof credential === 'object') {
+    const keyValue =
+      credential.Key ??
+      credential.key ??
+      credential.KeyHash ??
+      credential.keyHash ??
+      credential.key_hash;
+    const scriptValue =
+      credential.Script ??
+      credential.script ??
+      credential.ScriptHash ??
+      credential.scriptHash ??
+      credential.script_hash;
+    const hashValue = credential.Hash ?? credential.hash ?? credential.value;
+
+    if (keyValue) {
+      info.hash = String(keyValue);
+      info.type = credential.Key || credential.key ? 'Key' : 'KeyHash';
+    } else if (scriptValue) {
+      info.hash = String(scriptValue);
+      info.type = credential.Script || credential.script ? 'Script' : 'ScriptHash';
+    } else if (hashValue) {
+      info.hash = String(hashValue);
+      info.type = 'Hash';
+    }
+  }
+
+  if (!info.hash && credential && typeof credential === 'object') {
+    const firstEntry = Object.values(credential)[0];
+    if (typeof firstEntry === 'string') {
+      info.hash = firstEntry;
+      info.type = 'KeyHash';
+    }
+  }
+
+  if (!info.hash) {
+    info.hash = '';
+  }
+
+  // Try to generate Bech32 representation if we have a valid hash
+  if (info.hash && info.hash.length > 0) {
+    const bech32String = createBech32Credential(info.hash, info.type, context, networkId);
+    if (bech32String) {
+      info.bech32 = bech32String;
+    } else {
+      info.bech32 = info.hash || undefined;
+    }
+  } else {
+    info.bech32 = info.hash || undefined;
+  }
+
+  return info;
+}
+
+function parseAnchorDetails(anchor: any): AnchorInfo {
+  if (!anchor) return null;
+
+  const url = anchor.url ?? anchor.anchor_url ?? anchor.reference ?? undefined;
+  const hash = anchor.data_hash ?? anchor.hash ?? anchor.anchor_data_hash ?? undefined;
+  const bytes = anchor.bytes ?? anchor.cbor ?? undefined;
+
+  return {
+    url,
+    hash,
+    bytes,
+    raw: anchor
+  };
+}
+
 function getMetadatumType(metadatum: any): string {
   const kind = metadatum.kind();
   const types = ['text', 'int', 'bytes', 'list', 'map'];
@@ -125,7 +304,7 @@ function parseDatumMap(map: any): Record<string, any> {
 }
 
 // Real CSL-based transaction parsing
-async function parseTransaction(hex: string) {
+async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'preview' = 'mainnet') {
   let transaction: any = null;
   let body: any = null;
   let witnessSet: any = null;
@@ -133,6 +312,11 @@ async function parseTransaction(hex: string) {
   
   try {
     await initializeParser();
+    
+    // Map network to network ID for CSL
+    // CSL.NetworkId: 0 = Testnet, 1 = Mainnet
+    // For our network enum: mainnet=1, preprod=0, preview=0
+    const networkId = network === 'mainnet' ? 1 : 0;
     
     // Enhanced validation
     if (!hex || typeof hex !== 'string') {
@@ -405,36 +589,33 @@ async function parseTransaction(hex: string) {
           if (certJson.StakeRegistration) {
             type = "StakeRegistration";
             const stakeReg = certJson.StakeRegistration;
+            const stakeCredentialSource = stakeReg.stake_credential ?? null;
+            const stakeCredential = normalizeCredential(stakeCredentialSource, 'stake', networkId);
+            const credentialDetails = { ...stakeCredential };
             details = {
-              stakeCredential: {
-                type: stakeReg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: stakeReg.stake_credential?.Key || stakeReg.stake_credential?.Script || "",
-                bech32: stakeReg.stake_credential?.Key || stakeReg.stake_credential?.Script || ""
-              },
+              stakeCredential: credentialDetails,
               coin: stakeReg.coin || "0",
               deposit: stakeReg.coin || "0"
             };
           } else if (certJson.StakeDeregistration) {
             type = "StakeDeregistration";
             const stakeDereg = certJson.StakeDeregistration;
+            const stakeCredentialSource = stakeDereg.stake_credential ?? null;
+            const stakeCredential = normalizeCredential(stakeCredentialSource, 'stake', networkId);
+            const credentialDetails = { ...stakeCredential };
             details = {
-              stakeCredential: {
-                type: stakeDereg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: stakeDereg.stake_credential?.Key || stakeDereg.stake_credential?.Script || "",
-                bech32: stakeDereg.stake_credential?.Key || stakeDereg.stake_credential?.Script || ""
-              },
+              stakeCredential: credentialDetails,
               coin: stakeDereg.coin || "0",
               refund: stakeDereg.coin || "0"
             };
           } else if (certJson.StakeDelegation) {
             type = "StakeDelegation";
             const stakeDeleg = certJson.StakeDelegation;
+            const stakeCredentialSource = stakeDeleg.stake_credential ?? null;
+            const stakeCredential = normalizeCredential(stakeCredentialSource, 'stake', networkId);
+            const credentialDetails = { ...stakeCredential };
             details = {
-              stakeCredential: {
-                type: stakeDeleg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: stakeDeleg.stake_credential?.Key || stakeDeleg.stake_credential?.Script || "",
-                bech32: stakeDeleg.stake_credential?.Key || stakeDeleg.stake_credential?.Script || ""
-              },
+              stakeCredential: credentialDetails,
               poolKeyHash: stakeDeleg.pool_keyhash || "",
               poolId: stakeDeleg.pool_keyhash || ""
             };
@@ -495,60 +676,89 @@ async function parseTransaction(hex: string) {
               }
             };
           } else if (certJson.VoteDelegation) {
-            console.log('VoteDelegation', certJson.VoteDelegation);
             type = "VoteDelegation";
             const voteDeleg = certJson.VoteDelegation;
             
+            // Normalize stake credential with proper context
+            const stakeCredentialSource = voteDeleg.stake_credential ?? null;
+            const stakeCredential = normalizeCredential(stakeCredentialSource, 'stake', networkId);
+            const stakeDetails = { ...stakeCredential };
+            
+            // Normalize DRep credential with proper context
+            const drepCredentialSource = voteDeleg.drep ?? null;
+            const drepCredential = normalizeCredential(drepCredentialSource, 'drep', networkId);
+            const drepDetails = { ...drepCredential };
+            
             details = {
-              stakeCredential: {
-                type: voteDeleg.stake_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: voteDeleg.stake_credential?.Key || voteDeleg.stake_credential?.Script || "",
-                bech32: voteDeleg.stake_credential?.Key || voteDeleg.stake_credential?.Script || ""
-              },
-              drepCredential: {
-                type: voteDeleg.drep?.KeyHash ? "KeyHash" : "ScriptHash",
-                hash: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || "",
-                bech32: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || ""
-              },
-              drepId: voteDeleg.drep?.KeyHash || voteDeleg.drep?.ScriptHash || ""
+              stakeCredential: stakeDetails,
+              drepCredential: drepDetails,
+              drepId: drepDetails.bech32 || drepDetails.hash
             };
-            console.log('VoteDelegation details', details);
           } else if (certJson.DRepRegistration) {
             type = "DRepRegistration";
             const drepReg = certJson.DRepRegistration;
+            const credentialSource =
+              drepReg.drep_credential ??
+              drepReg.voting_credential ??
+              drepReg.votingCredential ??
+              drepReg.drepCredential ??
+              drepReg.credential ??
+              null;
+            const drepCredential = normalizeCredential(credentialSource, 'drep', networkId);
+            const credentialDetails = { ...drepCredential };
+            const anchor = parseAnchorDetails(drepReg.anchor);
+            const coinValue = normalizeAmount(drepReg.coin, '0');
+            const depositValue = normalizeAmount(drepReg.deposit, coinValue);
+
             details = {
-              drepCredential: {
-                type: drepReg.drep_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: drepReg.drep_credential?.Key || drepReg.drep_credential?.Script || "",
-                bech32: drepReg.drep_credential?.Key || drepReg.drep_credential?.Script || ""
-              },
-              coin: drepReg.coin || "0",
-              deposit: drepReg.coin || "0",
-              drepId: drepReg.drep_credential?.Key || drepReg.drep_credential?.Script || ""
+              drepCredential: credentialDetails,
+              votingCredential: { ...credentialDetails },
+              coin: coinValue,
+              deposit: depositValue,
+              drepId: credentialDetails.bech32 || credentialDetails.hash,
+              anchor,
+              anchorMissing: !anchor
             };
           } else if (certJson.DRepDeregistration) {
             type = "DRepDeregistration";
             const drepDereg = certJson.DRepDeregistration;
+            const credentialSource =
+              drepDereg.drep_credential ??
+              drepDereg.voting_credential ??
+              drepDereg.votingCredential ??
+              drepDereg.drepCredential ??
+              drepDereg.credential ??
+              null;
+            const drepCredential = normalizeCredential(credentialSource, 'drep', networkId);
+            const credentialDetails = { ...drepCredential };
+
             details = {
-              drepCredential: {
-                type: drepDereg.drep_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: drepDereg.drep_credential?.Key || drepDereg.drep_credential?.Script || "",
-                bech32: drepDereg.drep_credential?.Key || drepDereg.drep_credential?.Script || ""
-              },
-              epoch: drepDereg.epoch || 0,
-              drepId: drepDereg.drep_credential?.Key || drepDereg.drep_credential?.Script || ""
+              drepCredential: credentialDetails,
+              votingCredential: { ...credentialDetails },
+              epoch: drepDereg.epoch ?? 0,
+              refund: normalizeAmount(drepDereg.refund ?? drepDereg.coin, '0'),
+              drepId: credentialDetails.bech32 || credentialDetails.hash
             };
           } else if (certJson.DRepUpdate) {
             type = "DRepUpdate";
             const drepUpdate = certJson.DRepUpdate;
+            const credentialSource =
+              drepUpdate.drep_credential ??
+              drepUpdate.voting_credential ??
+              drepUpdate.votingCredential ??
+              drepUpdate.drepCredential ??
+              drepUpdate.credential ??
+              null;
+            const drepCredential = normalizeCredential(credentialSource, 'drep', networkId);
+            const credentialDetails = { ...drepCredential };
+            const anchor = parseAnchorDetails(drepUpdate.anchor);
+
             details = {
-              drepCredential: {
-                type: drepUpdate.drep_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: drepUpdate.drep_credential?.Key || drepUpdate.drep_credential?.Script || "",
-                bech32: drepUpdate.drep_credential?.Key || drepUpdate.drep_credential?.Script || ""
-              },
-              anchor: drepUpdate.anchor || null,
-              drepId: drepUpdate.drep_credential?.Key || drepUpdate.drep_credential?.Script || ""
+              drepCredential: credentialDetails,
+              votingCredential: { ...credentialDetails },
+              drepId: credentialDetails.bech32 || credentialDetails.hash,
+              anchor,
+              anchorMissing: !anchor
             };
           } else if (certJson.CommitteeHotAuth) {
             type = "CommitteeHotAuth";
@@ -1284,7 +1494,7 @@ self.onmessage = async (event) => {
   try {
     switch (type) {
       case 'PARSE_TRANSACTION':
-        const result = await parseTransaction(data.hex);
+        const result = await parseTransaction(data.hex, data.network || 'mainnet');
         self.postMessage({ type: 'PARSE_RESULT', data: result });
         break;
       default:
