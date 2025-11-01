@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
+import { formatLovelace } from '@/lib/utils/ada';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 
@@ -85,6 +86,41 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     if (!tx.certs || tx.certs.length === 0) {
       return { count: 0, items: [], summary: 'No certificates found' };
     }
+
+    const formatAmountDetail = (value: any) => {
+      if (value === undefined || value === null) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
+      try {
+        const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+        return `${formatLovelace(bigintValue)} lovelace`;
+      } catch {
+        try {
+          return String(value);
+        } catch {
+          return null;
+        }
+      }
+    };
+
+    const addAnchorDetails = (
+      anchorInfo: any,
+      isAnchorMissing: boolean | undefined,
+      details: Record<string, any>
+    ) => {
+      if (anchorInfo) {
+        if (anchorInfo.url) {
+          details.anchorUrl = anchorInfo.url;
+        }
+        if (anchorInfo.hash) {
+          details.anchorHash = anchorInfo.hash;
+        }
+        if (anchorInfo.bytes) {
+          details.anchorBytes = anchorInfo.bytes;
+        }
+      } else if (isAnchorMissing) {
+        details.anchorStatus = 'Anchor missing (no anchor provided)';
+      }
+    };
 
     const items = tx.certs.map((cert, index) => {
       let type = 'Unknown';
@@ -174,6 +210,31 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       // Reward account
       if (certDetails.rewardAccount) {
         extractedDetails.rewardAccount = certDetails.rewardAccount;
+      }
+
+      if (certType === 'DRepRegistration') {
+        const depositFormatted = formatAmountDetail(certDetails.deposit ?? certDetails.coin);
+        if (depositFormatted) {
+          extractedDetails.deposit = depositFormatted;
+        }
+
+        const coinFormatted = formatAmountDetail(certDetails.coin);
+        if (coinFormatted && coinFormatted !== depositFormatted) {
+          extractedDetails.coin = coinFormatted;
+        }
+
+        addAnchorDetails(certDetails.anchor, certDetails.anchorMissing, extractedDetails);
+      }
+
+      if (certType === 'DRepDeregistration') {
+        const refundFormatted = formatAmountDetail(certDetails.refund ?? certDetails.coin);
+        if (refundFormatted) {
+          extractedDetails.refund = refundFormatted;
+        }
+      }
+
+      if (certType === 'DRepUpdate') {
+        addAnchorDetails(certDetails.anchor, certDetails.anchorMissing, extractedDetails);
       }
 
       return {
@@ -495,6 +556,21 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                         </div>
                       ) : (
                         Object.entries(cert.details).map(([key, value]) => {
+                          if (key === 'anchorStatus') {
+                            if (!value) {
+                              return null;
+                            }
+
+                            return (
+                              <div key={key} className="col-span-2">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <span>{String(value)}</span>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           if (value === null || value === undefined || String(value) === 'N/A') {
                             return null;
                           }
