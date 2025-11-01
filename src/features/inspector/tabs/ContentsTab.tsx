@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
-import { formatLovelace } from '@/lib/utils/ada';
+import { formatLovelace, formatAda } from '@/lib/utils/ada';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 
@@ -92,7 +92,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       if (typeof value === 'string' && value.trim() === '') return null;
       try {
         const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
-        return `${formatLovelace(bigintValue)} lovelace`;
+        return `${formatAda(bigintValue)} ada`;
       } catch {
         try {
           return String(value);
@@ -118,7 +118,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           details.anchorBytes = anchorInfo.bytes;
         }
       } else if (isAnchorMissing) {
-        details.anchorStatus = 'Anchor missing (no anchor provided)';
+        details.anchorStatus = 'No anchor provided)';
       }
     };
 
@@ -162,6 +162,21 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         description = 'Delegates voting rights to a DRep';
         icon = <Vote className="h-4 w-4" />;
         color = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      } else if (certType === 'DRepRegistration') {
+        type = 'DRep Registration';
+        description = 'Registers a DRep';
+        icon = <Shield className="h-4 w-4" />;
+        color = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      } else if (certType === 'DRepDeregistration') {
+        type = 'DRep Deregistration';
+        description = 'Deregisters a DRep';
+        icon = <Shield className="h-4 w-4" />;
+        color = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      } else if (certType === 'DRepUpdate') {
+        type = 'DRep Update';
+        description = 'Updates a DReps metadata';
+        icon = <Shield className="h-4 w-4" />;
+        color = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       } else {
         type = certType;
         description = 'Certificate';
@@ -188,6 +203,13 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         const drepType = certDetails.drepCredential.type || 'Unknown';
         extractedDetails.drepId = drepId;
         extractedDetails.drepIdType = drepType === 'KeyHash' ? 'Key' : drepType === 'ScriptHash' ? 'Script' : drepType;
+        
+        // If bech32 differs from hash, include both representations
+        const drepBech32 = certDetails.drepCredential.bech32;
+        const drepHash = certDetails.drepCredential.hash;
+        if (drepBech32 && drepHash && drepBech32 !== drepHash && drepBech32 !== drepId) {
+          extractedDetails.drepHash = drepHash;
+        }
         
         if (certDetails.stakeCredential) {
           const credHash = certDetails.stakeCredential.bech32 || certDetails.stakeCredential.hash || 'N/A';
@@ -584,6 +606,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                           const isStakeKey = key === 'stakeKey' && value !== 'N/A' && String(value).startsWith('stake1');
                           const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
                           const isRewardAccount = key === 'rewardAccount' && value !== 'N/A';
+                          const isDrepHash = key === 'drepHash' && value !== 'N/A';
                           
                           // Get the type badge for this field
                           const typeKey = `${key}Type`;

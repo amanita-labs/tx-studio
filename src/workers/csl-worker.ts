@@ -95,6 +95,41 @@ type AnchorInfo = {
   raw: any;
 } | null;
 
+function createBech32Credential(hash: string, type: string): string | null {
+  if (!hash || hash.length === 0) return null;
+
+  try {
+    const isKeyType = type === 'Key' || type === 'KeyHash';
+    const isScriptType = type === 'Script' || type === 'ScriptHash';
+    
+    if (!isKeyType && !isScriptType) return null;
+    
+    try {
+      // Convert hex hash to bytes
+      const hexBytes = new Uint8Array(Buffer.from(hash, 'hex'));
+      
+      if (hexBytes.length !== 28) return null;
+      
+      // Try to create Ed25519KeyHash or ScriptHash from bytes
+      if (isKeyType) {
+        const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
+        // CSL to_bech32 for key hashes requires HRP prefix - use "drep" for governance credentials
+        return keyHash.to_bech32('drep');
+      } else {
+        const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
+        // CSL to_bech32 for script hashes requires HRP prefix - use "drep" for governance credentials
+        return scriptHash.to_bech32('drep');
+      }
+    } catch (error) {
+      console.warn('Failed to create Bech32 from hash:', error);
+      return null;
+    }
+  } catch (error) {
+    console.warn('Error creating Bech32 credential:', error);
+    return null;
+  }
+}
+
 function normalizeCredential(
   credential: any,
   context: 'stake' | 'drep' | 'committee' | 'unknown' = 'unknown'
@@ -152,19 +187,17 @@ function normalizeCredential(
     info.hash = '';
   }
 
-  if (context === 'drep') {
-    if (info.type === 'Key') {
-      info.type = 'KeyHash';
-    } else if (info.type === 'KeyHash') {
-      info.type = 'KeyHash';
-    } else if (info.type === 'Script') {
-      info.type = 'ScriptHash';
-    } else if (info.type === 'ScriptHash') {
-      info.type = 'ScriptHash';
+  // Try to generate Bech32 representation if we have a valid hash
+  if (info.hash && info.hash.length > 0) {
+    const bech32String = createBech32Credential(info.hash, info.type);
+    if (bech32String) {
+      info.bech32 = bech32String;
+    } else {
+      info.bech32 = info.hash || undefined;
     }
+  } else {
+    info.bech32 = info.hash || undefined;
   }
-
-  info.bech32 = info.hash || undefined;
 
   return info;
 }
