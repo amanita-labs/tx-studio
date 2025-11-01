@@ -118,7 +118,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           details.anchorBytes = anchorInfo.bytes;
         }
       } else if (isAnchorMissing) {
-        details.anchorStatus = 'No anchor provided)';
+        details.anchorStatus = 'No anchor provided';
       }
     };
 
@@ -612,10 +612,24 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                           const typeKey = `${key}Type`;
                           const typeValue = cert.details[typeKey];
                           
+                          // Custom label formatting for specific fields
+                          const customLabels: Record<string, string> = {
+                            'drepId': 'DRep ID',
+                            'poolId': 'Pool ID',
+                            'stakeKey': 'Stake Credential',
+                            'rewardAccount': 'Reward Account',
+                            'drepHash': 'DRep Hash',
+                            'anchorUrl': 'Anchor URL',
+                            'anchorHash': 'Anchor Hash',
+                            'anchorBytes': 'Anchor Bytes'
+                          };
+                          
+                          const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                          
                           return (
                             <div key={key}>
                               <div className="flex items-center gap-2">
-                                <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                                <span className="font-medium">{displayLabel}:</span>
                                 {typeValue && (
                                   <Badge variant="outline" className="text-xs">
                                     {typeValue}
