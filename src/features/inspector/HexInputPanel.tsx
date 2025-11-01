@@ -51,7 +51,7 @@ export function HexInputPanel() {
     setError(null);
 
     try {
-      const result = await parseTransaction(localHex.trim());
+      const result = await parseTransaction(localHex.trim(), network);
       setParsedTx(result);
       
       if (result.success) {

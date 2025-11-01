@@ -1,6 +1,6 @@
 // src/hooks/use-csl-worker.ts
 import { useCallback, useRef, useEffect } from 'react';
-import { TxParseResult } from '@/domain/tx';
+import { TxParseResult, Network } from '@/domain/tx';
 
 export function useCSLWorker() {
   const workerRef = useRef<Worker | null>(null);
@@ -43,7 +43,7 @@ export function useCSLWorker() {
     };
   }, []);
 
-  const parseTransaction = useCallback((hex: string): Promise<TxParseResult> => {
+  const parseTransaction = useCallback((hex: string, network: Network = 'mainnet'): Promise<TxParseResult> => {
     return new Promise((resolve) => {
       if (!workerRef.current) {
         resolve({
@@ -59,7 +59,7 @@ export function useCSLWorker() {
       // Send message to worker
       workerRef.current.postMessage({
         type: 'PARSE_TRANSACTION',
-        data: { hex },
+        data: { hex, network },
       });
     });
   }, []);
