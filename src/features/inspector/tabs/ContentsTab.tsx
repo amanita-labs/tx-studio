@@ -309,12 +309,50 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     // Analyze DRep votes
     if (tx.governance.drepVotes && tx.governance.drepVotes.length > 0) {
       tx.governance.drepVotes.forEach((vote: any, index: number) => {
+        const extractedDetails: Record<string, any> = {};
+        
+        // Extract DRep details
+        if (vote.drepCredential) {
+          const cred = vote.drepCredential;
+          extractedDetails.drepId = cred.bech32 || vote.drepId || cred.hash || 'N/A';
+          extractedDetails.drepIdType = cred.type === 'KeyHash' ? 'Key' : cred.type === 'ScriptHash' ? 'Script' : cred.type;
+          if (cred.hash && cred.hash !== extractedDetails.drepId) {
+            extractedDetails.drepHash = cred.hash;
+          }
+        } else if (vote.drepId) {
+          extractedDetails.drepId = vote.drepId;
+        }
+        
+        // Extract action
+        extractedDetails.action = vote.action || 'Unknown';
+        
+        // Extract proposal ID
+        extractedDetails.proposalId = vote.proposalId || 'N/A';
+        
+        // Extract anchor details
+        if (vote.anchor) {
+          if (vote.anchor.url) {
+            extractedDetails.anchorUrl = vote.anchor.url;
+          }
+          if (vote.anchor.hash) {
+            extractedDetails.anchorHash = vote.anchor.hash;
+          }
+          if (vote.anchor.bytes) {
+            extractedDetails.anchorBytes = vote.anchor.bytes;
+          }
+        } else if (vote.anchorMissing) {
+          extractedDetails.anchorStatus = 'No anchor provided';
+        }
+        
         items.push({
+          index,
           type: 'DRep Vote',
-          description: `DRep ${vote.drepId.slice(0, 8)}... voted ${vote.action} on proposal ${vote.proposalId.slice(0, 16)}...`,
+          description: `DRep ${(extractedDetails.drepId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on proposal ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
           data: vote,
+          details: extractedDetails,
           icon: <Vote className="h-4 w-4" />,
-          color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+          color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+          anchorMissing: vote.anchorMissing
         });
       });
     }
@@ -322,12 +360,47 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     // Analyze Committee votes
     if (tx.governance.committeeVotes && tx.governance.committeeVotes.length > 0) {
       tx.governance.committeeVotes.forEach((vote: any, index: number) => {
+        const extractedDetails: Record<string, any> = {};
+        
+        // Extract Committee member details
+        if (vote.memberCredential) {
+          const cred = vote.memberCredential;
+          extractedDetails.memberId = cred.bech32 || vote.memberId || cred.hash || 'N/A';
+          extractedDetails.memberIdType = cred.type === 'KeyHash' ? 'Key' : cred.type === 'ScriptHash' ? 'Script' : cred.type;
+        } else if (vote.memberId) {
+          extractedDetails.memberId = vote.memberId;
+        }
+        
+        // Extract action
+        extractedDetails.action = vote.action || 'Unknown';
+        
+        // Extract proposal ID
+        extractedDetails.proposalId = vote.proposalId || 'N/A';
+        
+        // Extract anchor details
+        if (vote.anchor) {
+          if (vote.anchor.url) {
+            extractedDetails.anchorUrl = vote.anchor.url;
+          }
+          if (vote.anchor.hash) {
+            extractedDetails.anchorHash = vote.anchor.hash;
+          }
+          if (vote.anchor.bytes) {
+            extractedDetails.anchorBytes = vote.anchor.bytes;
+          }
+        } else if (vote.anchorMissing) {
+          extractedDetails.anchorStatus = 'No anchor provided';
+        }
+        
         items.push({
+          index,
           type: 'Committee Vote',
-          description: `Committee member ${vote.memberId.slice(0, 8)}... voted ${vote.action} on proposal ${vote.proposalId.slice(0, 16)}...`,
+          description: `Committee member ${(extractedDetails.memberId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on proposal ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
           data: vote,
+          details: extractedDetails,
           icon: <Users className="h-4 w-4" />,
-          color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+          color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+          anchorMissing: vote.anchorMissing
         });
       });
     }
@@ -697,22 +770,146 @@ export function ContentsTab({ tx }: ContentsTabProps) {
             ) : (
               contents.governance.items.map((action: any, index: number) => (
                 <Card key={index}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {action.icon}
-                        <span className="font-medium">{action.type}</span>
+                        <span>{action.type}</span>
                         <Badge className={action.color}>
                           Governance Action
                         </Badge>
                       </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">{action.description}</p>
-                    <div className="mt-4">
-                      <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                        {JSON.stringify(action.data, null, 2)}
-                      </pre>
-                    </div>
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">{action.description}</p>
+                  </CardHeader>
+                  <CardContent>
+                    {action.details && Object.keys(action.details).length > 0 ? (
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {Object.entries(action.details).map(([key, value]) => {
+                          // Skip type fields (we'll display them as badges next to their values)
+                          if (key.endsWith('Type')) {
+                            return null;
+                          }
+                          
+                          // Handle anchor status warning (similar to certificates)
+                          if (key === 'anchorStatus') {
+                            if (!value) {
+                              return null;
+                            }
+
+                            return (
+                              <div key={key} className="col-span-2">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <span>{String(value)}</span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          if (value === null || value === undefined || String(value) === 'N/A') {
+                            return null;
+                          }
+                          
+                          const isMemberId = key === 'memberId' && value !== 'N/A' && String(value).startsWith('cc1');
+                          const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
+                          const isProposalId = key === 'proposalId' && value !== 'N/A';
+                          const isAnchorUrl = key === 'anchorUrl' && value !== 'N/A';
+                          
+                          // Get the type badge for this field
+                          const typeKey = `${key}Type`;
+                          const typeValue = action.details[typeKey];
+                          
+                          // Custom label formatting
+                          const customLabels: Record<string, string> = {
+                            'memberId': 'Committee Member',
+                            'drepId': 'DRep ID',
+                            'drepHash': 'DRep Hash',
+                            'action': 'Action',
+                            'proposalId': 'Governance Action ID',
+                            'anchorUrl': 'Anchor URL',
+                            'anchorHash': 'Anchor Hash',
+                            'anchorBytes': 'Anchor Bytes'
+                          };
+                          
+                          const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                          
+                          // Format action value
+                          const actionValue = String(value);
+                          const actionColors: Record<string, string> = {
+                            'VoteYes': 'text-green-600 font-semibold',
+                            'VoteNo': 'text-red-600 font-semibold',
+                            'Abstain': 'text-yellow-600 font-semibold'
+                          };
+                          
+                          return (
+                            <div key={key}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{displayLabel}:</span>
+                                {typeValue && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {typeValue}
+                                  </Badge>
+                                )}
+                                {key === 'action' && (
+                                  <span className={actionColors[actionValue] || ''}>
+                                    {actionValue}
+                                  </span>
+                                )}
+                              </div>
+                              {key !== 'action' && (
+                                <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                                  {isAnchorUrl ? (
+                                    <a 
+                                      href={String(value)} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 underline hover:text-blue-700"
+                                    >
+                                      {String(value)}
+                                    </a>
+                                  ) : (
+                                    <span>{actionValue}</span>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2"
+                                    onClick={() => copyToClipboard(String(value), key)}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                  {isMemberId && (
+                                    <BlockExplorerLink 
+                                      type="committee" 
+                                      params={{ memberId: String(value) }}
+                                    />
+                                  )}
+                                  {isDrepId && (
+                                    <BlockExplorerLink 
+                                      type="drep" 
+                                      params={{ drepId: String(value) }}
+                                    />
+                                  )}
+                                  {isProposalId && (
+                                    <BlockExplorerLink 
+                                      type="proposal" 
+                                      params={{ proposalId: String(value) }}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mt-4">
+                        <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
+                          {JSON.stringify(action.data, null, 2)}
+                        </pre>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))
