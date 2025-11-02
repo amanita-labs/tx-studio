@@ -397,7 +397,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         items.push({
           index,
           type: 'DRep Vote',
-          description: `DRep ${(extractedDetails.drepId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on proposal ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
+          description: `DRep ${(extractedDetails.drepId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on governance action ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
           data: vote,
           details: extractedDetails,
           icon: <Vote className="h-4 w-4" />,
@@ -445,7 +445,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         items.push({
           index,
           type: 'Committee Vote',
-          description: `Committee member ${(extractedDetails.memberId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on proposal ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
+          description: `Committee member ${(extractedDetails.memberId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on governance action ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
           data: vote,
           details: extractedDetails,
           icon: <Users className="h-4 w-4" />,
@@ -459,8 +459,8 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     if (tx.governance.proposals && tx.governance.proposals.length > 0) {
       tx.governance.proposals.forEach((proposal: any, index: number) => {
         items.push({
-          type: `${proposal.type} Proposal`,
-          description: `Governance proposal: ${proposal.type}`,
+          type: `${proposal.type} Governance Action`,
+          description: `Governance action: ${proposal.type}`,
           data: proposal,
           icon: <FileText className="h-4 w-4" />,
           color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'

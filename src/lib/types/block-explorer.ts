@@ -20,6 +20,8 @@ export interface BlockExplorer {
     stakeKey: string;
     drep: string;
     committee: string;
+    committeeHot: string;
+    committeeCold: string;
     proposal: string;
     epoch: string;
     slot: string;
@@ -43,7 +45,9 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       stakeKey: '/stakeKey/{stakeKey}',
       drep: '/drep/{drepId}',
       committee: '/gov/committee/{memberId}',
-      proposal: '/govAction/gov_action{proposalId}',
+      committeeHot: '/cchot/{memberId}',
+      committeeCold: '/ccmember/{memberId}',
+      proposal: '/govAction/{proposalId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
       script: '/script/{scriptHash}',
@@ -64,6 +68,8 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       stakeKey: '/stake/{stakeKey}',
       drep: '/governance/drep/{drepId}',
       committee: '/gov/cc/{memberId}',
+      committeeHot: '/gov/cc/{memberId}',
+      committeeCold: '/gov/cc/{memberId}',
       proposal: '/gov/action/{proposalId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
@@ -85,37 +91,32 @@ export function getExplorerUrl(
   // Fall back to mainnet for unsupported networks
   const networkKey = network in explorer.networks ? network : 'mainnet';
   const baseUrl = explorer.networks[networkKey as keyof typeof explorer.networks];
-  let url = baseUrl + explorer.urls[type];
   
-  // Handle special cases for proposal formatting
+  // Determine the actual URL type (may differ from input type for special cases)
+  let actualType: keyof BlockExplorer['urls'] = type;
+  
+  // Handle committee credentials - detect hot vs cold based on memberId prefix
+  if (type === 'committee') {
+    const memberId = params.memberId || '';
+    if (memberId.startsWith('cc_hot1')) {
+      actualType = 'committeeHot';
+    } else if (memberId.startsWith('cc_cold1')) {
+      actualType = 'committeeCold';
+    }
+  }
+  
+  let url = baseUrl + explorer.urls[actualType];
+  
+  // Handle special cases for governance action (proposal) formatting
   if (type === 'proposal') {
     const proposalId = params.proposalId || '';
     
-    // Check if proposalId is already in bech32 format (gov_action1...)
-    if (proposalId.startsWith('gov_action')) {
-      // Already bech32 encoded according to CIP-0129
-      if (explorerId === 'cardanoscan') {
-        // Cardanoscan expects /govAction/gov_action{encoded_id}
-        // Extract the part after 'gov_action' separator
-        const encodedPart = proposalId.split('1')[1] || proposalId.substring(11);
-        url = url.replace('{proposalId}', encodedPart);
-      } else {
-        // CExplorer: use the full bech32 string
-        url = url.replace('{proposalId}', proposalId);
-      }
-    } else if (proposalId.includes('#')) {
-      // Legacy format: txId#index - try to decode if possible
-      const [txId, index] = proposalId.split('#');
-      if (explorerId === 'cardanoscan') {
-        // Cardanoscan pattern is /govAction/gov_action{encoded_id}
-        // Use transaction ID directly - they may handle conversion
-        url = url.replace('{proposalId}', txId + (index ? index : '0'));
-      } else {
-        // CExplorer: use the proposal ID as-is (txId#index)
-        url = url.replace('{proposalId}', proposalId);
-      }
+    // Cardanoscan expects /govAction/{bech32_id} - use the full bech32 ID
+    if (explorerId === 'cardanoscan') {
+      // Use the full bech32 ID for Cardanoscan (e.g., gov_action1...)
+      url = url.replace('{proposalId}', proposalId);
     } else {
-      // Use as-is (might be hex transaction ID or other format)
+      // CExplorer: use the full bech32 string or legacy format
       url = url.replace('{proposalId}', proposalId);
     }
   } else {
