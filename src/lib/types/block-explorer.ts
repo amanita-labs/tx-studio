@@ -19,6 +19,10 @@ export interface BlockExplorer {
     stakePool: string;
     stakeKey: string;
     drep: string;
+    committee: string;
+    committeeHot: string;
+    committeeCold: string;
+    proposal: string;
     epoch: string;
     slot: string;
     script: string;
@@ -40,6 +44,10 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       stakePool: '/pool/{poolId}',
       stakeKey: '/stakeKey/{stakeKey}',
       drep: '/drep/{drepId}',
+      committee: '/gov/committee/{memberId}',
+      committeeHot: '/cchot/{memberId}',
+      committeeCold: '/ccmember/{memberId}',
+      proposal: '/govAction/{proposalId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
       script: '/script/{scriptHash}',
@@ -49,7 +57,7 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
     id: 'cexplorer',
     name: 'CExplorer',
     networks: {
-      mainnet: 'https://cexplorer.io',
+      mainnet: 'https://beta.cexplorer.io',
       preview: 'https://preview.cexplorer.io',
       preprod: 'https://preprod.cexplorer.io',
     },
@@ -59,6 +67,10 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       stakePool: '/pool/{poolId}',
       stakeKey: '/stake/{stakeKey}',
       drep: '/governance/drep/{drepId}',
+      committee: '/gov/cc/{memberId}',
+      committeeHot: '/gov/cc/{memberId}',
+      committeeCold: '/gov/cc/{memberId}',
+      proposal: '/gov/action/{proposalId}',
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
       script: '/script/{scriptHash}',
@@ -79,12 +91,40 @@ export function getExplorerUrl(
   // Fall back to mainnet for unsupported networks
   const networkKey = network in explorer.networks ? network : 'mainnet';
   const baseUrl = explorer.networks[networkKey as keyof typeof explorer.networks];
-  let url = baseUrl + explorer.urls[type];
   
-  // Replace placeholders with actual values
-  Object.entries(params).forEach(([key, value]) => {
-    url = url.replace(`{${key}}`, value);
-  });
+  // Determine the actual URL type (may differ from input type for special cases)
+  let actualType: keyof BlockExplorer['urls'] = type;
+  
+  // Handle committee credentials - detect hot vs cold based on memberId prefix
+  if (type === 'committee') {
+    const memberId = params.memberId || '';
+    if (memberId.startsWith('cc_hot1')) {
+      actualType = 'committeeHot';
+    } else if (memberId.startsWith('cc_cold1')) {
+      actualType = 'committeeCold';
+    }
+  }
+  
+  let url = baseUrl + explorer.urls[actualType];
+  
+  // Handle special cases for governance action (proposal) formatting
+  if (type === 'proposal') {
+    const proposalId = params.proposalId || '';
+    
+    // Cardanoscan expects /govAction/{bech32_id} - use the full bech32 ID
+    if (explorerId === 'cardanoscan') {
+      // Use the full bech32 ID for Cardanoscan (e.g., gov_action1...)
+      url = url.replace('{proposalId}', proposalId);
+    } else {
+      // CExplorer: use the full bech32 string or legacy format
+      url = url.replace('{proposalId}', proposalId);
+    }
+  } else {
+    // Replace placeholders with actual values for all other types
+    Object.entries(params).forEach(([key, value]) => {
+      url = url.replace(`{${key}}`, value);
+    });
+  }
   
   return url;
 }

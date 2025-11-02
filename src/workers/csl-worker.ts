@@ -2,6 +2,7 @@
 // Real CSL-based transaction parser
 
 import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
+import * as bech32Buffer from 'bech32-buffer';
 
 let isInitialized = false;
 
@@ -95,7 +96,7 @@ type AnchorInfo = {
   raw: any;
 } | null;
 
-function createBech32Credential(hash: string, type: string, context?: 'stake' | 'drep' | 'committee' | 'unknown', networkId?: number): string | null {
+function createBech32Credential(hash: string, type: string, context?: 'stake' | 'drep' | 'committee' | 'committeeHot' | 'committeeCold' | 'unknown', networkId?: number): string | null {
   if (!hash || hash.length === 0) return null;
 
   try {
@@ -125,18 +126,57 @@ function createBech32Credential(hash: string, type: string, context?: 'stake' | 
           return rewardAddress.to_address().to_bech32();
         }
       } else {
-        // For drep, committee, and other contexts, use simple to_bech32 with HRP
-        const hrp = context === 'drep' ? 'drep' : 
-                    context === 'committee' ? 'cc' : 
-                    ''; // empty for unknown context
-        
-        // Try to create Ed25519KeyHash or ScriptHash from bytes
-        if (isKeyType) {
-          const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
-          return keyHash.to_bech32(hrp);
+        // For drep and committee contexts, use CIP-0129 HRP prefixes with bech32-buffer
+        // CIP-0129: drep uses 'drep1', committee hot uses 'cc_hot1', committee cold uses 'cc_cold1'
+        let prefix = '';
+        if (context === 'drep') {
+          prefix = 'drep';
+        } else if (context === 'committeeHot') {
+          prefix = 'cc_hot';
+        } else if (context === 'committeeCold') {
+          prefix = 'cc_cold';
         } else {
-          const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
-          return scriptHash.to_bech32(hrp);
+          prefix = ''; // empty for unknown context
+        }
+        
+        if (!prefix) return null;
+        
+        // Use bech32-buffer for proper CIP-0129 encoding
+        // For committee credentials, CIP-0129 requires a header byte:
+        // - Key type: Hot = 0x00, Cold = 0x01
+        // - Credential type: Key Hash = 0x02, Script Hash = 0x03
+        // Header byte = (keyType << 4) | credentialType
+        try {
+          const hashBuffer = Buffer.from(hash, 'hex');
+          
+          // For committee credentials, prepend header byte according to CIP-0129
+          if (context === 'committeeHot' || context === 'committeeCold') {
+            const keyType = context === 'committeeHot' ? 0x00 : 0x01; // Hot = 0, Cold = 1
+            const credentialType = isKeyType ? 0x02 : 0x03; // Key Hash = 2, Script Hash = 3
+            const headerByte = (keyType << 4) | credentialType;
+            
+            // Prepend header byte to hash
+            const dataWithHeader = Buffer.concat([Buffer.from([headerByte]), hashBuffer]);
+            return bech32Buffer.encode(prefix, dataWithHeader).toString();
+          } else {
+            // For DRep, no header byte needed
+            return bech32Buffer.encode(prefix, hashBuffer).toString();
+          }
+        } catch (error) {
+          console.warn('Failed to create Bech32 credential with bech32-buffer:', error);
+          // Fallback to CSL method if bech32-buffer fails
+          try {
+            if (isKeyType) {
+              const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
+              return keyHash.to_bech32(prefix);
+            } else {
+              const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
+              return scriptHash.to_bech32(prefix);
+            }
+          } catch (fallbackError) {
+            console.warn('Fallback Bech32 creation also failed:', fallbackError);
+            return null;
+          }
         }
       }
     } catch (error) {
@@ -149,9 +189,45 @@ function createBech32Credential(hash: string, type: string, context?: 'stake' | 
   }
 }
 
+  // Helper function to create bech32 governance action ID according to CIP-0129
+  // Governance action IDs use HRP prefix "gov_action1"
+  // CIP-0129: Governance action IDs are bech32-encoded with HRP "gov_action"
+  // Format: gov_action1 + bech32_encoded(txId_bytes(32) + index_bytes(1))
+  // According to CIP-0129, the index is a uint8 (1 byte)
+function createGovernanceActionId(txId: string, index: number): string | null {
+  if (!txId || txId.length === 0) return null;
+  
+  try {
+    // Validate transaction ID is 32 bytes (64 hex characters)
+    if (txId.length !== 64) {
+      console.warn(`Invalid transaction ID length: ${txId.length}, expected 64 hex characters`);
+      return `${txId}#${index}`;
+    }
+    
+    // Ensure index is a valid number (handle string inputs)
+    const indexNum = typeof index === 'string' ? parseInt(index, 10) : Number(index);
+
+    // Convert index to hex string and pad to 2 characters (1 byte)
+    const indexHex = indexNum.toString(16).padStart(2, '0');
+    
+    // Combine transaction ID and index as hex strings, then convert to Buffer
+    // This creates: txId (32 bytes) + index (1 byte) = 33 bytes total
+    const combinedHex = txId + indexHex;
+    
+    // Encode using bech32-buffer with HRP "gov_action" according to CIP-0129
+    const encoded = bech32Buffer.encode("gov_action", Buffer.from(combinedHex, 'hex')).toString();
+
+    return encoded;
+  } catch (error) {
+    console.warn('Error creating governance action ID:', error);
+    // Fallback to simple format if encoding fails
+    return `${txId}#${index}`;
+  }
+}
+
 function normalizeCredential(
   credential: any,
-  context: 'stake' | 'drep' | 'committee' | 'unknown' = 'unknown',
+  context: 'stake' | 'drep' | 'committee' | 'committeeHot' | 'committeeCold' | 'unknown' = 'unknown',
   networkId?: number
 ): CredentialInfo {
   const info: CredentialInfo = {
@@ -763,26 +839,32 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
           } else if (certJson.CommitteeHotAuth) {
             type = "CommitteeHotAuth";
             const committeeHot = certJson.CommitteeHotAuth;
+            // Normalize hot credential with proper context (CIP-0129: cc_hot1)
+            const hotCredentialSource = committeeHot.hot_credential ?? null;
+            const hotCredential = normalizeCredential(hotCredentialSource, 'committeeHot', networkId);
             details = {
               hotCredential: {
-                type: committeeHot.hot_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: committeeHot.hot_credential?.Key || committeeHot.hot_credential?.Script || "",
-                bech32: committeeHot.hot_credential?.Key || committeeHot.hot_credential?.Script || ""
+                type: hotCredential.type,
+                hash: hotCredential.hash,
+                bech32: hotCredential.bech32 || hotCredential.hash
               },
               epoch: committeeHot.epoch || 0,
-              committeeMember: committeeHot.hot_credential?.Key || committeeHot.hot_credential?.Script || ""
+              committeeMember: hotCredential.bech32 || hotCredential.hash || ""
             };
           } else if (certJson.CommitteeColdResign) {
             type = "CommitteeColdResign";
             const committeeCold = certJson.CommitteeColdResign;
+            // Normalize cold credential with proper context (CIP-0129: cc_cold1)
+            const coldCredentialSource = committeeCold.cold_credential ?? null;
+            const coldCredential = normalizeCredential(coldCredentialSource, 'committeeCold', networkId);
             details = {
               coldCredential: {
-                type: committeeCold.cold_credential?.Key ? "KeyHash" : "ScriptHash",
-                hash: committeeCold.cold_credential?.Key || committeeCold.cold_credential?.Script || "",
-                bech32: committeeCold.cold_credential?.Key || committeeCold.cold_credential?.Script || ""
+                type: coldCredential.type,
+                hash: coldCredential.hash,
+                bech32: coldCredential.bech32 || coldCredential.hash
               },
               epoch: committeeCold.epoch || 0,
-              committeeMember: committeeCold.cold_credential?.Key || committeeCold.cold_credential?.Script || ""
+              committeeMember: coldCredential.bech32 || coldCredential.hash || ""
             };
           } else {
             // Fallback to original parsing method for unknown certificate types
@@ -822,8 +904,23 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     let governance: {
       constitution: { hash: string; url?: string } | null;
       committee: { members: Array<{ keyHash: string; epoch: number }>; threshold: number } | null;
-      drepVotes: Array<{ drepId: string; action: string; proposalId: string }>;
-      committeeVotes: Array<{ memberId: string; action: string; proposalId: string }>;
+      drepVotes: Array<{ 
+        drepId: string; 
+        drepHash?: string;
+        drepCredential?: { type: string; hash: string; bech32?: string };
+        action: string; 
+        proposalId: string;
+        anchor?: AnchorInfo;
+        anchorMissing?: boolean;
+      }>;
+      committeeVotes: Array<{ 
+        memberId: string; 
+        memberCredential?: { type: string; hash: string; bech32?: string };
+        action: string; 
+        proposalId: string;
+        anchor?: AnchorInfo;
+        anchorMissing?: boolean;
+      }>;
       proposals: Array<{ id: string; type: string; details: Record<string, unknown> }>;
     } | null = null;
     try {
@@ -834,8 +931,23 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         governance = {
           constitution: null as { hash: string; url?: string } | null,
           committee: null as { members: Array<{ keyHash: string; epoch: number }>; threshold: number } | null,
-          drepVotes: [] as Array<{ drepId: string; action: string; proposalId: string }>,
-          committeeVotes: [] as Array<{ memberId: string; action: string; proposalId: string }>,
+          drepVotes: [] as Array<{ 
+            drepId: string; 
+            drepHash?: string;
+            drepCredential?: { type: string; hash: string; bech32?: string };
+            action: string; 
+            proposalId: string;
+            anchor?: AnchorInfo;
+            anchorMissing?: boolean;
+          }>,
+          committeeVotes: [] as Array<{ 
+            memberId: string;
+            memberCredential?: { type: string; hash: string; bech32?: string };
+            action: string; 
+            proposalId: string;
+            anchor?: AnchorInfo;
+            anchorMissing?: boolean;
+          }>,
           proposals: [] as Array<{ id: string; type: string; details: Record<string, unknown> }>
         };
         
@@ -852,10 +964,15 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                                   procedure.voter.DRep ? 'drep' : 
                                   procedure.voter.StakingPool ? 'pool' : 'unknown';
                   
-                  // Process each vote
+                      // Process each vote
                   procedure.votes.forEach((vote: any) => {
                     if (vote.action_id && vote.voting_procedure) {
-                      const proposalId = `${vote.action_id.transaction_id}${vote.action_id.index}`;
+                      // Extract proposal ID properly (transaction_id is hex, index is a number)
+                      const txId = vote.action_id.transaction_id || '';
+                      const actionIndex = vote.action_id.index || 0;
+                      // Create governance action ID according to CIP-0129 (bech32 with gov_action1 prefix)
+                      const proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
+                      
                       const voteAction = vote.voting_procedure.vote;
                       
                       // Map vote action to our format
@@ -864,17 +981,44 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                       else if (voteAction === 'No') action = 'VoteNo';
                       else if (voteAction === 'Abstain') action = 'Abstain';
                       
+                      // Extract anchor from voting_procedure
+                      const anchor = parseAnchorDetails(vote.voting_procedure.anchor);
+                      const anchorMissing = !anchor || (!anchor.url && !anchor.hash && !anchor.bytes);
+                      
                       if (voterType === 'drep' && governance) {
+                        // Normalize DRep credential
+                        const drepCredentialSource = procedure.voter.DRep ?? null;
+                        const drepCredential = normalizeCredential(drepCredentialSource, 'drep', networkId);
+                        
                         governance.drepVotes.push({
-                          drepId: procedure.voter.DRep?.Key || procedure.voter.DRep || '',
+                          drepId: drepCredential.bech32 || drepCredential.hash || '',
+                          drepHash: drepCredential.hash || '',
+                          drepCredential: {
+                            type: drepCredential.type,
+                            hash: drepCredential.hash,
+                            bech32: drepCredential.bech32
+                          },
                           action: action,
-                          proposalId: proposalId
+                          proposalId: proposalId,
+                          anchor: anchor,
+                          anchorMissing: anchorMissing
                         });
                       } else if (voterType === 'committee' && governance) {
+                        // Normalize Committee member credential (use 'committeeHot' context for CIP-0129 encoding)
+                        const committeeCredentialSource = procedure.voter.ConstitutionalCommitteeHotCred ?? null;
+                        const committeeCredential = normalizeCredential(committeeCredentialSource, 'committeeHot', networkId);
+                        
                         governance.committeeVotes.push({
-                          memberId: procedure.voter.ConstitutionalCommitteeHotCred?.Key || procedure.voter.ConstitutionalCommitteeHotCred || '',
+                          memberId: committeeCredential.bech32 || committeeCredential.hash || '',
+                          memberCredential: {
+                            type: committeeCredential.type,
+                            hash: committeeCredential.hash,
+                            bech32: committeeCredential.bech32
+                          },
                           action: action,
-                          proposalId: proposalId
+                          proposalId: proposalId,
+                          anchor: anchor,
+                          anchorMissing: anchorMissing
                         });
                       }
                     }
@@ -900,7 +1044,10 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                 // Extract proposal ID from action_id if available
                 let proposalId = '';
                 if (proposal.action_id) {
-                  proposalId = `${proposal.action_id.transaction_id}${proposal.action_id.index}`;
+                  const txId = proposal.action_id.transaction_id || '';
+                  const actionIndex = proposal.action_id.index || 0;
+                  // Create governance action ID according to CIP-0129 (bech32 with gov_action1 prefix)
+                  proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
                 } else if (proposal.governance_action_id) {
                   proposalId = proposal.governance_action_id;
                 }
