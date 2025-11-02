@@ -259,6 +259,56 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         addAnchorDetails(certDetails.anchor, certDetails.anchorMissing, extractedDetails);
       }
 
+      // Committee Hot Auth
+      if (certType === 'CommitteeHotAuth' && certDetails.hotCredential) {
+        // Prefer bech32 representation if available
+        const hotCred = certDetails.hotCredential.bech32 || certDetails.hotCredential.hash || 'N/A';
+        const hotType = certDetails.hotCredential.type || 'Unknown';
+        extractedDetails.hotCredential = hotCred;
+        extractedDetails.hotCredentialType = hotType === 'KeyHash' ? 'Key' : hotType === 'ScriptHash' ? 'Script' : hotType;
+        
+        // Include hash if it differs from bech32
+        if (certDetails.hotCredential.hash && certDetails.hotCredential.bech32 && 
+            certDetails.hotCredential.hash !== certDetails.hotCredential.bech32) {
+          extractedDetails.hotCredentialHash = certDetails.hotCredential.hash;
+        }
+        
+        // Committee member ID (prefer bech32)
+        if (certDetails.committeeMember) {
+          extractedDetails.committeeMember = certDetails.committeeMember;
+        }
+        
+        // Epoch
+        if (certDetails.epoch !== undefined) {
+          extractedDetails.epoch = certDetails.epoch;
+        }
+      }
+
+      // Committee Cold Resign
+      if (certType === 'CommitteeColdResign' && certDetails.coldCredential) {
+        // Prefer bech32 representation if available
+        const coldCred = certDetails.coldCredential.bech32 || certDetails.coldCredential.hash || 'N/A';
+        const coldType = certDetails.coldCredential.type || 'Unknown';
+        extractedDetails.coldCredential = coldCred;
+        extractedDetails.coldCredentialType = coldType === 'KeyHash' ? 'Key' : coldType === 'ScriptHash' ? 'Script' : coldType;
+        
+        // Include hash if it differs from bech32
+        if (certDetails.coldCredential.hash && certDetails.coldCredential.bech32 && 
+            certDetails.coldCredential.hash !== certDetails.coldCredential.bech32) {
+          extractedDetails.coldCredentialHash = certDetails.coldCredential.hash;
+        }
+        
+        // Committee member ID (prefer bech32)
+        if (certDetails.committeeMember) {
+          extractedDetails.committeeMember = certDetails.committeeMember;
+        }
+        
+        // Epoch
+        if (certDetails.epoch !== undefined) {
+          extractedDetails.epoch = certDetails.epoch;
+        }
+      }
+
       return {
         index,
         type,
@@ -680,6 +730,9 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                           const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
                           const isRewardAccount = key === 'rewardAccount' && value !== 'N/A';
                           const isDrepHash = key === 'drepHash' && value !== 'N/A';
+                          const isHotCredential = key === 'hotCredential' && value !== 'N/A' && String(value).startsWith('cc_hot1');
+                          const isColdCredential = key === 'coldCredential' && value !== 'N/A' && String(value).startsWith('cc_cold1');
+                          const isCommitteeMember = key === 'committeeMember' && value !== 'N/A' && (String(value).startsWith('cc_hot1') || String(value).startsWith('cc_cold1'));
                           
                           // Get the type badge for this field
                           const typeKey = `${key}Type`;
@@ -692,6 +745,11 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             'stakeKey': 'Stake Credential',
                             'rewardAccount': 'Reward Account',
                             'drepHash': 'DRep Hash',
+                            'hotCredential': 'Hot Credential',
+                            'hotCredentialHash': 'Hot Credential Hash',
+                            'coldCredential': 'Cold Credential',
+                            'coldCredentialHash': 'Cold Credential Hash',
+                            'committeeMember': 'Committee Member',
                             'anchorUrl': 'Anchor URL',
                             'anchorHash': 'Anchor Hash',
                             'anchorBytes': 'Anchor Bytes'
@@ -731,18 +789,36 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                                     params={{ stakeKey: String(value) }}
                                   />
                                 )}
-                                {isDrepId && (
-                                  <BlockExplorerLink 
-                                    type="drep" 
-                                    params={{ drepId: String(value) }}
-                                  />
-                                )}
-                                {isRewardAccount && (
-                                  <BlockExplorerLink 
-                                    type="address" 
-                                    params={{ address: String(value) }}
-                                  />
-                                )}
+                                  {isDrepId && (
+                                    <BlockExplorerLink 
+                                      type="drep" 
+                                      params={{ drepId: String(value) }}
+                                    />
+                                  )}
+                                  {isRewardAccount && (
+                                    <BlockExplorerLink 
+                                      type="address" 
+                                      params={{ address: String(value) }}
+                                    />
+                                  )}
+                                  {isHotCredential && (
+                                    <BlockExplorerLink 
+                                      type="committee" 
+                                      params={{ memberId: String(value) }}
+                                    />
+                                  )}
+                                  {isColdCredential && (
+                                    <BlockExplorerLink 
+                                      type="committee" 
+                                      params={{ memberId: String(value) }}
+                                    />
+                                  )}
+                                  {isCommitteeMember && (
+                                    <BlockExplorerLink 
+                                      type="committee" 
+                                      params={{ memberId: String(value) }}
+                                    />
+                                  )}
                               </div>
                             </div>
                           );
@@ -811,7 +887,11 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             return null;
                           }
                           
-                          const isMemberId = key === 'memberId' && value !== 'N/A' && String(value).startsWith('cc1');
+                          const isMemberId = key === 'memberId' && value !== 'N/A' && (
+                            String(value).startsWith('cc_hot1') || 
+                            String(value).startsWith('cc_cold1') || 
+                            String(value).startsWith('cc1')
+                          );
                           const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
                           const isProposalId = key === 'proposalId' && value !== 'N/A';
                           const isAnchorUrl = key === 'anchorUrl' && value !== 'N/A';

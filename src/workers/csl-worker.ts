@@ -126,7 +126,7 @@ function createBech32Credential(hash: string, type: string, context?: 'stake' | 
           return rewardAddress.to_address().to_bech32();
         }
       } else {
-        // For drep and committee contexts, use CIP-0129 HRP prefixes
+        // For drep and committee contexts, use CIP-0129 HRP prefixes with bech32-buffer
         // CIP-0129: drep uses 'drep1', committee hot uses 'cc_hot1', committee cold uses 'cc_cold1'
         let prefix = '';
         if (context === 'drep') {
@@ -139,13 +139,44 @@ function createBech32Credential(hash: string, type: string, context?: 'stake' | 
           prefix = ''; // empty for unknown context
         }
         
-        // Try to create Ed25519KeyHash or ScriptHash from bytes
-        if (isKeyType) {
-          const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
-          return keyHash.to_bech32(prefix);
-        } else {
-          const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
-          return scriptHash.to_bech32(prefix);
+        if (!prefix) return null;
+        
+        // Use bech32-buffer for proper CIP-0129 encoding
+        // For committee credentials, CIP-0129 requires a header byte:
+        // - Key type: Hot = 0x00, Cold = 0x01
+        // - Credential type: Key Hash = 0x02, Script Hash = 0x03
+        // Header byte = (keyType << 4) | credentialType
+        try {
+          const hashBuffer = Buffer.from(hash, 'hex');
+          
+          // For committee credentials, prepend header byte according to CIP-0129
+          if (context === 'committeeHot' || context === 'committeeCold') {
+            const keyType = context === 'committeeHot' ? 0x00 : 0x01; // Hot = 0, Cold = 1
+            const credentialType = isKeyType ? 0x02 : 0x03; // Key Hash = 2, Script Hash = 3
+            const headerByte = (keyType << 4) | credentialType;
+            
+            // Prepend header byte to hash
+            const dataWithHeader = Buffer.concat([Buffer.from([headerByte]), hashBuffer]);
+            return bech32Buffer.encode(prefix, dataWithHeader).toString();
+          } else {
+            // For DRep, no header byte needed
+            return bech32Buffer.encode(prefix, hashBuffer).toString();
+          }
+        } catch (error) {
+          console.warn('Failed to create Bech32 credential with bech32-buffer:', error);
+          // Fallback to CSL method if bech32-buffer fails
+          try {
+            if (isKeyType) {
+              const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
+              return keyHash.to_bech32(prefix);
+            } else {
+              const scriptHash = CSL.ScriptHash.from_bytes(hexBytes);
+              return scriptHash.to_bech32(prefix);
+            }
+          } catch (fallbackError) {
+            console.warn('Fallback Bech32 creation also failed:', fallbackError);
+            return null;
+          }
         }
       }
     } catch (error) {
@@ -973,9 +1004,9 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                           anchorMissing: anchorMissing
                         });
                       } else if (voterType === 'committee' && governance) {
-                        // Normalize Committee member credential
+                        // Normalize Committee member credential (use 'committeeHot' context for CIP-0129 encoding)
                         const committeeCredentialSource = procedure.voter.ConstitutionalCommitteeHotCred ?? null;
-                        const committeeCredential = normalizeCredential(committeeCredentialSource, 'committee', networkId);
+                        const committeeCredential = normalizeCredential(committeeCredentialSource, 'committeeHot', networkId);
                         
                         governance.committeeVotes.push({
                           memberId: committeeCredential.bech32 || committeeCredential.hash || '',
