@@ -7,6 +7,8 @@ import { Copy, ArrowRight, Coins, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
+import { getKnownAddressLabel } from '@/lib/labels';
+import { KnownLabelHighlight } from '@/components/known-label-highlight';
 
 interface IoValueTabProps {
   tx: DomainTx;
@@ -39,89 +41,98 @@ export function IoValueTab({ tx }: IoValueTabProps) {
             <div className="space-y-3">
               {tx.inputs
                 .filter(input => !input.isCollateral)
-                .map((input, index) => (
-                <div key={index} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Input #{index}</span>
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Transaction ID</span>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {input.txId.slice(0, 16)}...
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <BlockExplorerLink 
-                          type="transaction" 
-                          params={{ txHash: input.txId }}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Index</span>
-                      <span className="text-xs">{input.index}</span>
-                    </div>
-                    
-                    {input.resolved?.address && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Address</span>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs bg-muted px-2 py-1 rounded">
-                            {input.resolved.address.slice(0, 20)}...
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                          <BlockExplorerLink 
-                            type="address" 
-                            params={{ address: input.resolved.address }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                .map((input, index) => {
+                  const resolvedLabel = getKnownAddressLabel(input.resolved?.address);
 
-                    {input.resolved?.value && (
+                  return (
+                    <div key={index} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Input #{index}</span>
+                      </div>
+                      
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">ADA</span>
-                          <span className="text-xs font-mono">{formatAda(input.resolved.value.ada)}</span>
+                          <span className="text-xs text-muted-foreground">Transaction ID</span>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded">
+                              {input.txId.slice(0, 16)}...
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <BlockExplorerLink 
+                              type="transaction" 
+                              params={{ txHash: input.txId }}
+                            />
+                          </div>
                         </div>
                         
-                        {input.resolved.value.assets.length > 0 && (
-                          <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground">Assets</span>
-                            <div className="space-y-1">
-                              {input.resolved.value.assets.map((asset, assetIndex) => (
-                                <div key={assetIndex} className="flex items-center justify-between text-xs">
-                                  <span className="truncate">
-                                    {asset.policyId.slice(0, 8)}...{asset.assetName}
-                                  </span>
-                                  <span className="font-mono">
-                                    {formatAssetQuantity(asset.quantity)}
-                                  </span>
-                                </div>
-                              ))}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Index</span>
+                          <span className="text-xs">{input.index}</span>
+                        </div>
+                        
+                        {input.resolved?.address && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Address</span>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded">
+                                  {input.resolved.address.slice(0, 20)}...
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                <BlockExplorerLink 
+                                  type="address" 
+                                  params={{ address: input.resolved.address }}
+                                />
+                              </div>
                             </div>
+                            {resolvedLabel && (
+                              <KnownLabelHighlight category="address" label={resolvedLabel} />
+                            )}
+                          </div>
+                        )}
+
+                        {input.resolved?.value && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">ADA</span>
+                              <span className="text-xs font-mono">{formatAda(input.resolved.value.ada)}</span>
+                            </div>
+                            
+                            {input.resolved.value.assets.length > 0 && (
+                              <div className="space-y-1">
+                                <span className="text-xs text-muted-foreground">Assets</span>
+                                <div className="space-y-1">
+                                  {input.resolved.value.assets.map((asset, assetIndex) => (
+                                    <div key={assetIndex} className="flex items-center justify-between text-xs">
+                                      <span className="truncate">
+                                        {asset.policyId.slice(0, 8)}...{asset.assetName}
+                                      </span>
+                                      <span className="font-mono">
+                                        {formatAssetQuantity(asset.quantity)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </CardContent>
@@ -140,90 +151,99 @@ export function IoValueTab({ tx }: IoValueTabProps) {
             <div className="space-y-3">
               {tx.inputs
                 .filter(input => input.isCollateral)
-                .map((input, index) => (
-                  <div key={index} className="border rounded-lg p-3 space-y-2 bg-orange-50 dark:bg-orange-950/20">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Collateral Input #{index}</span>
-                      <Badge variant="secondary">Collateral</Badge>
-                    </div>
-                    
-                    <div className="space-y-1">
+                .map((input, index) => {
+                  const collateralLabel = getKnownAddressLabel(input.resolved?.address);
+
+                  return (
+                    <div key={index} className="border rounded-lg p-3 space-y-2 bg-orange-50 dark:bg-orange-950/20">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Transaction ID</span>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs bg-muted px-2 py-1 rounded">
-                            {input.txId.slice(0, 16)}...
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                          <BlockExplorerLink 
-                            type="transaction" 
-                            params={{ txHash: input.txId }}
-                          />
-                        </div>
+                        <span className="text-sm font-medium">Collateral Input #{index}</span>
+                        <Badge variant="secondary">Collateral</Badge>
                       </div>
                       
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Index</span>
-                        <span className="text-xs">{input.index}</span>
-                      </div>
-                      
-                      {input.resolved?.address && (
+                      <div className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Address</span>
+                          <span className="text-xs text-muted-foreground">Transaction ID</span>
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-2 py-1 rounded">
-                              {input.resolved.address.slice(0, 20)}...
+                              {input.txId.slice(0, 16)}...
                             </code>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
+                              onClick={() => copyToClipboard(input.txId, 'Transaction ID')}
                             >
                               <Copy className="h-3 w-3" />
                             </Button>
                             <BlockExplorerLink 
-                              type="address" 
-                              params={{ address: input.resolved.address }}
+                              type="transaction" 
+                              params={{ txHash: input.txId }}
                             />
                           </div>
                         </div>
-                      )}
-
-                      {input.resolved?.value && (
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">ADA</span>
-                            <span className="text-xs font-mono">{formatAda(input.resolved.value.ada)}</span>
-                          </div>
-                          
-                          {input.resolved.value.assets.length > 0 && (
-                            <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Assets</span>
-                              <div className="space-y-1">
-                                {input.resolved.value.assets.map((asset, assetIndex) => (
-                                  <div key={assetIndex} className="flex items-center justify-between text-xs">
-                                    <span className="truncate">
-                                      {asset.policyId.slice(0, 8)}...{asset.assetName}
-                                    </span>
-                                    <span className="font-mono">
-                                      {formatAssetQuantity(asset.quantity)}
-                                    </span>
-                                  </div>
-                                ))}
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Index</span>
+                          <span className="text-xs">{input.index}</span>
+                        </div>
+                        
+                        {input.resolved?.address && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Address</span>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded">
+                                  {input.resolved.address.slice(0, 20)}...
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(input.resolved!.address!, 'Address')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                <BlockExplorerLink 
+                                  type="address" 
+                                  params={{ address: input.resolved.address }}
+                                />
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
+                            {collateralLabel && (
+                              <KnownLabelHighlight category="address" label={collateralLabel} />
+                            )}
+                          </div>
+                        )}
+
+                        {input.resolved?.value && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">ADA</span>
+                              <span className="text-xs font-mono">{formatAda(input.resolved.value.ada)}</span>
+                            </div>
+                            
+                            {input.resolved.value.assets.length > 0 && (
+                              <div className="space-y-1">
+                                <span className="text-xs text-muted-foreground">Assets</span>
+                                <div className="space-y-1">
+                                  {input.resolved.value.assets.map((asset, assetIndex) => (
+                                    <div key={assetIndex} className="flex items-center justify-between text-xs">
+                                      <span className="truncate">
+                                        {asset.policyId.slice(0, 8)}...{asset.assetName}
+                                      </span>
+                                      <span className="font-mono">
+                                        {formatAssetQuantity(asset.quantity)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </CardContent>
         </Card>
@@ -242,76 +262,85 @@ export function IoValueTab({ tx }: IoValueTabProps) {
             <p className="text-muted-foreground text-sm">No outputs</p>
           ) : (
             <div className="space-y-3">
-              {tx.outputs.map((output, index) => (
-                <div key={index} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Output #{index}</span>
-                    <div className="flex gap-1">
-                      {output.datum && <Badge variant="outline">Datum</Badge>}
-                      {output.scriptRef && <Badge variant="outline">Script</Badge>}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-1">
+              {tx.outputs.map((output, index) => {
+                const outputLabel = getKnownAddressLabel(output.address);
+
+                return (
+                  <div key={index} className="border rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Address</span>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {output.address.slice(0, 20)}...
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyToClipboard(output.address, 'Address')}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <BlockExplorerLink 
-                          type="address" 
-                          params={{ address: output.address }}
-                        />
+                      <span className="text-sm font-medium">Output #{index}</span>
+                      <div className="flex gap-1">
+                        {output.datum && <Badge variant="outline">Datum</Badge>}
+                        {output.scriptRef && <Badge variant="outline">Script</Badge>}
                       </div>
                     </div>
                     
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">ADA</span>
-                      <span className="text-xs font-mono">{formatAda(output.ada)}</span>
-                    </div>
-                    
-                    {output.assets.length > 0 && (
-                      <div className="space-y-1">
-                        <span className="text-xs text-muted-foreground">Assets</span>
-                        <div className="space-y-1">
-                          {output.assets.map((asset, assetIndex) => (
-                            <div key={assetIndex} className="flex items-center justify-between text-xs">
-                              <span className="truncate">
-                                {asset.policyId.slice(0, 8)}...{asset.assetName}
-                              </span>
-                              <span className="font-mono">
-                                {formatAssetQuantity(asset.quantity)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {output.datum && (
-                      <div className="space-y-1">
-                        <span className="text-xs text-muted-foreground">Datum</span>
-                        <div className="text-xs">
-                          {output.datum.inline ? 'Inline' : 'Hash'}
-                          {output.datum.hash && (
-                            <code className="ml-2 bg-muted px-1 py-0.5 rounded">
-                              {output.datum.hash.slice(0, 16)}...
+                    <div className="space-y-1">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Address</span>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded">
+                              {output.address.slice(0, 20)}...
                             </code>
-                          )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyToClipboard(output.address, 'Address')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <BlockExplorerLink 
+                              type="address" 
+                              params={{ address: output.address }}
+                            />
+                          </div>
                         </div>
+                        {outputLabel && (
+                          <KnownLabelHighlight category="address" label={outputLabel} />
+                        )}
                       </div>
-                    )}
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">ADA</span>
+                        <span className="text-xs font-mono">{formatAda(output.ada)}</span>
+                      </div>
+                      
+                      {output.assets.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Assets</span>
+                          <div className="space-y-1">
+                            {output.assets.map((asset, assetIndex) => (
+                              <div key={assetIndex} className="flex items-center justify-between text-xs">
+                                <span className="truncate">
+                                  {asset.policyId.slice(0, 8)}...{asset.assetName}
+                                </span>
+                                <span className="font-mono">
+                                  {formatAssetQuantity(asset.quantity)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {output.datum && (
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Datum</span>
+                          <div className="text-xs">
+                            {output.datum.inline ? 'Inline' : 'Hash'}
+                            {output.datum.hash && (
+                              <code className="ml-2 bg-muted px-1 py-0.5 rounded">
+                                {output.datum.hash.slice(0, 16)}...
+                              </code>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -419,8 +448,11 @@ export function IoValueTab({ tx }: IoValueTabProps) {
               <p className="text-sm text-muted-foreground">
                 The collateral return output specifies where any unused collateral should be returned after script execution.
               </p>
-              
-              <div className="border rounded-lg p-3 space-y-2">
+              {(() => {
+                const collateralReturnLabel = getKnownAddressLabel(tx.collateralReturn.address);
+
+                return (
+                  <div className="border rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Address</span>
                   <div className="flex items-center gap-2">
@@ -440,6 +472,9 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                     />
                   </div>
                 </div>
+                    {collateralReturnLabel && (
+                      <KnownLabelHighlight category="address" label={collateralReturnLabel} />
+                    )}
                 
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">ADA</span>
@@ -466,6 +501,8 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                   </div>
                 )}
               </div>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>

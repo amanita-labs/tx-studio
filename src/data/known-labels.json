@@ -1,0 +1,74 @@
+{
+  "scripts": {
+    "8583857e4a12ffe1e6f641a1785a0f2f036c565cfbe6ff9db8e5a469": {
+      "name": "Intersect 2025 TRC"
+    }
+  },
+  "addresses": {
+    "addr1xxzc8pt7fgf0lc0x7eq6z7z6puhsxmzktna7dluahrj6g6v9swzhujsjlls7dajp59u95re0qdk9vh8mumlemw89535s4ecqxj": {
+      "name": "Intersect 2025 TRC"
+    }
+  },
+  "signerKeyHashes": {
+    "4e72b1facdc7eea745767b8daca40bf73d75eb0e88dcee80d57eec5d":{
+      "name": "Intersect Leadership 1 - Primary"
+    },
+    "1c732c072364a2afd42a03228f3816fec37e73f64b61f4c12bab55ee":{
+      "name": "Intersect Leadership 1 - Secondary"
+    },
+    "91f5b1d436080c1beca93fbbb96596312d8f615b0ad9e94470af2224":{
+      "name": "Intersect Leadership 2 - Primary"
+    },
+    "a1ebdcc53ad3907461d92204f9789ddb640dcdcb0d9fce786a55eaf4":{
+      "name": "Intersect Leadership 2 - Secondary"
+    },
+    "1be0008bf2994524c0eaf0efdae4431e4a61ef7d974804fa794110b7":{
+      "name": "Intersect Admin 1 - Primary"
+    },
+    "27194940fae07315f4dc7a0394535dea7795dab2f232ee40f4457e8f":{
+      "name": "Intersect Admin 1 - Secondary"
+    },
+    "a664de561ccd2ca9a07c060d4dd7cea4dc68ba89d4bf04b21ff0726f":{
+      "name": "Intersect Admin 2 - Primary"
+    },
+    "821dbb013b85872e91f59e5c3c566390c866aea114a13b1b68f064bc":{
+      "name": "Intersect Admin 2 - Secondary"
+    },
+    "c236d8dc9441605238a5fe9cc7e6c1a79903289a4249c33122bf9627":{
+      "name": "Intersect Admin 3 - Primary"
+    },
+    "1b5850270f7a77ea9ef570a83fb4b120bf814ec94aa0dba0c9c28844":{
+      "name": "Intersect Admin 3 - Secondary"
+    },
+    "ac3de68e8e1f9af3e00b299e7858bc44e126b33e130d06223d799d5d":{
+      "name": "Cardano Foundation - Primary"
+    },
+    "c9f2966a1b357718b45a006954106ba1f7ae9fea16e9826f3486ddd6":{
+      "name": "Cardano Foundation - Secondary"
+    },
+    "1880102b04725318eb7a6f9f481815c82473c2f50cfe9932c85a3bf8":{
+      "name": "Sundae Labs - Primary"
+    },
+    "7a827787c47a4e74f102330cc8566ed9845047903121025911163b9d":{
+      "name": "Sundae Labs - Secondary"
+    },
+    "a7f06cf4e9c03c6b7eac317d5533d573a9be3018fb7b9d95dd778d39":{
+      "name": "Xerberus - Primary"
+    },
+    "d8261e2c334b58072042130182de4fb945a46dd1b1974e1df755fe96":{
+      "name": "Xerberus - Secondary"
+    },
+    "8349f8b41d8337b617947ace444ef95b2b80ff2605cadf969914cf95":{
+      "name": "NMKR - Primary"
+    },
+    "cd820bac2773f2df622c567aa547894177a818593bdae996dd0881e3":{
+      "name": "NMKR - Secondary"
+    },
+    "679ad28e567eb42ddb30a5cf6b5f066b2defbce393f19968d711f658":{
+      "name": "DQuadrant - Primary"
+    },
+    "36e0cf1e52e05ef92e52c7bc2a04493d6bae481b8acbab12ec4300d7":{
+      "name": "DQuadrant - Secondary"
+    }
+  }
+}
