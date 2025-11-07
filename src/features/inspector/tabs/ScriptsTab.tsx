@@ -8,6 +8,8 @@ import { Copy, FileCode, Code, Hash, Zap, CheckCircle2, Cpu } from 'lucide-react
 import { DomainTx } from '@/domain/tx';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
+import { getKnownScriptLabel } from '@/lib/labels';
+import { KnownLabelHighlight } from '@/components/known-label-highlight';
 
 interface ScriptsTabProps {
   tx: DomainTx;
@@ -241,6 +243,7 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                 const safeType = String(script?.type || 'unknown');
                 const safeHash = String(script?.hash || '');
                 const safeSize = script?.bytesLen && !isNaN(Number(script.bytesLen)) ? Number(script.bytesLen) : null;
+                const scriptLabel = getKnownScriptLabel(safeHash);
                 
                 return (
                   <div key={index} className="border rounded-lg p-3 space-y-2">
@@ -253,6 +256,9 @@ export function ScriptsTab({ tx }: ScriptsTabProps) {
                     </div>
                     
                     <div className="space-y-1">
+                      {scriptLabel && (
+                        <KnownLabelHighlight category="script" label={scriptLabel} />
+                      )}
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-muted-foreground">Hash</span>
                         <div className="flex items-center gap-1">

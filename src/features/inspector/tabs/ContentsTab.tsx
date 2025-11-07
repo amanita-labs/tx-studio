@@ -27,6 +27,8 @@ import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
 import { formatLovelace, formatAda } from '@/lib/utils/ada';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
+import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
+import { KnownLabelHighlight } from '@/components/known-label-highlight';
 
 // Helper component for time remaining
 function ValidityTimeRemaining({ slot }: { slot: number }) {
@@ -1065,40 +1067,74 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                     <p className="text-sm text-muted-foreground">
                       These signers must provide signatures for the transaction to be valid.
                     </p>
-                    {tx.signers.filter(s => s.isRequired && !s.isWitness).map((signer, index) => (
-                      <Card key={`required-${index}`}>
-                        <CardHeader>
-                          <CardTitle className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Users className="h-5 w-5 text-red-600" />
-                              <span className="capitalize">{signer.type} Signer</span>
-                              <Badge variant="destructive" className="text-xs">
-                                Required
-                              </Badge>
-                            </div>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">Hash</span>
+                    {tx.signers.filter(s => s.isRequired && !s.isWitness).map((signer, index) => {
+                      const signerLabel = getKnownSignerLabel(signer.hash);
+                      const signerAddressLabel = getKnownAddressLabel(signer.address);
+
+                      return (
+                        <Card key={`required-${index}`}>
+                          <CardHeader>
+                            <CardTitle className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <code className="text-xs bg-muted px-2 py-1 rounded">
-                                  {signer.hash.slice(0, 16)}...
-                                </code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => copyToClipboard(signer.hash, 'Required signer hash')}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
+                                <Users className="h-5 w-5 text-red-600" />
+                                <span className="capitalize">{signer.type} Signer</span>
+                                <Badge variant="destructive" className="text-xs">
+                                  Required
+                                </Badge>
                               </div>
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">Hash</span>
+                                <div className="flex items-center gap-2">
+                                  <code className="text-xs bg-muted px-2 py-1 rounded">
+                                    {signer.hash.slice(0, 16)}...
+                                  </code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => copyToClipboard(signer.hash, 'Required signer hash')}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                              {signerLabel && (
+                                <KnownLabelHighlight category="signer" label={signerLabel} />
+                              )}
+                              {signer.address && (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">Linked Address</span>
+                                    <div className="flex items-center gap-2">
+                                      <code className="text-xs bg-muted px-2 py-1 rounded">
+                                        {signer.address.slice(0, 16)}...
+                                      </code>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => copyToClipboard(signer.address!, 'Signer address')}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                      <BlockExplorerLink 
+                                        type="address" 
+                                        params={{ address: signer.address }}
+                                      />
+                                    </div>
+                                  </div>
+                                  {signerAddressLabel && (
+                                    <KnownLabelHighlight category="address" label={signerAddressLabel} />
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -1112,80 +1148,93 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                     <p className="text-sm text-muted-foreground">
                       These signatures and scripts have been provided with the transaction.
                     </p>
-                    {tx.signers.filter(s => s.isWitness).map((signer, index) => (
-                      <Card key={`witness-${index}`}>
-                        <CardHeader>
-                          <CardTitle className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              {signer.type === 'vkey' && <Users className="h-5 w-5 text-blue-600" />}
-                              {signer.type === 'native' && <Shield className="h-5 w-5 text-green-600" />}
-                              {signer.type === 'plutus' && <Hash className="h-5 w-5 text-purple-600" />}
-                              <span className="capitalize">{signer.type} Witness</span>
-                              <Badge variant="secondary" className="text-xs">
-                                Witness
-                              </Badge>
-                              {signer.isRequired && (
-                                <Badge variant="destructive" className="text-xs">
-                                  Required
-                                </Badge>
-                              )}
-                            </div>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">Type</span>
-                              <Badge className={
-                                signer.type === 'vkey' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                                signer.type === 'native' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                                'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                              }>
-                                {signer.type}
-                              </Badge>
-                            </div>
-                            
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">Hash</span>
+                    {tx.signers.filter(s => s.isWitness).map((signer, index) => {
+                      const signerLabel = getKnownSignerLabel(signer.hash);
+                      const signerAddressLabel = getKnownAddressLabel(signer.address);
+
+                      return (
+                        <Card key={`witness-${index}`}>
+                          <CardHeader>
+                            <CardTitle className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <code className="text-xs bg-muted px-2 py-1 rounded">
-                                  {signer.hash.slice(0, 16)}...
-                                </code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => copyToClipboard(signer.hash, 'Witness hash')}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
+                                {signer.type === 'vkey' && <Users className="h-5 w-5 text-blue-600" />}
+                                {signer.type === 'native' && <Shield className="h-5 w-5 text-green-600" />}
+                                {signer.type === 'plutus' && <Hash className="h-5 w-5 text-purple-600" />}
+                                <span className="capitalize">{signer.type} Witness</span>
+                                <Badge variant="secondary" className="text-xs">
+                                  Witness
+                                </Badge>
+                                {signer.isRequired && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Required
+                                  </Badge>
+                                )}
                               </div>
-                            </div>
-                            
-                            {signer.address && (
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">Address</span>
+                                <span className="text-sm font-medium">Type</span>
+                                <Badge className={
+                                  signer.type === 'vkey' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                  signer.type === 'native' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                  'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                                }>
+                                  {signer.type}
+                                </Badge>
+                              </div>
+                              
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">Hash</span>
                                 <div className="flex items-center gap-2">
                                   <code className="text-xs bg-muted px-2 py-1 rounded">
-                                    {signer.address.slice(0, 16)}...
+                                    {signer.hash.slice(0, 16)}...
                                   </code>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => copyToClipboard(signer.address!, 'Witness address')}
+                                    onClick={() => copyToClipboard(signer.hash, 'Witness hash')}
                                   >
                                     <Copy className="h-3 w-3" />
                                   </Button>
-                                  <BlockExplorerLink 
-                                    type="address" 
-                                    params={{ address: signer.address }}
-                                  />
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                              {signerLabel && (
+                                <KnownLabelHighlight category="signer" label={signerLabel} />
+                              )}
+                              
+                              {signer.address && (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">Address</span>
+                                    <div className="flex items-center gap-2">
+                                      <code className="text-xs bg-muted px-2 py-1 rounded">
+                                        {signer.address.slice(0, 16)}...
+                                      </code>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => copyToClipboard(signer.address!, 'Witness address')}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                      <BlockExplorerLink 
+                                        type="address" 
+                                        params={{ address: signer.address }}
+                                      />
+                                    </div>
+                                  </div>
+                                  {signerAddressLabel && (
+                                    <KnownLabelHighlight category="address" label={signerAddressLabel} />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
               </>
