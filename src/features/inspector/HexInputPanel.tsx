@@ -1,24 +1,26 @@
 // src/features/inspector/HexInputPanel.tsx
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { HexEditor } from '@/components/hex-editor';
-import { Copy, Download, Upload, AlertCircle, CheckCircle2, Share2 } from 'lucide-react';
+import { Copy, Download, Upload, AlertCircle, CheckCircle2, Share2, Loader2 } from 'lucide-react';
 import { isValidHex } from '@/lib/utils/hex';
 import { SAMPLE_TRANSACTIONS } from '@/lib/sample-data';
 import { useCSLWorker } from '@/hooks/use-csl-worker';
 import { toast } from 'sonner';
 
 export function HexInputPanel() {
-  const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setError, clearTx } = useAppStore();
+  const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setError, clearTx, isLoading } = useAppStore();
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
   const { parseTransaction } = useCSLWorker();
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastDissectedHexRef = useRef<string>('');
 
   const validateHex = useCallback((hex: string) => {
     if (!hex) {
@@ -30,28 +32,44 @@ export function HexInputPanel() {
     return valid;
   }, []);
 
+  // Sync localHex with txHex from store when it changes externally (e.g., from URL params)
+  useEffect(() => {
+    if (txHex !== localHex && txHex !== lastDissectedHexRef.current) {
+      setLocalHex(txHex);
+      validateHex(txHex);
+    }
+  }, [txHex, localHex, validateHex]);
+
   const handleHexChange = (value: string) => {
     setLocalHex(value);
     validateHex(value);
   };
 
-  const handleDissect = async () => {
-    if (!localHex.trim()) {
+  const handleDissect = useCallback(async (hexToDissect: string) => {
+    const trimmedHex = hexToDissect.trim();
+    
+    if (!trimmedHex) {
       toast.error('Please enter a transaction hex');
       return;
     }
     
-    if (!isValid) {
+    if (!isValidHex(trimmedHex) || trimmedHex.length < 100) {
       toast.error('Invalid hex format');
       return;
     }
 
-    setTxHex(localHex.trim());
+    // Don't dissect if we already dissected this exact hex
+    if (lastDissectedHexRef.current === trimmedHex) {
+      return;
+    }
+
+    setTxHex(trimmedHex);
     setLoading(true);
     setError(null);
+    lastDissectedHexRef.current = trimmedHex;
 
     try {
-      const result = await parseTransaction(localHex.trim(), network);
+      const result = await parseTransaction(trimmedHex, network);
       setParsedTx(result);
       
       if (result.success) {
@@ -66,15 +84,76 @@ export function HexInputPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [network, setTxHex, setParsedTx, setLoading, setError, parseTransaction]);
+
+  // Handler for manual dissect button click
+  const handleDissectClick = useCallback(() => {
+    handleDissect(localHex);
+  }, [localHex, handleDissect]);
+
+  // Automatically dissect transaction when valid hex is entered (with debouncing)
+  useEffect(() => {
+    // Clear any existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // If hex is empty, clear the transaction
+    if (!localHex.trim()) {
+      if (txHex) {
+        clearTx();
+        lastDissectedHexRef.current = '';
+      }
+      return;
+    }
+
+    // Only auto-dissect if hex is valid
+    if (isValid && localHex.trim().length >= 100) {
+      // Debounce the dissection to avoid too many calls while user is typing
+      debounceTimerRef.current = setTimeout(() => {
+        handleDissect(localHex);
+      }, 500); // 500ms debounce
+    }
+
+    // Cleanup function
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [localHex, isValid, handleDissect, clearTx, txHex]);
+
+  // Helper function to clean hex from various formats
+  const cleanHexString = useCallback((text: string): string => {
+    // Remove common hex prefixes
+    let cleaned = text.replace(/^0x/gi, '');
+    
+    // Remove byte offsets (e.g., "00000000: " or "0x0000: ")
+    cleaned = cleaned.replace(/^[0-9a-fA-F]{1,8}:\s*/gm, '');
+    
+    // Remove all whitespace (spaces, newlines, tabs)
+    cleaned = cleaned.replace(/\s/g, '');
+    
+    // Convert to lowercase
+    cleaned = cleaned.toLowerCase();
+    
+    // Remove any non-hex characters
+    cleaned = cleaned.replace(/[^0-9a-f]/g, '');
+    
+    return cleaned;
+  }, []);
 
   const handlePasteFromClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      const trimmed = text.trim();
-      setLocalHex(trimmed);
-      validateHex(trimmed);
-      toast.success('Pasted from clipboard');
+      const cleaned = cleanHexString(text);
+      if (cleaned.length > 0) {
+        setLocalHex(cleaned);
+        validateHex(cleaned);
+        toast.success('Pasted and cleaned hex from clipboard');
+      } else {
+        toast.error('No valid hex found in clipboard');
+      }
     } catch (error) {
       toast.error('Failed to read clipboard');
     }
@@ -159,7 +238,29 @@ export function HexInputPanel() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="hex-input">Transaction Hex</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="hex-input">Transaction Hex</Label>
+            {localHex && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Parsing...</span>
+                  </>
+                ) : isValid ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                    <span>{Math.floor(localHex.length / 2)} bytes</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-3 w-3 text-destructive" />
+                    <span>Invalid format</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <div className="relative">
             <HexEditor
               value={localHex}
@@ -167,26 +268,37 @@ export function HexInputPanel() {
               placeholder="Paste your hex-encoded Cardano transaction here..."
               className={localHex && !isValid ? 'border-destructive' : ''}
             />
-            {localHex && (
-              <div className="absolute top-2 right-2 z-10">
-                {isValid ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-destructive" />
-                )}
-              </div>
-            )}
           </div>
+          {!localHex && (
+            <p className="text-sm text-muted-foreground">
+              Paste raw hex (with or without spaces, newlines, or 0x prefix) - it will be cleaned automatically
+            </p>
+          )}
           {localHex && !isValid && (
             <p className="text-sm text-destructive">
-              Invalid hex format. Must be valid hexadecimal with even length.
+              Invalid hex format. Must be valid hexadecimal with even length (minimum 100 characters).
+            </p>
+          )}
+          {localHex && isValid && localHex.length >= 100 && !isLoading && (
+            <p className="text-sm text-muted-foreground">
+              Transaction will be parsed automatically, or click "Dissect Transaction" to parse immediately.
             </p>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={handleDissect} disabled={!localHex || !isValid}>
-            Dissect Transaction
+        <div className="flex flex-wrap gap-2 items-center">
+          <Button 
+            onClick={handleDissectClick} 
+            disabled={!localHex || !isValid || isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Parsing...
+              </>
+            ) : (
+              'Dissect Transaction'
+            )}
           </Button>
           <Button variant="outline" onClick={handlePasteFromClipboard}>
             <Upload className="h-4 w-4 mr-2" />
@@ -218,6 +330,7 @@ export function HexInputPanel() {
                 onClick={() => {
                   setLocalHex(sample.hex);
                   validateHex(sample.hex);
+                  // Auto-dissect will be triggered by useEffect
                 }}
               >
                 <div>

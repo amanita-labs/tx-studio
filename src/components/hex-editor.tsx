@@ -15,6 +15,26 @@ interface HexEditorProps {
 export function HexEditor({ value, onChange, placeholder, className }: HexEditorProps) {
   const editorRef = useRef<any>(null);
 
+  // Helper function to clean hex from various formats
+  const cleanHexString = (text: string): string => {
+    // Remove common hex prefixes
+    let cleaned = text.replace(/^0x/gi, '');
+    
+    // Remove byte offsets (e.g., "00000000: " or "0x0000: ")
+    cleaned = cleaned.replace(/^[0-9a-fA-F]{1,8}:\s*/gm, '');
+    
+    // Remove all whitespace (spaces, newlines, tabs)
+    cleaned = cleaned.replace(/\s/g, '');
+    
+    // Convert to lowercase
+    cleaned = cleaned.toLowerCase();
+    
+    // Remove any non-hex characters
+    cleaned = cleaned.replace(/[^0-9a-f]/g, '');
+    
+    return cleaned;
+  };
+
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     
@@ -46,6 +66,53 @@ export function HexEditor({ value, onChange, placeholder, className }: HexEditor
       // Better for hex display
       rulers: [10], // Vertical ruler at column 10 (after offset)
       glyphMargin: false,
+    });
+
+    // Handle paste events to clean hex automatically
+    editor.onDidPaste((e: any) => {
+      const clipboardText = e.text;
+      const cleanedHex = cleanHexString(clipboardText);
+      
+      // If the pasted text looks like hex (has hex characters), replace with cleaned version
+      if (cleanedHex.length > 0 && /[0-9a-fA-F]/.test(clipboardText) && cleanedHex !== clipboardText.replace(/\s/g, '').toLowerCase()) {
+        // Use setTimeout to ensure paste has completed
+        setTimeout(() => {
+          const model = editor.getModel();
+          const selection = editor.getSelection();
+          
+          if (model && selection) {
+            // Get the current value
+            const currentValue = model.getValue();
+            
+            // Find where the paste happened (selection end)
+            const pasteEnd = selection.endLineNumber;
+            const pasteEndCol = selection.endColumn;
+            
+            // Replace the pasted content with cleaned hex
+            // Monaco has already inserted the text, so we need to undo and replace
+            editor.executeEdits('clean-paste', [{
+              range: {
+                startLineNumber: selection.startLineNumber,
+                startColumn: selection.startColumn,
+                endLineNumber: pasteEnd,
+                endColumn: pasteEndCol,
+              },
+              text: cleanedHex,
+            }]);
+            
+            // Trigger change event with cleaned value
+            const newValue = model.getValue();
+            const finalCleaned = cleanHexString(newValue);
+            onChange(finalCleaned);
+            
+            // Scroll to show the content after paste
+            setTimeout(() => {
+              editor.revealLine(1);
+              editor.setScrollTop(0);
+            }, 10);
+          }
+        }, 0);
+      }
     });
 
     // Add custom validation
@@ -84,22 +151,41 @@ export function HexEditor({ value, onChange, placeholder, className }: HexEditor
     };
 
     // Validate on content change
-    editor.onDidChangeModelContent(validateHex);
+    editor.onDidChangeModelContent(() => {
+      validateHex();
+      
+      // Auto-scroll to show content when it changes
+      const model = editor.getModel();
+      if (model) {
+        const lineCount = model.getLineCount();
+        if (lineCount > 0) {
+          // Scroll to top to show the beginning of the hex
+          editor.revealLine(1);
+          editor.setScrollTop(0);
+        }
+      }
+    });
     
     // Initial validation
     validateHex();
     
-    // Ensure all content is visible
+    // Ensure all content is visible on mount
     setTimeout(() => {
-      editor.revealLine(1);
-      editor.setScrollTop(0);
+      const model = editor.getModel();
+      if (model) {
+        const lineCount = model.getLineCount();
+        if (lineCount > 0) {
+          editor.revealLine(1);
+          editor.setScrollTop(0);
+        }
+      }
     }, 100);
   };
 
   const handleEditorChange = (newValue: string | undefined) => {
     if (newValue !== undefined) {
-      // Clean up the input - remove whitespace and convert to lowercase
-      const cleaned = newValue.replace(/\s/g, '').toLowerCase();
+      // Clean up the input - handle both formatted (with offsets) and raw hex
+      const cleaned = cleanHexString(newValue);
       onChange(cleaned);
     }
   };
@@ -124,6 +210,25 @@ export function HexEditor({ value, onChange, placeholder, className }: HexEditor
 
   // Get the formatted value for display
   const displayValue = formatHexForDisplay(value);
+
+  // Auto-scroll to show hex content when value changes
+  useEffect(() => {
+    if (editorRef.current && displayValue) {
+      const editor = editorRef.current;
+      const model = editor.getModel();
+      
+      if (model) {
+        const lineCount = model.getLineCount();
+        
+        if (lineCount > 0) {
+          // Scroll to top to show the beginning of the hex
+          // This ensures users can always see the start of the transaction
+          editor.revealLine(1);
+          editor.setScrollTop(0);
+        }
+      }
+    }
+  }, [displayValue]);
 
   return (
     <div className={`border rounded-lg overflow-hidden ${className}`}>
