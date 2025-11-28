@@ -2362,103 +2362,85 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                   </div>
                 )}
 
-                {/* Witnesses Section */}
-                {tx.signers.filter(s => s.isWitness).length > 0 && (
-                  <div className="space-y-3">
+                {/* VKey Witnesses Details */}
+                {tx.vkeyWitnesses && tx.vkeyWitnesses.length > 0 && (
+                  <div className="space-y-3 mt-6">
                     <h4 className="text-lg font-semibold flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      Provided Witnesses ({tx.signers.filter(s => s.isWitness).length})
+                      <Users className="h-5 w-5 text-blue-600" />
+                      VKey Witnesses ({tx.vkeyWitnesses.length})
                     </h4>
                     <p className="text-sm text-muted-foreground">
-                      These signatures and scripts have been provided with the transaction.
+                      Detailed view of VKey witnesses with public keys, hashes, and signatures.
                     </p>
-                    {tx.signers.filter(s => s.isWitness).map((signer, index) => {
-                      const signerLabel = getKnownSignerLabel(signer.hash);
-                      const signerAddressLabel = getKnownAddressLabel(signer.address);
-
-                      return (
-                        <Card key={`witness-${index}`}>
+                    <div className="space-y-4">
+                      {tx.vkeyWitnesses.map((witness, index) => (
+                        <Card key={`vkey-witness-${index}`}>
                           <CardHeader>
-                            <CardTitle className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                {signer.type === 'vkey' && <Users className="h-5 w-5 text-blue-600" />}
-                                {signer.type === 'native' && <Shield className="h-5 w-5 text-green-600" />}
-                                {signer.type === 'plutus' && <Hash className="h-5 w-5 text-purple-600" />}
-                                <span className="capitalize">{signer.type} Witness</span>
-                                <Badge variant="secondary" className="text-xs">
-                                  Witness
-                                </Badge>
-                                {signer.isRequired && (
-                                  <Badge variant="destructive" className="text-xs">
-                                    Required
-                                  </Badge>
-                                )}
-                              </div>
-                            </CardTitle>
+                            <CardTitle className="text-sm font-medium">Witness #{index + 1}</CardTitle>
                           </CardHeader>
-                          <CardContent>
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">Type</span>
-                                <Badge className={
-                                  signer.type === 'vkey' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                                  signer.type === 'native' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                                  'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                                }>
-                                  {signer.type}
-                                </Badge>
+                          <CardContent className="space-y-3">
+                            <div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Public Key</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded flex-1 break-all font-mono">
+                                  {witness.vkey}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 flex-shrink-0"
+                                  onClick={() => copyToClipboard(witness.vkey, 'Public Key')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
                               </div>
-                              
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">Hash</span>
-                                <div className="flex items-center gap-2">
-                                  <code className="text-xs bg-muted px-2 py-1 rounded">
-                                    {signer.hash.slice(0, 16)}...
-                                  </code>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => copyToClipboard(signer.hash, 'Witness hash')}
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </Button>
-                                </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-2">
+                                Blake2b-224 Hash
+                                {(() => {
+                                  const hashLabel = getKnownSignerLabel(witness.hash);
+                                  return hashLabel ? (
+                                    <KnownLabelHighlight category="signer" label={hashLabel} />
+                                  ) : null;
+                                })()}
                               </div>
-                              {signerLabel && (
-                                <KnownLabelHighlight category="signer" label={signerLabel} />
-                              )}
-                              
-                              {signer.address && (
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium">Address</span>
-                                    <div className="flex items-center gap-2">
-                                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                                        {signer.address.slice(0, 16)}...
-                                      </code>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => copyToClipboard(signer.address!, 'Witness address')}
-                                      >
-                                        <Copy className="h-3 w-3" />
-                                      </Button>
-                                      <BlockExplorerLink 
-                                        type="address" 
-                                        params={{ address: signer.address }}
-                                      />
-                                    </div>
-                                  </div>
-                                  {signerAddressLabel && (
-                                    <KnownLabelHighlight category="address" label={signerAddressLabel} />
-                                  )}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded flex-1 break-all font-mono">
+                                  {witness.hash}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 flex-shrink-0"
+                                  onClick={() => copyToClipboard(witness.hash, 'Blake2b-224 Hash')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Signature</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded flex-1 break-all font-mono">
+                                  {witness.signature}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 flex-shrink-0"
+                                  onClick={() => copyToClipboard(witness.signature, 'Signature')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -2600,76 +2582,6 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                     <div className="text-sm text-muted-foreground">Plutus Scripts</div>
                   </div>
                 </div>
-                
-                {/* VKey Witnesses Details */}
-                {tx.vkeyWitnesses && tx.vkeyWitnesses.length > 0 && (
-                  <div className="border-t pt-4 mb-4">
-                    <h4 className="text-sm font-medium mb-3 flex items-center">
-                      <Users className="h-4 w-4 mr-2 text-blue-600" />
-                      VKey Witnesses ({tx.vkeyWitnesses.length})
-                    </h4>
-                    <div className="space-y-4">
-                      {tx.vkeyWitnesses.map((witness, index) => (
-                        <div key={index} className="p-3 bg-muted rounded-lg space-y-2">
-                          <div className="text-sm font-medium text-muted-foreground">Witness #{index + 1}</div>
-                          
-                          <div className="space-y-2">
-                            <div>
-                              <div className="text-xs font-medium text-muted-foreground mb-1">Public Key</div>
-                              <div className="flex items-center gap-2">
-                                <code className="text-xs bg-background px-2 py-1 rounded flex-1 break-all font-mono">
-                                  {witness.vkey}
-                                </code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 flex-shrink-0"
-                                  onClick={() => copyToClipboard(witness.vkey, 'Public Key')}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <div className="text-xs font-medium text-muted-foreground mb-1">Blake2b-224 Hash</div>
-                              <div className="flex items-center gap-2">
-                                <code className="text-xs bg-background px-2 py-1 rounded flex-1 break-all font-mono">
-                                  {witness.hash}
-                                </code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 flex-shrink-0"
-                                  onClick={() => copyToClipboard(witness.hash, 'Blake2b-224 Hash')}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <div className="text-xs font-medium text-muted-foreground mb-1">Signature</div>
-                              <div className="flex items-center gap-2">
-                                <code className="text-xs bg-background px-2 py-1 rounded flex-1 break-all font-mono">
-                                  {witness.signature}
-                                </code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 flex-shrink-0"
-                                  onClick={() => copyToClipboard(witness.signature, 'Signature')}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 
                 {/* Required Signers Summary */}
                 {tx.signers && tx.signers.length > 0 && (

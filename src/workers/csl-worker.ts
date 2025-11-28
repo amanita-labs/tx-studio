@@ -1554,66 +1554,55 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     const vkeys = witnessSet.vkeys();
     const vkeyWitnesses: Array<{ vkey: string; signature: string; hash: string }> = [];
     if (vkeys) {
-      // Helper function to get hash from Vkey object
+      // Helper function to get hash from Vkey object using CSL's built-in methods
       const getHashFromVkey = (vkeyObj: any): string | null => {
         try {
-          // Try the hash() method first (should work on PublicKey/Vkey objects)
-          if (vkeyObj && typeof vkeyObj.hash === 'function') {
-            try {
-              const keyHash = vkeyObj.hash();
-              if (keyHash && typeof keyHash.to_hex === 'function') {
-                return keyHash.to_hex();
-              }
-            } catch (hashError) {
-              // hash() method exists but failed, try alternatives
-            }
-          }
-          
-          // Alternative: Get public key bytes and create hash from them
-          // The Ed25519KeyHash is computed by hashing the 32-byte public key with blake2b-224
-          if (vkeyObj && typeof vkeyObj.to_bytes === 'function') {
-            try {
-              const vkeyBytes = vkeyObj.to_bytes();
-              if (vkeyBytes && vkeyBytes.length >= 32) {
-                // Try using Ed25519KeyHash.from_bytes - it might accept public key bytes
-                // If that doesn't work, we'll need to hash the bytes first
-                try {
-                  // Ed25519KeyHash.from_bytes might accept public key bytes (32 bytes)
-                  // and compute the hash internally, or it might expect hash bytes (28 bytes)
-                  // Let's try with public key bytes first
-                  const keyHash = CSL.Ed25519KeyHash.from_bytes(vkeyBytes.slice(0, 32));
+          // CSL Vkey wraps a PublicKey, and PublicKey has a hash() method
+          // Try to get the hash directly from the Vkey/PublicKey object
+          if (vkeyObj) {
+            // Method 1: Try hash() method directly (should work on PublicKey)
+            if (typeof vkeyObj.hash === 'function') {
+              try {
+                const keyHash = vkeyObj.hash();
+                if (keyHash && typeof keyHash.to_hex === 'function') {
                   return keyHash.to_hex();
-                } catch (fromBytesError) {
-                  // If that fails, the public key bytes might need to be hashed first
-                  // But CSL doesn't expose a direct hash function, so we might need to
-                  // use a different approach. For now, let's try with 28 bytes (hash length)
-                  // in case the bytes are already the hash
-                  try {
-                    if (vkeyBytes.length >= 28) {
-                      const keyHash = CSL.Ed25519KeyHash.from_bytes(vkeyBytes.slice(0, 28));
-                      return keyHash.to_hex();
-                    }
-                  } catch (hashBytesError) {
-                    // Neither worked, continue to next method
+                }
+              } catch (hashError) {
+                // Continue to next method
+              }
+            }
+            
+            // Method 2: Try to get PublicKey from Vkey and then hash
+            // Vkey might have a method to get the underlying PublicKey
+            if (typeof vkeyObj.public_key === 'function') {
+              try {
+                const publicKey = vkeyObj.public_key();
+                if (publicKey && typeof publicKey.hash === 'function') {
+                  const keyHash = publicKey.hash();
+                  if (keyHash && typeof keyHash.to_hex === 'function') {
+                    return keyHash.to_hex();
                   }
                 }
+              } catch (pubKeyError) {
+                // Continue to next method
               }
-            } catch (bytesError) {
-              // Try getting hex instead
             }
-          }
-          
-          // Another alternative: Get hex representation and convert
-          if (vkeyObj && typeof vkeyObj.to_hex === 'function') {
-            try {
-              const vkeyHex = vkeyObj.to_hex();
-              if (vkeyHex && vkeyHex.length >= 64) {
-                const hexBytes = new Uint8Array(Buffer.from(vkeyHex.slice(0, 64), 'hex'));
-                const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
-                return keyHash.to_hex();
+            
+            // Method 3: Get bytes and use Ed25519KeyHash.from_bytes
+            // This should work if we have the public key bytes (32 bytes)
+            // Ed25519KeyHash.from_bytes computes blake2b-224 hash internally
+            if (typeof vkeyObj.to_bytes === 'function') {
+              try {
+                const vkeyBytes = vkeyObj.to_bytes();
+                // Ed25519KeyHash.from_bytes expects the public key bytes (32 bytes)
+                // and computes the blake2b-224 hash internally
+                if (vkeyBytes && vkeyBytes.length >= 32) {
+                  const keyHash = CSL.Ed25519KeyHash.from_bytes(vkeyBytes.slice(0, 32));
+                  return keyHash.to_hex();
+                }
+              } catch (bytesError) {
+                console.warn('Error getting hash from vkey bytes:', bytesError);
               }
-            } catch (hexError) {
-              console.warn('Error converting vkey hex to hash:', hexError);
             }
           }
         } catch (error) {
@@ -1643,18 +1632,29 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                     }
                   }
                 } catch (hashError) {
-                  // Try decoding bech32 to get bytes and compute hash
+                  // Try decoding bech32 and creating PublicKey object, then getting hash
                   try {
-                    const decoded = bech32Buffer.decode(vkeyJson.vkey);
-                    if (decoded && decoded.data && decoded.data.length >= 32) {
-                      // Decoded data should be the 32-byte public key
-                      const publicKeyBytes = new Uint8Array(decoded.data.slice(0, 32));
-                      // Try to create Ed25519KeyHash from public key bytes
-                      const keyHash = CSL.Ed25519KeyHash.from_bytes(publicKeyBytes);
-                      hash = keyHash.to_hex();
+                    // Try to create PublicKey from bech32 string
+                    if (CSL.PublicKey && typeof CSL.PublicKey.from_bech32 === 'function') {
+                      const publicKey = CSL.PublicKey.from_bech32(vkeyJson.vkey);
+                      if (publicKey && typeof publicKey.hash === 'function') {
+                        const keyHash = publicKey.hash();
+                        hash = keyHash.to_hex();
+                      }
+                    } else {
+                      // Fallback: decode bech32 and use Ed25519KeyHash.from_bytes
+                      const decoded = bech32Buffer.decode(vkeyJson.vkey);
+                      if (decoded && decoded.data && decoded.data.length >= 32) {
+                        // Decoded data should be the 32-byte public key
+                        const publicKeyBytes = new Uint8Array(decoded.data.slice(0, 32));
+                        // Use CSL's Ed25519KeyHash.from_bytes which computes blake2b-224 hash
+                        // This is the correct way to get the hash from public key bytes
+                        const keyHash = CSL.Ed25519KeyHash.from_bytes(publicKeyBytes);
+                        hash = keyHash.to_hex();
+                      }
                     }
                   } catch (bech32Error) {
-                    console.warn(`Could not extract hash for vkey witness ${i}:`, hashError);
+                    console.warn(`Could not extract hash for vkey witness ${i}:`, bech32Error);
                   }
                 }
               }
