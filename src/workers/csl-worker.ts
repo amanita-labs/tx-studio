@@ -1552,25 +1552,210 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     
     // Get actual VKey witnesses (signatures provided)
     const vkeys = witnessSet.vkeys();
+    const vkeyWitnesses: Array<{ vkey: string; signature: string; hash: string }> = [];
     if (vkeys) {
-      for (let i = 0; i < vkeys.len(); i++) {
-        const vkey = vkeys.get(i);
+      // Helper function to get hash from Vkey object
+      const getHashFromVkey = (vkeyObj: any): string | null => {
         try {
-          const hash = vkey.hash().to_hex();
-          // Check if this witness corresponds to a required signer
-          const isRequired = requiredSigners ? 
-            Array.from({ length: requiredSigners.len() }, (_, j) => requiredSigners.get(j).to_hex()).includes(hash) : 
-            false;
+          // Try the hash() method first (should work on PublicKey/Vkey objects)
+          if (vkeyObj && typeof vkeyObj.hash === 'function') {
+            try {
+              const keyHash = vkeyObj.hash();
+              if (keyHash && typeof keyHash.to_hex === 'function') {
+                return keyHash.to_hex();
+              }
+            } catch (hashError) {
+              // hash() method exists but failed, try alternatives
+            }
+          }
           
-          signers.push({
-            type: 'vkey' as const,
-            hash,
-            address: undefined,
-            isWitness: true,
-            isRequired
-          });
+          // Alternative: Get public key bytes and create hash from them
+          // The Ed25519KeyHash is computed by hashing the 32-byte public key with blake2b-224
+          if (vkeyObj && typeof vkeyObj.to_bytes === 'function') {
+            try {
+              const vkeyBytes = vkeyObj.to_bytes();
+              if (vkeyBytes && vkeyBytes.length >= 32) {
+                // Try using Ed25519KeyHash.from_bytes - it might accept public key bytes
+                // If that doesn't work, we'll need to hash the bytes first
+                try {
+                  // Ed25519KeyHash.from_bytes might accept public key bytes (32 bytes)
+                  // and compute the hash internally, or it might expect hash bytes (28 bytes)
+                  // Let's try with public key bytes first
+                  const keyHash = CSL.Ed25519KeyHash.from_bytes(vkeyBytes.slice(0, 32));
+                  return keyHash.to_hex();
+                } catch (fromBytesError) {
+                  // If that fails, the public key bytes might need to be hashed first
+                  // But CSL doesn't expose a direct hash function, so we might need to
+                  // use a different approach. For now, let's try with 28 bytes (hash length)
+                  // in case the bytes are already the hash
+                  try {
+                    if (vkeyBytes.length >= 28) {
+                      const keyHash = CSL.Ed25519KeyHash.from_bytes(vkeyBytes.slice(0, 28));
+                      return keyHash.to_hex();
+                    }
+                  } catch (hashBytesError) {
+                    // Neither worked, continue to next method
+                  }
+                }
+              }
+            } catch (bytesError) {
+              // Try getting hex instead
+            }
+          }
+          
+          // Another alternative: Get hex representation and convert
+          if (vkeyObj && typeof vkeyObj.to_hex === 'function') {
+            try {
+              const vkeyHex = vkeyObj.to_hex();
+              if (vkeyHex && vkeyHex.length >= 64) {
+                const hexBytes = new Uint8Array(Buffer.from(vkeyHex.slice(0, 64), 'hex'));
+                const keyHash = CSL.Ed25519KeyHash.from_bytes(hexBytes);
+                return keyHash.to_hex();
+              }
+            } catch (hexError) {
+              console.warn('Error converting vkey hex to hash:', hexError);
+            }
+          }
         } catch (error) {
-          console.warn('Error extracting vkey witness:', error);
+          console.warn('Error getting hash from vkey:', error);
+        }
+        return null;
+      };
+      
+      // Try JSON extraction first (matches the format shown by user)
+      try {
+        const witnessSetJson = witnessSet.to_js_value();
+        if (witnessSetJson && witnessSetJson.vkeys && Array.isArray(witnessSetJson.vkeys)) {
+          for (let i = 0; i < witnessSetJson.vkeys.length; i++) {
+            const vkeyJson = witnessSetJson.vkeys[i];
+            if (vkeyJson.vkey && vkeyJson.signature) {
+              // Check if hash is already in JSON
+              let hash: string | null = vkeyJson.hash || null;
+              
+              // If not in JSON, get hash from corresponding witness object using direct API
+              if (!hash) {
+                try {
+                  if (i < vkeys.len()) {
+                    const vkeyWitness = vkeys.get(i);
+                    const vkeyObj = vkeyWitness.vkey();
+                    if (vkeyObj) {
+                      hash = getHashFromVkey(vkeyObj);
+                    }
+                  }
+                } catch (hashError) {
+                  // Try decoding bech32 to get bytes and compute hash
+                  try {
+                    const decoded = bech32Buffer.decode(vkeyJson.vkey);
+                    if (decoded && decoded.data && decoded.data.length >= 32) {
+                      // Decoded data should be the 32-byte public key
+                      const publicKeyBytes = new Uint8Array(decoded.data.slice(0, 32));
+                      // Try to create Ed25519KeyHash from public key bytes
+                      const keyHash = CSL.Ed25519KeyHash.from_bytes(publicKeyBytes);
+                      hash = keyHash.to_hex();
+                    }
+                  } catch (bech32Error) {
+                    console.warn(`Could not extract hash for vkey witness ${i}:`, hashError);
+                  }
+                }
+              }
+              
+              if (hash) {
+                vkeyWitnesses.push({
+                  vkey: vkeyJson.vkey,
+                  signature: vkeyJson.signature,
+                  hash
+                });
+              } else {
+                console.warn(`Skipping vkey witness ${i} - could not extract hash`);
+              }
+            }
+          }
+        }
+      } catch (jsonError) {
+        console.warn('Error extracting vkey witnesses from JSON, trying direct API:', jsonError);
+      }
+      
+      // Fallback to direct API if JSON extraction didn't work
+      if (vkeyWitnesses.length === 0 && vkeys.len() > 0) {
+        for (let i = 0; i < vkeys.len(); i++) {
+          const vkeyWitness = vkeys.get(i);
+          try {
+            // Extract the public key (vkey) object first
+            const vkeyObj = vkeyWitness.vkey();
+            if (!vkeyObj) {
+              continue;
+            }
+            
+            // Get hash from the vkey object
+            const hash = getHashFromVkey(vkeyObj);
+            if (!hash) {
+              continue;
+            }
+            
+            // Extract the public key - try multiple formats
+            let vkeyBech32: string | null = null;
+            try {
+              // Try bech32 format first (ed25519_pk prefix)
+              vkeyBech32 = vkeyObj.to_bech32('ed25519_pk');
+            } catch (bech32Error) {
+              // If bech32 fails, try hex format
+              try {
+                vkeyBech32 = vkeyObj.to_hex();
+              } catch (hexError) {
+                console.warn('Error converting vkey to hex:', hexError);
+              }
+            }
+            
+            // Extract the signature
+            let signatureHex: string | null = null;
+            try {
+              const signatureObj = vkeyWitness.signature();
+              if (signatureObj) {
+                signatureHex = signatureObj.to_hex();
+              }
+            } catch (error) {
+              console.warn('Error extracting vkey signature:', error);
+            }
+            
+            // Only add if we have both vkey and signature
+            if (vkeyBech32 && signatureHex) {
+              vkeyWitnesses.push({
+                vkey: vkeyBech32,
+                signature: signatureHex,
+                hash
+              });
+            }
+          } catch (error) {
+            console.warn('Error extracting vkey witness:', error);
+          }
+        }
+      }
+      
+      // Extract signer information for all vkeys
+      for (let i = 0; i < vkeys.len(); i++) {
+        const vkeyWitness = vkeys.get(i);
+        try {
+          // Get hash from the vkey object, not the witness
+          const vkeyObj = vkeyWitness.vkey();
+          if (vkeyObj) {
+            const hash = getHashFromVkey(vkeyObj);
+            if (hash) {
+              // Check if this witness corresponds to a required signer
+              const isRequired = requiredSigners ? 
+                Array.from({ length: requiredSigners.len() }, (_, j) => requiredSigners.get(j).to_hex()).includes(hash) : 
+                false;
+              
+              signers.push({
+                type: 'vkey' as const,
+                hash,
+                address: undefined,
+                isWitness: true,
+                isRequired
+              });
+            }
+          }
+        } catch (error) {
+          console.warn('Error extracting vkey witness for signers:', error);
         }
       }
     }
@@ -1713,6 +1898,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         scripts,
         redeemers,
         witnesses: { vkeyCount, nativeCount, plutusCount },
+        vkeyWitnesses: vkeyWitnesses.length > 0 ? vkeyWitnesses : undefined,
         signers,
         scriptDataHash,
         totalCollateral: totalCollateral ? BigInt(totalCollateral) : undefined,

@@ -2601,6 +2601,76 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                   </div>
                 </div>
                 
+                {/* VKey Witnesses Details */}
+                {tx.vkeyWitnesses && tx.vkeyWitnesses.length > 0 && (
+                  <div className="border-t pt-4 mb-4">
+                    <h4 className="text-sm font-medium mb-3 flex items-center">
+                      <Users className="h-4 w-4 mr-2 text-blue-600" />
+                      VKey Witnesses ({tx.vkeyWitnesses.length})
+                    </h4>
+                    <div className="space-y-4">
+                      {tx.vkeyWitnesses.map((witness, index) => (
+                        <div key={index} className="p-3 bg-muted rounded-lg space-y-2">
+                          <div className="text-sm font-medium text-muted-foreground">Witness #{index + 1}</div>
+                          
+                          <div className="space-y-2">
+                            <div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Public Key</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-background px-2 py-1 rounded flex-1 break-all font-mono">
+                                  {witness.vkey}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 flex-shrink-0"
+                                  onClick={() => copyToClipboard(witness.vkey, 'Public Key')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Blake2b-224 Hash</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-background px-2 py-1 rounded flex-1 break-all font-mono">
+                                  {witness.hash}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 flex-shrink-0"
+                                  onClick={() => copyToClipboard(witness.hash, 'Blake2b-224 Hash')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Signature</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-background px-2 py-1 rounded flex-1 break-all font-mono">
+                                  {witness.signature}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 flex-shrink-0"
+                                  onClick={() => copyToClipboard(witness.signature, 'Signature')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 {/* Required Signers Summary */}
                 {tx.signers && tx.signers.length > 0 && (
                   <div className="border-t pt-4">
