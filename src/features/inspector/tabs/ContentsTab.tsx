@@ -335,6 +335,11 @@ function GovernanceActionItem({
                   return null;
                 }
                 
+                // Skip governanceActionId - it's shown in highlighted section above
+                if (key === 'governanceActionId') {
+                  return null;
+                }
+                
                 if (value === null || value === undefined || String(value) === 'N/A') {
                   return null;
                 }
@@ -358,13 +363,49 @@ function GovernanceActionItem({
                   'epoch': 'Epoch',
                   'protocolVersion': 'Protocol Version',
                   'constitutionHash': 'Constitution Hash',
-                  'scriptHash': 'Script Hash',
+                  'constitutionUrl': 'Constitution URI',
+                  'scriptHash': 'Guardrails Script Hash',
                   'membersToRemove': 'Members to Remove',
                   'membersToAdd': 'Members to Add',
                   'threshold': 'Threshold'
                 };
                 
                 const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                
+                // Handle constitutionUrl - show as clickable link similar to metadata URI
+                if (key === 'constitutionUrl') {
+                  const urlString = String(value);
+                  let href = urlString;
+                  if (urlString.startsWith('ipfs://')) {
+                    const ipfsHash = urlString.replace('ipfs://', '');
+                    href = `https://ipfs.io/ipfs/${ipfsHash}`;
+                  }
+                  
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-1">{displayLabel}:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <a 
+                          href={href} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-600 underline flex-1"
+                        >
+                          {urlString}
+                        </a>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(urlString, 'Constitution URI')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    </div>
+                  );
+                }
                 
                 // Format action value
                 const actionValue = String(value);
@@ -1369,19 +1410,47 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatNewConstitutionProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
     
-    if (proposalDetails.constitutionHash) {
-      details.constitutionHash = proposalDetails.constitutionHash;
-    } else if (proposalDetails.constitution?.anchor?.hash) {
-      details.constitutionHash = proposalDetails.constitution.anchor.hash;
-    } else if (proposalDetails.constitution?.hash) {
-      details.constitutionHash = proposalDetails.constitution.hash;
+    // Extract constitution anchor URL and hash from constitution object
+    const constitution = proposalDetails.constitution || rawData.governance_action?.NewConstitutionAction?.constitution;
+    
+    if (constitution) {
+      // Extract constitution anchor URL
+      const constitutionAnchorUrl = constitution.anchor?.anchor_url 
+        || constitution.anchor?.url
+        || constitution.anchor_url
+        || null;
+      
+      if (constitutionAnchorUrl) {
+        details.constitutionUrl = constitutionAnchorUrl;
+      }
+      
+      // Extract constitution anchor hash
+      const constitutionAnchorHash = constitution.anchor?.anchor_data_hash
+        || constitution.anchor?.hash
+        || constitution.anchor?.data_hash
+        || constitution.anchor_data_hash
+        || constitution.hash
+        || null;
+      
+      if (constitutionAnchorHash) {
+        details.constitutionHash = constitutionAnchorHash;
+      }
     }
     
+    // Fallback: try proposalDetails.constitutionHash
+    if (!details.constitutionHash && proposalDetails.constitutionHash) {
+      details.constitutionHash = proposalDetails.constitutionHash;
+    }
+    
+    // Extract script hash
     if (proposalDetails.scriptHash) {
       details.scriptHash = proposalDetails.scriptHash;
-    } else if (proposalDetails.constitution?.script_hash) {
-      details.scriptHash = proposalDetails.constitution.script_hash;
+    } else if (constitution?.script_hash) {
+      details.scriptHash = constitution.script_hash;
+    } else if (rawData.governance_action?.NewConstitutionAction?.constitution?.script_hash) {
+      details.scriptHash = rawData.governance_action.NewConstitutionAction.constitution.script_hash;
     }
     
     if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
@@ -1685,7 +1754,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
             extractedDetails = formatNewConstitutionProposal(proposal);
             icon = <ScrollText className="h-4 w-4" />;
             color = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
-            description = `Updates the on-chain constitution hash`;
+            description = `Updates the on-chain constitution and or guardrails script hash`;
             break;
           case 'UpdateCommittee':
             extractedDetails = formatUpdateCommitteeProposal(proposal);
