@@ -27,6 +27,7 @@ export type DomainTx = {
   scripts?: Array<{ type: string; hash: string; bytesLen: number }>;
   redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }>;
   witnesses: { vkeyCount: number; nativeCount: number; plutusCount: number };
+  vkeyWitnesses?: Array<{ vkey: string; signature: string; hash: string }>;
   signers?: Array<{ type: 'vkey' | 'native' | 'plutus'; hash: string; address?: string; isWitness?: boolean; isRequired?: boolean }>;
   scriptDataHash?: string;
   totalCollateral?: bigint;
