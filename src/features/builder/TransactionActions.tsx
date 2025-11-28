@@ -1,0 +1,300 @@
+// src/features/builder/TransactionActions.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { useRouter } from 'next/navigation';
+import { useAppStore } from '@/lib/store';
+import { assembleTransaction, serializeTransaction, calculateFee } from '@/lib/transaction-builder';
+import { getUTXOs, signTransaction, submitTransaction } from '@/lib/wallet-connector';
+import { toast } from 'sonner';
+import { Wrench, FileSignature, Send, Copy, Eye, Download, Loader2 } from 'lucide-react';
+import { ExportDialog } from '@/components/export-dialog';
+import { useCSLWorker } from '@/hooks/use-csl-worker';
+
+export function TransactionActions() {
+  const router = useRouter();
+  const {
+    builderCertificates,
+    builderVotes,
+    walletApi,
+    builtTxHex,
+    signedTxHex,
+    setBuiltTxHex,
+    setSignedTxHex,
+    network
+  } = useAppStore();
+  const [building, setBuilding] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const { parseTransaction } = useCSLWorker();
+
+  const handleBuild = async () => {
+    if (!walletApi) {
+      toast.error('Wallet not connected');
+      return;
+    }
+
+    if (builderCertificates.length === 0 && builderVotes.length === 0) {
+      toast.error('Add at least one certificate or vote');
+      return;
+    }
+
+    setBuilding(true);
+    try {
+      // Get UTXOs from wallet
+      const utxos = await getUTXOs(walletApi);
+      if (utxos.length === 0) {
+        toast.error('No UTXOs available in wallet');
+        return;
+      }
+
+      // Convert UTXOs to input format
+      const inputs = utxos.map((utxo: any) => ({
+        txHash: utxo.input?.txHash || utxo.input?.txId,
+        outputIndex: utxo.input?.outputIndex || utxo.input?.index || 0
+      }));
+
+      // Get change address
+      const changeAddress = await walletApi.getChangeAddress();
+
+      // Combine certificates and votes (votes are certificates)
+      const allCertificates = [...builderCertificates];
+      
+      // Build transaction
+      const { txBody, error } = assembleTransaction({
+        certificates: allCertificates,
+        utxos: utxos,
+        changeAddress: changeAddress,
+        network: network
+      });
+
+      if (error || !txBody) {
+        toast.error(error?.message || 'Failed to build transaction');
+        return;
+      }
+
+      // Calculate fee
+      const fee = calculateFee(txBody, network);
+
+      // Serialize transaction
+      const txHex = serializeTransaction(txBody);
+      setBuiltTxHex(txHex);
+      toast.success('Transaction built successfully');
+    } catch (error) {
+      console.error('Error building transaction:', error);
+      toast.error(`Failed to build transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setBuilding(false);
+    }
+  };
+
+  const handleSign = async () => {
+    if (!walletApi || !builtTxHex) {
+      toast.error('Transaction not built');
+      return;
+    }
+
+    setSigning(true);
+    try {
+      const signedTx = await signTransaction(walletApi, builtTxHex);
+      setSignedTxHex(signedTx);
+      toast.success('Transaction signed successfully');
+    } catch (error) {
+      console.error('Error signing transaction:', error);
+      toast.error(`Failed to sign transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!walletApi || !signedTxHex) {
+      toast.error('Transaction not signed');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const txHash = await submitTransaction(walletApi, signedTxHex);
+      toast.success(`Transaction submitted! Hash: ${txHash.slice(0, 16)}...`);
+      // Optionally navigate to inspector with the signed tx
+    } catch (error) {
+      console.error('Error submitting transaction:', error);
+      toast.error(`Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCopyHex = async () => {
+    const hex = signedTxHex || builtTxHex;
+    if (!hex) {
+      toast.error('No transaction hex available');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(hex);
+      toast.success('Transaction hex copied to clipboard');
+    } catch (error) {
+      toast.error('Failed to copy to clipboard');
+    }
+  };
+
+  const handleInspect = async () => {
+    const hex = signedTxHex || builtTxHex;
+    if (!hex) {
+      toast.error('No transaction hex available');
+      return;
+    }
+
+    router.push(`/?hex=${encodeURIComponent(hex)}`);
+  };
+
+  const canBuild = walletApi && (builderCertificates.length > 0 || builderVotes.length > 0);
+  const canSign = walletApi && builtTxHex && !signedTxHex;
+  const canSubmit = walletApi && signedTxHex;
+
+  // Parse transaction for export dialog
+  const [parsedTx, setParsedTx] = useState<any>(null);
+  const [isParsingForExport, setIsParsingForExport] = useState(false);
+  
+  // Parse transaction when hex becomes available
+  useEffect(() => {
+    const parseForExport = async () => {
+      const hex = signedTxHex || builtTxHex;
+      if (!hex || parsedTx) return;
+      
+      setIsParsingForExport(true);
+      try {
+        const result = await parseTransaction(hex, network);
+        if (result.success) {
+          setParsedTx(result.tx);
+        }
+      } catch (error) {
+        console.error('Error parsing transaction:', error);
+      } finally {
+        setIsParsingForExport(false);
+      }
+    };
+    
+    parseForExport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedTxHex, builtTxHex, network]);
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-2">
+        <Button
+          onClick={handleBuild}
+          disabled={!canBuild || building}
+          className="w-full"
+        >
+          {building ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Building...
+            </>
+          ) : (
+            <>
+              <Wrench className="h-4 w-4 mr-2" />
+              Build Transaction
+            </>
+          )}
+        </Button>
+
+        <Button
+          onClick={handleSign}
+          disabled={!canSign || signing}
+          variant="outline"
+          className="w-full"
+        >
+          {signing ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Signing...
+            </>
+          ) : (
+            <>
+              <FileSignature className="h-4 w-4 mr-2" />
+              Sign Transaction
+            </>
+          )}
+        </Button>
+
+        <Button
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
+          variant="outline"
+          className="w-full"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Submitting...
+            </>
+          ) : (
+            <>
+              <Send className="h-4 w-4 mr-2" />
+              Submit Transaction
+            </>
+          )}
+        </Button>
+
+        <div className="flex gap-2">
+          <Button
+            onClick={handleCopyHex}
+            disabled={!builtTxHex && !signedTxHex}
+            variant="outline"
+            size="sm"
+            className="flex-1"
+          >
+            <Copy className="h-4 w-4 mr-2" />
+            Copy Hex
+          </Button>
+
+          <Button
+            onClick={handleInspect}
+            disabled={!builtTxHex && !signedTxHex}
+            variant="outline"
+            size="sm"
+            className="flex-1"
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            Inspect
+          </Button>
+        </div>
+
+        {parsedTx ? (
+          <ExportDialog
+            tx={parsedTx}
+            txHex={signedTxHex || builtTxHex || ''}
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={isParsingForExport}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              {isParsingForExport ? 'Parsing...' : 'Export'}
+            </Button>
+          </ExportDialog>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={!builtTxHex && !signedTxHex}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+

@@ -13,6 +13,12 @@ export interface OnChainMeta {
   index: number;       // tx position within block
 }
 
+export type BuilderCertificate = {
+  id: string;
+  type: 'VoteDelegation' | 'DRepRegistration' | 'DRepUpdate' | 'DRepRetirement' | 'Vote';
+  data: Record<string, unknown>;
+};
+
 interface AppState {
   // Transaction data
   txHex: string;
@@ -37,6 +43,14 @@ interface AppState {
   // Block explorer preference
   blockExplorer: BlockExplorerId;
 
+  // Builder state
+  builderCertificates: BuilderCertificate[];
+  walletConnected: boolean;
+  walletName: string | null;
+  walletApi: any | null; // BrowserWallet instance
+  builtTxHex: string | null;
+  signedTxHex: string | null;
+
   // Actions
   setTxHex: (hex: string) => void;
   setParsedTx: (result: TxParseResult | null) => void;
@@ -53,6 +67,15 @@ interface AppState {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setBlockExplorer: (explorer: BlockExplorerId) => void;
   clearTx: () => void;
+  
+  // Builder actions
+  addCertificate: (cert: BuilderCertificate) => void;
+  removeCertificate: (id: string) => void;
+  clearBuilder: () => void;
+  setWalletApi: (api: any | null, name: string | null) => void;
+  setBuiltTxHex: (hex: string | null) => void;
+  setSignedTxHex: (hex: string | null) => void;
+  disconnectWallet: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -72,6 +95,14 @@ export const useAppStore = create<AppState>()(
       evalCache: {},
       theme: 'system',
       blockExplorer: 'cardanoscan',
+
+      // Builder state
+      builderCertificates: [],
+      walletConnected: false,
+      walletName: null,
+      walletApi: null,
+      builtTxHex: null,
+      signedTxHex: null,
 
       // Actions
       setTxHex: (hex: string) => set({ txHex: hex }),
@@ -99,6 +130,33 @@ export const useAppStore = create<AppState>()(
         isOnChain: false,
         onChainMeta: null,
         activeTab: 'overview'
+      }),
+      
+      // Builder actions
+      addCertificate: (cert: BuilderCertificate) => set((state) => ({
+        builderCertificates: [...state.builderCertificates, cert]
+      })),
+      removeCertificate: (id: string) => set((state) => ({
+        builderCertificates: state.builderCertificates.filter(c => c.id !== id)
+      })),
+      clearBuilder: () => set({
+        builderCertificates: [],
+        builtTxHex: null,
+        signedTxHex: null,
+      }),
+      setWalletApi: (api: any | null, name: string | null) => set({
+        walletApi: api,
+        walletName: name,
+        walletConnected: api !== null,
+      }),
+      setBuiltTxHex: (hex: string | null) => set({ builtTxHex: hex }),
+      setSignedTxHex: (hex: string | null) => set({ signedTxHex: hex }),
+      disconnectWallet: () => set({
+        walletApi: null,
+        walletName: null,
+        walletConnected: false,
+        builtTxHex: null,
+        signedTxHex: null,
       }),
     }),
     {
