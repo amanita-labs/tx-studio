@@ -1315,14 +1315,48 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatHardForkProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
     
+    // Extract protocol version - handle multiple formats
+    let protocolVersion: string | null = null;
+    
+    // First try proposalDetails.protocolVersion
     if (proposalDetails.protocolVersion) {
       const version = proposalDetails.protocolVersion;
       if (Array.isArray(version) && version.length === 2) {
-        details.protocolVersion = `${version[0]}.${version[1]}`;
+        protocolVersion = `${version[0]}.${version[1]}`;
+      } else if (typeof version === 'object' && version !== null) {
+        // Handle object format: { major: 11, minor: 0 }
+        const major = version.major !== undefined ? version.major : version[0];
+        const minor = version.minor !== undefined ? version.minor : version[1];
+        if (major !== undefined && minor !== undefined) {
+          protocolVersion = `${major}.${minor}`;
+        }
       } else {
-        details.protocolVersion = String(version);
+        protocolVersion = String(version);
       }
+    }
+    
+    // Also check raw data structure
+    if (!protocolVersion) {
+      const rawVersion = rawData.governance_action?.HardForkInitiationAction?.protocol_version;
+      if (rawVersion) {
+        if (Array.isArray(rawVersion) && rawVersion.length === 2) {
+          protocolVersion = `${rawVersion[0]}.${rawVersion[1]}`;
+        } else if (typeof rawVersion === 'object' && rawVersion !== null) {
+          const major = rawVersion.major !== undefined ? rawVersion.major : rawVersion[0];
+          const minor = rawVersion.minor !== undefined ? rawVersion.minor : rawVersion[1];
+          if (major !== undefined && minor !== undefined) {
+            protocolVersion = `${major}.${minor}`;
+          }
+        } else {
+          protocolVersion = String(rawVersion);
+        }
+      }
+    }
+    
+    if (protocolVersion) {
+      details.protocolVersion = protocolVersion;
     }
     
     if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
