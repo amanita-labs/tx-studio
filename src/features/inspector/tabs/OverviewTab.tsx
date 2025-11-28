@@ -4,12 +4,13 @@ import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda } from '@/lib/utils/ada';
 import { slotToLocalTime, formatValidityWindow, getTimeRemaining } from '@/lib/utils/slot-time';
-import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle, Tags } from 'lucide-react';
+import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle, Tags, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { collectTransactionLabels, type TransactionLabelCategory } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
+import { generateTransactionDescription } from '@/lib/transaction-description';
 
 // Helper component for validity status badge
 function ValidityStatus({ startSlot, endSlot }: { startSlot: number; endSlot: number }) {
@@ -85,6 +86,8 @@ export function OverviewTab({ tx }: OverviewTabProps) {
     }
   };
 
+  const description = generateTransactionDescription(tx);
+
   return (
     <div className="h-full overflow-auto p-4 space-y-4">
       {/* Transaction Info */}
@@ -125,6 +128,21 @@ export function OverviewTab({ tx }: OverviewTabProps) {
             <span className="text-sm font-medium">Fee</span>
             <span className="text-sm font-mono">{formatAda(tx.feeLovelace)} ADA</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Transaction Description */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Description
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {description}
+          </p>
         </CardContent>
       </Card>
 
