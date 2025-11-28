@@ -1037,19 +1037,45 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
             // Try to parse voting proposals
             const proposals = votingProposals.to_js_value();
             if (Array.isArray(proposals)) {
-              proposals.forEach((proposal: any) => {
+              proposals.forEach((proposal: any, index: number) => {
                 let proposalType = 'Unknown';
                 let details: Record<string, unknown> = {};
                 
-                // Extract proposal ID from action_id if available
+                // Extract proposal ID - use current transaction ID and proposal index
+                // The governance action ID is the transaction ID + index of the action within the transaction
                 let proposalId = '';
+                
+                // First, try to get from action_id if available (this might be from a different transaction)
                 if (proposal.action_id) {
                   const txId = proposal.action_id.transaction_id || '';
-                  const actionIndex = proposal.action_id.index || 0;
+                  const actionIndex = proposal.action_id.index !== undefined ? proposal.action_id.index : 0;
                   // Create governance action ID according to CIP-0129 (bech32 with gov_action1 prefix)
                   proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
                 } else if (proposal.governance_action_id) {
                   proposalId = proposal.governance_action_id;
+                } else {
+                  // Try to extract from governance_action structure (this is the action being proposed)
+                  const govAction = proposal.governance_action;
+                  if (govAction) {
+                    // Check each action type for gov_action_id
+                    const actionTypes = ['ParameterChangeAction', 'HardForkInitiationAction', 'TreasuryWithdrawalsAction', 
+                                      'NoConfidenceAction', 'NewConstitutionAction', 'UpdateCommitteeAction', 'InfoAction'];
+                    for (const actionType of actionTypes) {
+                      if (govAction[actionType]?.gov_action_id) {
+                        const govActionId = govAction[actionType].gov_action_id;
+                        const txId = govActionId.transaction_id || '';
+                        const actionIndex = govActionId.index !== undefined ? govActionId.index : 0;
+                        proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
+                        break;
+                      }
+                    }
+                  }
+                  
+                  // If still not found, use current transaction ID and proposal index
+                  // This creates the governance action ID for THIS proposal in THIS transaction
+                  if (!proposalId && id) {
+                    proposalId = createGovernanceActionId(id, index) || `${id}#${index}`;
+                  }
                 }
                 
                 // Extract proposal_procedure fields: deposit, reward_account, anchor

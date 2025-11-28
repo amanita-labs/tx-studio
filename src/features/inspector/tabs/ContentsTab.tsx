@@ -106,35 +106,6 @@ function GovernanceActionItem({
       <CardContent>
         {action.details && Object.keys(action.details).length > 0 ? (
           <div className="space-y-4">
-            {/* Prominently display Governance Action ID for proposals */}
-            {isProposal && governanceActionId && governanceActionId !== 'N/A' && (
-              <div className="bg-muted/50 p-3 rounded-lg border">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Hash className="h-4 w-4 text-primary" />
-                    <span className="font-semibold text-sm">Governance Action ID</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <code className="text-xs font-mono bg-background px-2 py-1 rounded">
-                      {String(governanceActionId)}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2"
-                      onClick={() => copyToClipboard(String(governanceActionId), 'Governance Action ID')}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                    <BlockExplorerLink 
-                      type="proposal" 
-                      params={{ proposalId: String(governanceActionId) }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            
             {/* Highlighted Key Information Section */}
             {(() => {
               // Helper function to format ADA with commas and proper decimals
@@ -176,12 +147,36 @@ function GovernanceActionItem({
               const anchorUrl = action.details?.anchorUrl || action.data?.details?.anchor?.url || action.data?.raw?.anchor?.anchor_url;
               const anchorHash = action.details?.anchorHash || action.data?.details?.anchor?.hash || action.data?.raw?.anchor?.anchor_data_hash;
               
-              if (!deposit && !rewardAccount && !anchorUrl && !anchorHash) {
+              // Show section if governance action ID exists or any other fields exist
+              const hasGovernanceActionId = isProposal && governanceActionId && governanceActionId !== 'N/A';
+              if (!hasGovernanceActionId && !deposit && !rewardAccount && !anchorUrl && !anchorHash) {
                 return null;
               }
               
               return (
                 <div className="grid grid-cols-2 gap-4 text-sm">
+                  {/* Governance Action ID */}
+                  {isProposal && governanceActionId && governanceActionId !== 'N/A' && (
+                    <div className="col-span-2">
+                      <div className="font-medium mb-1">Governance Action ID:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{String(governanceActionId)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(String(governanceActionId), 'Governance Action ID')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <BlockExplorerLink 
+                          type="proposal" 
+                          params={{ proposalId: String(governanceActionId) }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Deposit Amount */}
                   {deposit && (
                     <div>
@@ -357,32 +352,38 @@ function GovernanceActionItem({
                 
                 // Handle parameter changes object
                 if (key === 'parameterChanges' && typeof value === 'object') {
+                  // Helper to convert camelCase to readable format
+                  const formatParamName = (name: string): string => {
+                    return name
+                      .replace(/([A-Z])/g, ' $1')
+                      .replace(/^./, str => str.toUpperCase())
+                      .trim();
+                  };
+                  
                   return (
                     <div key={key} className="col-span-2">
                       <div className="font-medium mb-2">{displayLabel}:</div>
-                      <div className="space-y-2 pl-4 border-l-2">
-                        {Object.entries(value as Record<string, any>).map(([paramKey, paramValue]) => {
-                          const paramKeyNum = parseInt(paramKey);
-                          const paramName = protocolParamNames[paramKeyNum] || `Parameter ${paramKey}`;
+                      <div className="space-y-3 pl-4 border-l-2 border-muted">
+                        {Object.entries(value as Record<string, any>).map(([paramName, paramValue]) => {
+                          const readableName = formatParamName(paramName);
+                          
                           // Handle execution units (objects with mem and steps)
                           if (paramValue && typeof paramValue === 'object' && !Array.isArray(paramValue)) {
                             if (paramValue.mem !== undefined || paramValue.steps !== undefined) {
                               return (
-                                <div key={paramKey} className="space-y-1">
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="font-mono">{paramName}:</span>
-                                  </div>
-                                  <div className="pl-4 space-y-0.5 text-[10px]">
+                                <div key={paramName} className="space-y-1.5">
+                                  <div className="font-medium text-xs">{readableName}:</div>
+                                  <div className="pl-3 space-y-1 text-xs">
                                     {paramValue.mem !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Memory:</span>
-                                        <span className="font-semibold">{Number(paramValue.mem).toLocaleString()}</span>
+                                        <span className="font-mono font-semibold">{Number(paramValue.mem).toLocaleString()}</span>
                                       </div>
                                     )}
                                     {paramValue.steps !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Steps:</span>
-                                        <span className="font-semibold">{Number(paramValue.steps).toLocaleString()}</span>
+                                        <span className="font-mono font-semibold">{Number(paramValue.steps).toLocaleString()}</span>
                                       </div>
                                     )}
                                   </div>
@@ -390,10 +391,11 @@ function GovernanceActionItem({
                               );
                             }
                           }
+                          // Handle regular parameter values
                           return (
-                            <div key={paramKey} className="flex items-center justify-between text-xs">
-                              <span className="font-mono">{paramName}:</span>
-                              <span className="font-semibold">{formatProtocolParamValue(paramKeyNum, paramValue)}</span>
+                            <div key={paramName} className="flex items-center justify-between text-xs">
+                              <span className="font-medium">{readableName}:</span>
+                              <span className="font-mono font-semibold">{String(paramValue)}</span>
                             </div>
                           );
                         })}
@@ -875,8 +877,33 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     const proposalDetails = proposal.details || {};
     const rawData = proposalDetails.raw || {};
     
+    // Extract governance action ID - try multiple sources
+    let governanceActionId = proposal.id || null;
+    
+    // If not found, try to extract from raw governance_action structure
+    if (!governanceActionId || governanceActionId === 'N/A') {
+      const govAction = rawData.governance_action;
+      if (govAction) {
+        // Check each action type for gov_action_id
+        const actionTypes = ['ParameterChangeAction', 'HardForkInitiationAction', 'TreasuryWithdrawalsAction', 
+                          'NoConfidenceAction', 'NewConstitutionAction', 'UpdateCommitteeAction', 'InfoAction'];
+        for (const actionType of actionTypes) {
+          if (govAction[actionType]?.gov_action_id) {
+            const govActionId = govAction[actionType].gov_action_id;
+            const txId = govActionId.transaction_id || '';
+            const actionIndex = govActionId.index !== undefined ? govActionId.index : 0;
+            // Format as txId#index (the worker should have already encoded it as CIP-129, but if not, show this format)
+            if (txId) {
+              governanceActionId = `${txId}#${actionIndex}`;
+            }
+            break;
+          }
+        }
+      }
+    }
+    
     // Always include governance action ID prominently
-    details.governanceActionId = proposal.id || 'N/A';
+    details.governanceActionId = governanceActionId || 'N/A';
     
     // Extract deposit - check multiple locations
     const depositValue = proposalDetails.deposit !== undefined 
@@ -943,14 +970,93 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatParameterChangeProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
     
-    if (proposalDetails.parameterChanges) {
-      const paramChanges: Record<string, any> = {};
-      Object.entries(proposalDetails.parameterChanges).forEach(([key, value]) => {
-        const paramKey = parseInt(key);
-        const paramName = PROTOCOL_PARAM_NAMES[paramKey] || `Parameter ${key}`;
-        paramChanges[paramName] = formatProtocolParamValue(paramKey, value);
+    // Extract parameter changes - prefer raw data structure which has better field names
+    let paramChanges: Record<string, any> = {};
+    
+    // First try to get from raw protocol_param_updates (has snake_case names like max_tx_ex_units)
+    if (rawData.governance_action?.ParameterChangeAction?.protocol_param_updates) {
+      const rawParams = rawData.governance_action.ParameterChangeAction.protocol_param_updates;
+      Object.entries(rawParams).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          // Map snake_case to readable names
+          const paramNameMap: Record<string, string> = {
+            'minfee_a': 'minFeeA',
+            'minfee_b': 'minFeeB',
+            'max_block_body_size': 'maxBlockBodySize',
+            'max_tx_size': 'maxTransactionSize',
+            'max_block_header_size': 'maxBlockHeaderSize',
+            'key_deposit': 'keyDeposit',
+            'pool_deposit': 'poolDeposit',
+            'max_epoch': 'maximumEpoch',
+            'n_opt': 'nOpt',
+            'pool_pledge_influence': 'poolPledgeInfluence',
+            'expansion_rate': 'expansionRate',
+            'treasury_growth_rate': 'treasuryGrowthRate',
+            'min_pool_cost': 'minPoolCost',
+            'ada_per_utxo_byte': 'adaPerUtxoByte',
+            'cost_models': 'costModels',
+            'execution_costs': 'executionUnitPrices',
+            'max_tx_ex_units': 'maxTxExecutionUnits',
+            'max_block_ex_units': 'maxBlockExecutionUnits',
+            'max_value_size': 'maxValueSize',
+            'collateral_percentage': 'collateralPercentage',
+            'max_collateral_inputs': 'maxCollateralInputs',
+            'pool_voting_thresholds': 'poolVotingThresholds',
+            'drep_voting_thresholds': 'drepVotingThresholds',
+            'min_committee_size': 'minCommitteeSize',
+            'committee_term_limit': 'committeeTermLimit',
+            'governance_action_validity_period': 'governanceActionValidityPeriod',
+            'governance_action_deposit': 'governanceActionDeposit',
+            'drep_deposit': 'drepDeposit',
+            'drep_inactivity_period': 'drepInactivityPeriod',
+            'ref_script_coins_per_byte': 'minFeeRefScriptCoinsPerByte'
+          };
+          
+          const readableName = paramNameMap[key] || key;
+          
+          // Keep execution units as objects (don't format them)
+          if (key === 'max_tx_ex_units' || key === 'max_block_ex_units') {
+            paramChanges[readableName] = value;
+          } else {
+            // Format other parameters
+            const paramKeyMap: Record<string, number> = {
+              'minfee_a': 0, 'minfee_b': 1, 'max_block_body_size': 2, 'max_tx_size': 3,
+              'max_block_header_size': 4, 'key_deposit': 5, 'pool_deposit': 6,
+              'max_epoch': 7, 'n_opt': 8, 'pool_pledge_influence': 9, 'expansion_rate': 10,
+              'treasury_growth_rate': 11, 'min_pool_cost': 16, 'ada_per_utxo_byte': 17,
+              'cost_models': 18, 'execution_costs': 19, 'max_tx_ex_units': 20,
+              'max_block_ex_units': 21, 'max_value_size': 22, 'collateral_percentage': 23,
+              'max_collateral_inputs': 24, 'pool_voting_thresholds': 25, 'drep_voting_thresholds': 26,
+              'min_committee_size': 27, 'committee_term_limit': 28,
+              'governance_action_validity_period': 29, 'governance_action_deposit': 30,
+              'drep_deposit': 31, 'drep_inactivity_period': 32, 'ref_script_coins_per_byte': 33
+            };
+            const paramKey = paramKeyMap[key];
+            if (paramKey !== undefined) {
+              paramChanges[readableName] = formatProtocolParamValue(paramKey, value);
+            } else {
+              paramChanges[readableName] = value;
+            }
+          }
+        }
       });
+    } else if (proposalDetails.parameterChanges) {
+      // Fallback to already parsed parameterChanges
+      Object.entries(proposalDetails.parameterChanges).forEach(([key, value]) => {
+        const paramKeyNum = parseInt(key);
+        const paramName = PROTOCOL_PARAM_NAMES[paramKeyNum] || `Parameter ${key}`;
+        // Keep execution units as objects
+        if ((paramKeyNum === 20 || paramKeyNum === 21) && value && typeof value === 'object' && !Array.isArray(value)) {
+          paramChanges[paramName] = value;
+        } else {
+          paramChanges[paramName] = formatProtocolParamValue(paramKeyNum, value);
+        }
+      });
+    }
+    
+    if (Object.keys(paramChanges).length > 0) {
       details.parameterChanges = paramChanges;
     }
     
