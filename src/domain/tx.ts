@@ -90,7 +90,7 @@ export type GovernanceVM = {
   }>;
   proposals?: Array<{
     id: string;
-    type: "ParameterChange" | "HardForkInitiation" | "TreasuryWithdrawals" | "NoConfidence" | "NewConstitution" | "InfoAction";
+    type: "ParameterChange" | "HardForkInitiation" | "TreasuryWithdrawals" | "NoConfidence" | "NewConstitution" | "UpdateCommittee" | "InfoAction";
     details: Record<string, unknown>;
   }>;
 };

@@ -20,7 +20,14 @@ import {
   Info,
   CheckCircle2,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  Settings,
+  Zap,
+  Banknote,
+  XCircle,
+  ScrollText,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
@@ -29,6 +36,7 @@ import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // Helper component for time remaining
 function ValidityTimeRemaining({ slot }: { slot: number }) {
@@ -46,6 +54,450 @@ function ValidityTimeRemaining({ slot }: { slot: number }) {
     <div className="text-xs text-muted-foreground">
       {timeInfo.timeRemaining} remaining
     </div>
+  );
+}
+
+// Component for individual governance action item
+function GovernanceActionItem({ 
+  action, 
+  index, 
+  copyToClipboard,
+  protocolParamNames,
+  formatProtocolParamValue
+}: { 
+  action: any; 
+  index: number; 
+  copyToClipboard: (text: string, label: string) => Promise<void>;
+  protocolParamNames: Record<number, string>;
+  formatProtocolParamValue: (key: number, value: any) => string;
+}) {
+  const [isRawDataOpen, setIsRawDataOpen] = useState(false);
+  
+  // Check if this is a proposal (has governanceActionId)
+  const isProposal = action.details?.governanceActionId !== undefined;
+  const governanceActionId = action.details?.governanceActionId || action.details?.proposalId;
+  
+  const isMemberId = (key: string, value: any) => key === 'memberId' && value !== 'N/A' && (
+    String(value).startsWith('cc_hot1') || 
+    String(value).startsWith('cc_cold1') || 
+    String(value).startsWith('cc1')
+  );
+  const isDrepId = (key: string, value: any) => key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
+  const isProposalId = (key: string) => key === 'proposalId' || key === 'parentActionId';
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {action.icon}
+            <span>{action.type}</span>
+            {action.type !== 'Constitution' && action.type !== 'Committee' && (
+              <Badge className={action.color} variant="outline">
+                Governance
+              </Badge>
+            )}
+          </div>
+        </CardTitle>
+        {action.description && action.description !== action.type && (
+          <p className="text-sm text-muted-foreground mt-1">{action.description}</p>
+        )}
+      </CardHeader>
+      <CardContent>
+        {action.details && Object.keys(action.details).length > 0 ? (
+          <div className="space-y-4">
+            {/* Prominently display Governance Action ID for proposals */}
+            {isProposal && governanceActionId && governanceActionId !== 'N/A' && (
+              <div className="bg-muted/50 p-3 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Hash className="h-4 w-4 text-primary" />
+                    <span className="font-semibold text-sm">Governance Action ID</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono bg-background px-2 py-1 rounded">
+                      {String(governanceActionId)}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2"
+                      onClick={() => copyToClipboard(String(governanceActionId), 'Governance Action ID')}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                    <BlockExplorerLink 
+                      type="proposal" 
+                      params={{ proposalId: String(governanceActionId) }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Highlighted Key Information Section */}
+            {(() => {
+              // Helper function to format ADA with commas and proper decimals
+              const formatAdaDisplay = (adaValue: string | number): string => {
+                const numValue = typeof adaValue === 'string' ? parseFloat(adaValue) : adaValue;
+                if (isNaN(numValue)) return String(adaValue);
+                
+                // If it's a whole number, don't show decimals
+                if (numValue % 1 === 0) {
+                  return Math.floor(numValue).toLocaleString('en-US');
+                }
+                // Otherwise show up to 6 decimals but remove trailing zeros
+                return numValue.toLocaleString('en-US', {
+                  maximumFractionDigits: 6,
+                  minimumFractionDigits: 0
+                });
+              };
+              
+              // Extract fields from details or raw data
+              // Prefer formatted value from details, otherwise format raw value
+              let deposit: string | undefined;
+              if (action.details?.deposit) {
+                // Already formatted by formatCommonProposalFields (as ADA string)
+                deposit = formatAdaDisplay(action.details.deposit);
+              } else {
+                // Extract raw value and format it
+                const rawDeposit = action.data?.details?.deposit || action.data?.raw?.deposit;
+                if (rawDeposit !== undefined && rawDeposit !== null) {
+                  try {
+                    const depositValue = typeof rawDeposit === 'bigint' ? rawDeposit : BigInt(rawDeposit);
+                    const adaFormatted = formatAda(depositValue);
+                    deposit = formatAdaDisplay(adaFormatted);
+                  } catch {
+                    deposit = String(rawDeposit);
+                  }
+                }
+              }
+              const rewardAccount = action.details?.rewardAccount || action.data?.details?.rewardAccount || action.data?.raw?.reward_account;
+              const anchorUrl = action.details?.anchorUrl || action.data?.details?.anchor?.url || action.data?.raw?.anchor?.anchor_url;
+              const anchorHash = action.details?.anchorHash || action.data?.details?.anchor?.hash || action.data?.raw?.anchor?.anchor_data_hash;
+              
+              if (!deposit && !rewardAccount && !anchorUrl && !anchorHash) {
+                return null;
+              }
+              
+              return (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {/* Deposit Amount */}
+                  {deposit && (
+                    <div>
+                      <div className="font-medium mb-1">Deposit Amount:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{deposit} ada</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(`${deposit} ada`, 'Deposit Amount')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Deposit Return Address */}
+                  {rewardAccount && (
+                    <div className="col-span-2">
+                      <div className="font-medium mb-1">Deposit Return Address:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{String(rewardAccount)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(String(rewardAccount), 'Deposit Return Address')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <BlockExplorerLink 
+                          type="stakeKey" 
+                          params={{ stakeKey: String(rewardAccount) }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Metadata URI */}
+                  {anchorUrl && (() => {
+                    // Convert IPFS URI to HTTP gateway URL
+                    const urlString = String(anchorUrl);
+                    let href = urlString;
+                    if (urlString.startsWith('ipfs://')) {
+                      const ipfsHash = urlString.replace('ipfs://', '');
+                      href = `https://ipfs.io/ipfs/${ipfsHash}`;
+                    }
+                    
+                    return (
+                      <div className="col-span-2">
+                        <div className="font-medium mb-1">Metadata URI:</div>
+                        <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                          <a 
+                            href={href} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:text-blue-600 underline flex-1"
+                          >
+                            {urlString}
+                          </a>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2"
+                            onClick={() => copyToClipboard(urlString, 'Metadata URI')}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Metadata Hash */}
+                  {anchorHash && (
+                    <div className="col-span-2">
+                      <div className="font-medium mb-1">Metadata Hash:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{String(anchorHash)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(String(anchorHash), 'Metadata Hash')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              {Object.entries(action.details).map(([key, value]) => {
+                // Skip governanceActionId as it's shown prominently above
+                if (key === 'governanceActionId') {
+                  return null;
+                }
+                
+                // Skip type fields (we'll display them as badges next to their values)
+                if (key.endsWith('Type')) {
+                  return null;
+                }
+                
+                // Handle anchor status warning (similar to certificates)
+                if (key === 'anchorStatus') {
+                  if (!value) {
+                    return null;
+                  }
+
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>{String(value)}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Skip anchor fields - they're shown in highlighted section above
+                if (key === 'anchorUrl' || key === 'anchorHash' || key === 'anchorBytes') {
+                  return null;
+                }
+                
+                // Skip deposit and rewardAccount - they're shown in highlighted section above
+                if (key === 'deposit' || key === 'rewardAccount') {
+                  return null;
+                }
+                
+                if (value === null || value === undefined || String(value) === 'N/A') {
+                  return null;
+                }
+                
+                const isParentActionId = key === 'parentActionId';
+                
+                // Get the type badge for this field
+                const typeKey = `${key}Type`;
+                const typeValue = action.details[typeKey];
+                
+                // Custom label formatting
+                const customLabels: Record<string, string> = {
+                  'memberId': 'Committee Member',
+                  'drepId': 'DRep ID',
+                  'drepHash': 'DRep Hash',
+                  'action': 'Action',
+                  'proposalId': 'Governance Action ID',
+                  'parentActionId': 'Previous Governance Action ID',
+                  'deposit': 'Deposit',
+                  'rewardAccount': 'Deposit Return Address',
+                  'epoch': 'Epoch',
+                  'protocolVersion': 'Protocol Version',
+                  'constitutionHash': 'Constitution Hash',
+                  'scriptHash': 'Script Hash',
+                  'membersToRemove': 'Members to Remove',
+                  'membersToAdd': 'Members to Add',
+                  'threshold': 'Threshold'
+                };
+                
+                const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                
+                // Format action value
+                const actionValue = String(value);
+                const actionColors: Record<string, string> = {
+                  'VoteYes': 'text-green-600 font-semibold',
+                  'VoteNo': 'text-red-600 font-semibold',
+                  'Abstain': 'text-yellow-600 font-semibold'
+                };
+                
+                // Handle parameter changes object
+                if (key === 'parameterChanges' && typeof value === 'object') {
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-2">{displayLabel}:</div>
+                      <div className="space-y-2 pl-4 border-l-2">
+                        {Object.entries(value as Record<string, any>).map(([paramKey, paramValue]) => {
+                          const paramKeyNum = parseInt(paramKey);
+                          const paramName = protocolParamNames[paramKeyNum] || `Parameter ${paramKey}`;
+                          // Handle execution units (objects with mem and steps)
+                          if (paramValue && typeof paramValue === 'object' && !Array.isArray(paramValue)) {
+                            if (paramValue.mem !== undefined || paramValue.steps !== undefined) {
+                              return (
+                                <div key={paramKey} className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-mono">{paramName}:</span>
+                                  </div>
+                                  <div className="pl-4 space-y-0.5 text-[10px]">
+                                    {paramValue.mem !== undefined && (
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Memory:</span>
+                                        <span className="font-semibold">{Number(paramValue.mem).toLocaleString()}</span>
+                                      </div>
+                                    )}
+                                    {paramValue.steps !== undefined && (
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Steps:</span>
+                                        <span className="font-semibold">{Number(paramValue.steps).toLocaleString()}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          }
+                          return (
+                            <div key={paramKey} className="flex items-center justify-between text-xs">
+                              <span className="font-mono">{paramName}:</span>
+                              <span className="font-semibold">{formatProtocolParamValue(paramKeyNum, paramValue)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Handle withdrawals object
+                if (key === 'withdrawals' && typeof value === 'object') {
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-2">{displayLabel}:</div>
+                      <div className="space-y-2 pl-4 border-l-2">
+                        {Object.entries(value as Record<string, any>).map(([account, amount]) => (
+                          <div key={account} className="flex items-center justify-between text-xs">
+                            <code className="font-mono text-[10px] break-all flex-1 mr-2">{account}</code>
+                            <span className="font-semibold">{String(amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div key={key} className={isParentActionId ? 'col-span-2' : ''}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{displayLabel}:</span>
+                      {typeValue && (
+                        <Badge variant="outline" className="text-xs">
+                          {typeValue}
+                        </Badge>
+                      )}
+                      {key === 'action' && (
+                        <span className={actionColors[actionValue] || ''}>
+                          {actionValue}
+                        </span>
+                      )}
+                    </div>
+                    {key !== 'action' && (
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{actionValue}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(String(value), key)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        {isMemberId(key, value) && (
+                          <BlockExplorerLink 
+                            type="committee" 
+                            params={{ memberId: String(value) }}
+                          />
+                        )}
+                        {isDrepId(key, value) && (
+                          <BlockExplorerLink 
+                            type="drep" 
+                            params={{ drepId: String(value) }}
+                          />
+                        )}
+                        {isProposalId(key) && (
+                          <BlockExplorerLink 
+                            type="proposal" 
+                            params={{ proposalId: String(value) }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Expandable Raw Data Section */}
+            {action.data && (
+              <Collapsible open={isRawDataOpen} onOpenChange={setIsRawDataOpen}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                  {isRawDataOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  <span>Raw Data</span>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                    {JSON.stringify(action.data, null, 2)}
+                  </pre>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4">
+            <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
+              {JSON.stringify(action.data, null, 2)}
+            </pre>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -351,6 +803,288 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     };
   };
 
+  // Protocol parameter name mapping based on CDDL
+  const PROTOCOL_PARAM_NAMES: Record<number, string> = {
+    0: 'minFeeA',
+    1: 'minFeeB',
+    2: 'maxBlockBodySize',
+    3: 'maxTransactionSize',
+    4: 'maxBlockHeaderSize',
+    5: 'keyDeposit',
+    6: 'poolDeposit',
+    7: 'maximumEpoch',
+    8: 'nOpt',
+    9: 'poolPledgeInfluence',
+    10: 'expansionRate',
+    11: 'treasuryGrowthRate',
+    16: 'minPoolCost',
+    17: 'adaPerUtxoByte',
+    18: 'costModels',
+    19: 'executionUnitPrices',
+    20: 'maxTxExecutionUnits',
+    21: 'maxBlockExecutionUnits',
+    22: 'maxValueSize',
+    23: 'collateralPercentage',
+    24: 'maxCollateralInputs',
+    25: 'poolVotingThresholds',
+    26: 'drepVotingThresholds',
+    27: 'minCommitteeSize',
+    28: 'committeeTermLimit',
+    29: 'governanceActionValidityPeriod',
+    30: 'governanceActionDeposit',
+    31: 'drepDeposit',
+    32: 'drepInactivityPeriod',
+    33: 'minFeeRefScriptCoinsPerByte'
+  };
+
+  // Helper function to format protocol parameter value
+  const formatProtocolParamValue = (key: number, value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    
+    // Handle coin values (0, 1, 5, 6, 16, 17, 30, 31)
+    if ([0, 1, 5, 6, 16, 17, 30, 31].includes(key)) {
+      try {
+        const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+        return formatAda(bigintValue);
+      } catch {
+        return String(value);
+      }
+    }
+    
+    // Handle unit intervals (9, 10, 11, 25, 26)
+    if ([9, 10, 11].includes(key) || (key === 25 || key === 26)) {
+      if (Array.isArray(value) && value.length === 2) {
+        const [numerator, denominator] = value;
+        const percentage = (Number(numerator) / Number(denominator)) * 100;
+        return `${percentage.toFixed(2)}%`;
+      }
+      return String(value);
+    }
+    
+    // Handle protocol version (for HardForkInitiation)
+    if (Array.isArray(value) && value.length === 2) {
+      return `${value[0]}.${value[1]}`;
+    }
+    
+    return String(value);
+  };
+
+  // Helper function to extract common proposal fields
+  const formatCommonProposalFields = (proposal: any): Record<string, any> => {
+    const details: Record<string, any> = {};
+    const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
+    
+    // Always include governance action ID prominently
+    details.governanceActionId = proposal.id || 'N/A';
+    
+    // Extract deposit - check multiple locations
+    const depositValue = proposalDetails.deposit !== undefined 
+      ? proposalDetails.deposit 
+      : rawData.deposit !== undefined 
+        ? rawData.deposit 
+        : undefined;
+    
+    if (depositValue !== undefined) {
+      try {
+        const deposit = typeof depositValue === 'bigint' 
+          ? depositValue 
+          : BigInt(depositValue);
+        details.deposit = formatAda(deposit);
+      } catch {
+        details.deposit = String(depositValue);
+      }
+    }
+    
+    // Extract reward account - check multiple locations
+    details.rewardAccount = proposalDetails.rewardAccount 
+      || rawData.reward_account 
+      || null;
+    
+    // Extract anchor information - check multiple locations
+    const anchor = proposalDetails.anchor 
+      || rawData.anchor 
+      || null;
+    
+    if (anchor) {
+      // Handle different anchor structures
+      if (anchor.url) {
+        details.anchorUrl = anchor.url;
+      } else if (anchor.anchor_url) {
+        details.anchorUrl = anchor.anchor_url;
+      }
+      
+      if (anchor.hash) {
+        details.anchorHash = anchor.hash;
+      } else if (anchor.anchor_data_hash) {
+        details.anchorHash = anchor.anchor_data_hash;
+      } else if (anchor.data_hash) {
+        details.anchorHash = anchor.data_hash;
+      }
+      
+      if (anchor.bytes) {
+        details.anchorBytes = anchor.bytes;
+      } else if (anchor.cbor) {
+        details.anchorBytes = anchor.cbor;
+      }
+    } else if (proposalDetails.anchorMissing) {
+      details.anchorStatus = 'No anchor provided';
+    }
+    
+    // Extract parent action ID if present
+    if (proposalDetails.parentActionId) {
+      details.parentActionId = proposalDetails.parentActionId;
+    }
+    
+    return details;
+  };
+
+  // Format ParameterChange proposal
+  const formatParameterChangeProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.parameterChanges) {
+      const paramChanges: Record<string, any> = {};
+      Object.entries(proposalDetails.parameterChanges).forEach(([key, value]) => {
+        const paramKey = parseInt(key);
+        const paramName = PROTOCOL_PARAM_NAMES[paramKey] || `Parameter ${key}`;
+        paramChanges[paramName] = formatProtocolParamValue(paramKey, value);
+      });
+      details.parameterChanges = paramChanges;
+    }
+    
+    if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
+      details.epoch = proposalDetails.epoch;
+    }
+    
+    return details;
+  };
+
+  // Format HardForkInitiation proposal
+  const formatHardForkProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.protocolVersion) {
+      const version = proposalDetails.protocolVersion;
+      if (Array.isArray(version) && version.length === 2) {
+        details.protocolVersion = `${version[0]}.${version[1]}`;
+      } else {
+        details.protocolVersion = String(version);
+      }
+    }
+    
+    if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
+      details.epoch = proposalDetails.epoch;
+    }
+    
+    return details;
+  };
+
+  // Format TreasuryWithdrawals proposal
+  const formatTreasuryWithdrawalsProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.withdrawals && Array.isArray(proposalDetails.withdrawals)) {
+      const withdrawals: Record<string, string> = {};
+      proposalDetails.withdrawals.forEach((withdrawal: any) => {
+        if (withdrawal.reward_account || withdrawal.account) {
+          const account = withdrawal.reward_account || withdrawal.account;
+          const amount = withdrawal.amount || withdrawal.coin || 0;
+          try {
+            const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(amount);
+            withdrawals[account] = formatAda(bigintAmount);
+          } catch {
+            withdrawals[account] = String(amount);
+          }
+        }
+      });
+      details.withdrawals = withdrawals;
+    }
+    
+    if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
+      details.epoch = proposalDetails.epoch;
+    }
+    
+    return details;
+  };
+
+  // Format NoConfidence proposal
+  const formatNoConfidenceProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
+      details.epoch = proposalDetails.epoch;
+    }
+    
+    return details;
+  };
+
+  // Format NewConstitution proposal
+  const formatNewConstitutionProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.constitutionHash) {
+      details.constitutionHash = proposalDetails.constitutionHash;
+    } else if (proposalDetails.constitution?.anchor?.hash) {
+      details.constitutionHash = proposalDetails.constitution.anchor.hash;
+    } else if (proposalDetails.constitution?.hash) {
+      details.constitutionHash = proposalDetails.constitution.hash;
+    }
+    
+    if (proposalDetails.scriptHash) {
+      details.scriptHash = proposalDetails.scriptHash;
+    } else if (proposalDetails.constitution?.script_hash) {
+      details.scriptHash = proposalDetails.constitution.script_hash;
+    }
+    
+    if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
+      details.epoch = proposalDetails.epoch;
+    }
+    
+    return details;
+  };
+
+  // Format UpdateCommittee proposal
+  const formatUpdateCommitteeProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.membersToRemove && Array.isArray(proposalDetails.membersToRemove)) {
+      details.membersToRemove = proposalDetails.membersToRemove.length;
+    }
+    
+    if (proposalDetails.membersToAdd && Array.isArray(proposalDetails.membersToAdd)) {
+      details.membersToAdd = proposalDetails.membersToAdd.length;
+    }
+    
+    if (proposalDetails.threshold !== null && proposalDetails.threshold !== undefined) {
+      details.threshold = proposalDetails.threshold;
+    }
+    
+    if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
+      details.epoch = proposalDetails.epoch;
+    }
+    
+    return details;
+  };
+
+  // Format InfoAction proposal
+  const formatInfoActionProposal = (proposal: any): Record<string, any> => {
+    const details = formatCommonProposalFields(proposal);
+    const proposalDetails = proposal.details || {};
+    
+    if (proposalDetails.info) {
+      details.info = proposalDetails.info;
+    }
+    
+    return details;
+  };
+
   const analyzeGovernance = (tx: DomainTx) => {
     if (!tx.governance) {
       return { count: 0, items: [], summary: 'No governance actions found' };
@@ -460,12 +1194,82 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     // Analyze governance proposals
     if (tx.governance.proposals && tx.governance.proposals.length > 0) {
       tx.governance.proposals.forEach((proposal: any, index: number) => {
+        let extractedDetails: Record<string, any> = {};
+        let icon = <FileText className="h-4 w-4" />;
+        let color = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+        let description = `Governance action: ${proposal.type}`;
+        
+        // Format based on proposal type
+        switch (proposal.type) {
+          case 'ParameterChange':
+            extractedDetails = formatParameterChangeProposal(proposal);
+            icon = <Settings className="h-4 w-4" />;
+            color = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+            description = `Proposes changes to protocol parameters`;
+            break;
+          case 'HardForkInitiation':
+            extractedDetails = formatHardForkProposal(proposal);
+            icon = <Zap className="h-4 w-4" />;
+            color = 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
+            description = `Initiates a protocol hard fork`;
+            break;
+          case 'TreasuryWithdrawals':
+            extractedDetails = formatTreasuryWithdrawalsProposal(proposal);
+            icon = <Banknote className="h-4 w-4" />;
+            color = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+            description = `Requests withdrawals from the treasury`;
+            break;
+          case 'NoConfidence':
+            extractedDetails = formatNoConfidenceProposal(proposal);
+            icon = <XCircle className="h-4 w-4" />;
+            color = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+            description = `Motion of no confidence in the Constitutional Committee`;
+            break;
+          case 'NewConstitution':
+            extractedDetails = formatNewConstitutionProposal(proposal);
+            icon = <ScrollText className="h-4 w-4" />;
+            color = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
+            description = `Updates the on-chain constitution hash`;
+            break;
+          case 'UpdateCommittee':
+            extractedDetails = formatUpdateCommitteeProposal(proposal);
+            icon = <Users className="h-4 w-4" />;
+            color = 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200';
+            description = `Updates Constitutional Committee membership or threshold`;
+            break;
+          case 'InfoAction':
+            extractedDetails = formatInfoActionProposal(proposal);
+            icon = <Info className="h-4 w-4" />;
+            color = 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+            description = `Informational action for gauging sentiment`;
+            break;
+          default:
+            extractedDetails = formatCommonProposalFields(proposal);
+            description = `Governance action: ${proposal.type}`;
+        }
+        
+        // Create cleaner type names
+        const actionTypeNames: Record<string, string> = {
+          'ParameterChange': 'Parameter Change',
+          'HardForkInitiation': 'Hard Fork Initiation',
+          'TreasuryWithdrawals': 'Treasury Withdrawals',
+          'NoConfidence': 'Motion of No Confidence',
+          'NewConstitution': 'New Constitution',
+          'UpdateCommittee': 'Update Committee',
+          'InfoAction': 'Info Action'
+        };
+        
+        const cleanType = actionTypeNames[proposal.type] || proposal.type;
+        
         items.push({
-          type: `${proposal.type} Governance Action`,
-          description: `Governance action: ${proposal.type}`,
+          index,
+          type: cleanType,
+          description,
           data: proposal,
-          icon: <FileText className="h-4 w-4" />,
-          color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+          details: extractedDetails,
+          icon,
+          color,
+          anchorMissing: proposal.details?.anchorMissing || false
         });
       });
     }
@@ -847,153 +1651,14 @@ export function ContentsTab({ tx }: ContentsTabProps) {
               </Card>
             ) : (
               contents.governance.items.map((action: any, index: number) => (
-                <Card key={index}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {action.icon}
-                        <span>{action.type}</span>
-                        <Badge className={action.color}>
-                          Governance Action
-                        </Badge>
-                      </div>
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">{action.description}</p>
-                  </CardHeader>
-                  <CardContent>
-                    {action.details && Object.keys(action.details).length > 0 ? (
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        {Object.entries(action.details).map(([key, value]) => {
-                          // Skip type fields (we'll display them as badges next to their values)
-                          if (key.endsWith('Type')) {
-                            return null;
-                          }
-                          
-                          // Handle anchor status warning (similar to certificates)
-                          if (key === 'anchorStatus') {
-                            if (!value) {
-                              return null;
-                            }
-
-                            return (
-                              <div key={key} className="col-span-2">
-                                <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
-                                  <AlertTriangle className="h-4 w-4" />
-                                  <span>{String(value)}</span>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
-                          if (value === null || value === undefined || String(value) === 'N/A') {
-                            return null;
-                          }
-                          
-                          const isMemberId = key === 'memberId' && value !== 'N/A' && (
-                            String(value).startsWith('cc_hot1') || 
-                            String(value).startsWith('cc_cold1') || 
-                            String(value).startsWith('cc1')
-                          );
-                          const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
-                          const isProposalId = key === 'proposalId' && value !== 'N/A';
-                          const isAnchorUrl = key === 'anchorUrl' && value !== 'N/A';
-                          
-                          // Get the type badge for this field
-                          const typeKey = `${key}Type`;
-                          const typeValue = action.details[typeKey];
-                          
-                          // Custom label formatting
-                          const customLabels: Record<string, string> = {
-                            'memberId': 'Committee Member',
-                            'drepId': 'DRep ID',
-                            'drepHash': 'DRep Hash',
-                            'action': 'Action',
-                            'proposalId': 'Governance Action ID',
-                            'anchorUrl': 'Anchor URL',
-                            'anchorHash': 'Anchor Hash',
-                            'anchorBytes': 'Anchor Bytes'
-                          };
-                          
-                          const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
-                          
-                          // Format action value
-                          const actionValue = String(value);
-                          const actionColors: Record<string, string> = {
-                            'VoteYes': 'text-green-600 font-semibold',
-                            'VoteNo': 'text-red-600 font-semibold',
-                            'Abstain': 'text-yellow-600 font-semibold'
-                          };
-                          
-                          return (
-                            <div key={key}>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{displayLabel}:</span>
-                                {typeValue && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {typeValue}
-                                  </Badge>
-                                )}
-                                {key === 'action' && (
-                                  <span className={actionColors[actionValue] || ''}>
-                                    {actionValue}
-                                  </span>
-                                )}
-                              </div>
-                              {key !== 'action' && (
-                                <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
-                                  {isAnchorUrl ? (
-                                    <a 
-                                      href={String(value)} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-blue-500 underline hover:text-blue-700"
-                                    >
-                                      {String(value)}
-                                    </a>
-                                  ) : (
-                                    <span>{actionValue}</span>
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2"
-                                    onClick={() => copyToClipboard(String(value), key)}
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </Button>
-                                  {isMemberId && (
-                                    <BlockExplorerLink 
-                                      type="committee" 
-                                      params={{ memberId: String(value) }}
-                                    />
-                                  )}
-                                  {isDrepId && (
-                                    <BlockExplorerLink 
-                                      type="drep" 
-                                      params={{ drepId: String(value) }}
-                                    />
-                                  )}
-                                  {isProposalId && (
-                                    <BlockExplorerLink 
-                                      type="proposal" 
-                                      params={{ proposalId: String(value) }}
-                                    />
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="mt-4">
-                        <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                          {JSON.stringify(action.data, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <GovernanceActionItem 
+                  key={index} 
+                  action={action} 
+                  index={index} 
+                  copyToClipboard={copyToClipboard}
+                  protocolParamNames={PROTOCOL_PARAM_NAMES}
+                  formatProtocolParamValue={formatProtocolParamValue}
+                />
               ))
             )}
           </div>
