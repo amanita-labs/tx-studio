@@ -37,6 +37,30 @@ import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import * as bech32Buffer from 'bech32-buffer';
+
+// Helper function to create CIP-129 committee cold credential bech32 ID
+function createCommitteeColdCredentialId(hash: string, type: 'Key' | 'Script'): string | null {
+  if (!hash || hash.length !== 56) return null; // 28 bytes = 56 hex chars
+  
+  try {
+    const hashBuffer = Buffer.from(hash, 'hex');
+    if (hashBuffer.length !== 28) return null;
+    
+    // CIP-0129: Committee cold credentials use 'cc_cold' prefix
+    // Header byte: Cold = 0x01, Key Hash = 0x02, Script Hash = 0x03
+    const keyType = 0x01; // Cold = 1
+    const credentialType = type === 'Key' ? 0x02 : 0x03; // Key Hash = 2, Script Hash = 3
+    const headerByte = (keyType << 4) | credentialType;
+    
+    // Prepend header byte to hash
+    const dataWithHeader = Buffer.concat([Buffer.from([headerByte]), hashBuffer]);
+    return bech32Buffer.encode('cc_cold', dataWithHeader).toString();
+  } catch (error) {
+    console.warn('Error creating committee cold credential ID:', error);
+    return null;
+  }
+}
 
 // Helper component for time remaining
 function ValidityTimeRemaining({ slot }: { slot: number }) {
@@ -404,18 +428,197 @@ function GovernanceActionItem({
                   );
                 }
                 
-                // Handle withdrawals object
-                if (key === 'withdrawals' && typeof value === 'object') {
+                // Handle membersToRemove array
+                if (key === 'membersToRemove' && Array.isArray(value)) {
                   return (
                     <div key={key} className="col-span-2">
                       <div className="font-medium mb-2">{displayLabel}:</div>
-                      <div className="space-y-2 pl-4 border-l-2">
-                        {Object.entries(value as Record<string, any>).map(([account, amount]) => (
-                          <div key={account} className="flex items-center justify-between text-xs">
-                            <code className="font-mono text-[10px] break-all flex-1 mr-2">{account}</code>
-                            <span className="font-semibold">{String(amount)}</span>
-                          </div>
-                        ))}
+                      <div className="space-y-3 pl-4 border-l-2 border-muted">
+                        {value.map((member: any, idx: number) => {
+                          const memberType = member.type || (member.Key ? 'Key' : member.Script ? 'Script' : 'Unknown');
+                          const memberHash = member.hash || member.Key || member.Script || '';
+                          const memberBech32 = member.bech32 || member.credential?.bech32;
+                          
+                          return (
+                            <div key={idx} className="space-y-1">
+                              <div className="font-medium text-xs mb-1">Member {idx + 1}:</div>
+                              <div className="pl-3 space-y-1 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-muted-foreground">Type:</span>
+                                  <span className="font-semibold">{memberType}</span>
+                                </div>
+                                {memberBech32 ? (
+                                  <>
+                                    <div className="font-mono text-xs break-all flex items-center gap-2">
+                                      <span className="flex-1">{memberBech32}</span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2"
+                                        onClick={() => copyToClipboard(memberBech32, 'Member ID')}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                      <BlockExplorerLink 
+                                        type="committee" 
+                                        params={{ memberId: memberBech32 }}
+                                      />
+                                    </div>
+                                    {memberHash && memberHash !== memberBech32 && (
+                                      <div className="text-[10px] text-muted-foreground font-mono break-all">
+                                        Hash: {memberHash}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="font-mono text-xs break-all flex items-center gap-2">
+                                    <span className="flex-1">{memberHash}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 px-2"
+                                      onClick={() => copyToClipboard(memberHash, 'Member Hash')}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Handle membersToAdd array
+                if (key === 'membersToAdd' && Array.isArray(value)) {
+                  const isFullCommittee = action.details?.isFullCommittee;
+                  const sectionLabel = isFullCommittee ? 'Committee Members' : displayLabel;
+                  
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-2">{sectionLabel}:</div>
+                      <div className="space-y-3 pl-4 border-l-2 border-muted">
+                        {value.length === 0 ? (
+                          <div className="text-xs text-muted-foreground">No members to add</div>
+                        ) : (
+                          value.map((member: any, idx: number) => {
+                            const memberType = member.type || (member.Key ? 'Key' : member.Script ? 'Script' : 'Unknown');
+                            const memberHash = member.hash || member.Key || member.Script || '';
+                            const memberBech32 = member.bech32 || member.credential?.bech32;
+                            const termLimit = member.termLimit !== undefined ? member.termLimit : null;
+                            
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="font-medium text-xs mb-1">Member {idx + 1}:</div>
+                                <div className="pl-3 space-y-1 text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Type:</span>
+                                    <span className="font-semibold">{memberType}</span>
+                                  </div>
+                                  {memberBech32 ? (
+                                    <>
+                                      <div className="font-mono text-xs break-all flex items-center gap-2">
+                                        <span className="flex-1">{memberBech32}</span>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 px-2"
+                                          onClick={() => copyToClipboard(memberBech32, 'Member ID')}
+                                        >
+                                          <Copy className="h-3 w-3" />
+                                        </Button>
+                                        <BlockExplorerLink 
+                                          type="committee" 
+                                          params={{ memberId: memberBech32 }}
+                                        />
+                                      </div>
+                                      {memberHash && memberHash !== memberBech32 && (
+                                        <div className="text-[10px] text-muted-foreground font-mono break-all">
+                                          Hash: {memberHash}
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="font-mono text-xs break-all flex items-center gap-2">
+                                      <span className="flex-1">{memberHash}</span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2"
+                                        onClick={() => copyToClipboard(memberHash, 'Member Hash')}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {termLimit !== null && termLimit !== undefined && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-muted-foreground">Term Limit:</span>
+                                      <span className="font-semibold">Epoch {termLimit.toLocaleString()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Handle withdrawals object
+                if (key === 'withdrawals' && typeof value === 'object') {
+                  // Helper function to format ADA with commas and proper decimals
+                  const formatAdaDisplay = (adaValue: string | number): string => {
+                    const numValue = typeof adaValue === 'string' ? parseFloat(adaValue) : adaValue;
+                    if (isNaN(numValue)) return String(adaValue);
+                    
+                    // If it's a whole number, don't show decimals
+                    if (numValue % 1 === 0) {
+                      return Math.floor(numValue).toLocaleString('en-US');
+                    }
+                    // Otherwise show up to 6 decimals but remove trailing zeros
+                    return numValue.toLocaleString('en-US', {
+                      maximumFractionDigits: 6,
+                      minimumFractionDigits: 0
+                    });
+                  };
+                  
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-2">{displayLabel}:</div>
+                      <div className="space-y-3 pl-4 border-l-2 border-muted">
+                        {Object.entries(value as Record<string, any>).map(([account, amount]) => {
+                          const formattedAmount = formatAdaDisplay(String(amount));
+                          return (
+                            <div key={account} className="space-y-1">
+                              <div className="font-medium text-xs mb-1">Destination:</div>
+                              <div className="font-mono text-xs break-all flex items-center gap-2 mb-2">
+                                <span className="flex-1">{account}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2"
+                                  onClick={() => copyToClipboard(account, 'Stake Address')}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                <BlockExplorerLink 
+                                  type="stakeKey" 
+                                  params={{ stakeKey: account }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground text-xs">Amount:</span>
+                                <span className="font-mono font-semibold text-xs">{formattedAmount} ada</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -1092,21 +1295,54 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatTreasuryWithdrawalsProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
     
-    if (proposalDetails.withdrawals && Array.isArray(proposalDetails.withdrawals)) {
-      const withdrawals: Record<string, string> = {};
-      proposalDetails.withdrawals.forEach((withdrawal: any) => {
-        if (withdrawal.reward_account || withdrawal.account) {
-          const account = withdrawal.reward_account || withdrawal.account;
-          const amount = withdrawal.amount || withdrawal.coin || 0;
+    // Extract withdrawals - handle both object format (stake address -> lovelace) and array format
+    const withdrawals: Record<string, string> = {};
+    
+    // First try raw data structure (object format: stake address -> lovelace amount)
+    const rawWithdrawals = rawData.governance_action?.TreasuryWithdrawalsAction?.withdrawals;
+    if (rawWithdrawals && typeof rawWithdrawals === 'object' && !Array.isArray(rawWithdrawals)) {
+      Object.entries(rawWithdrawals).forEach(([account, amount]) => {
+        try {
+          const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(String(amount));
+          withdrawals[account] = formatAda(bigintAmount);
+        } catch {
+          withdrawals[account] = String(amount);
+        }
+      });
+    }
+    
+    // Also check proposalDetails.withdrawals (could be object or array)
+    if (proposalDetails.withdrawals) {
+      if (Array.isArray(proposalDetails.withdrawals)) {
+        // Array format
+        proposalDetails.withdrawals.forEach((withdrawal: any) => {
+          if (withdrawal.reward_account || withdrawal.account) {
+            const account = withdrawal.reward_account || withdrawal.account;
+            const amount = withdrawal.amount || withdrawal.coin || 0;
+            try {
+              const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(amount);
+              withdrawals[account] = formatAda(bigintAmount);
+            } catch {
+              withdrawals[account] = String(amount);
+            }
+          }
+        });
+      } else if (typeof proposalDetails.withdrawals === 'object') {
+        // Object format: stake address -> lovelace amount
+        Object.entries(proposalDetails.withdrawals).forEach(([account, amount]) => {
           try {
-            const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(amount);
+            const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(String(amount));
             withdrawals[account] = formatAda(bigintAmount);
           } catch {
             withdrawals[account] = String(amount);
           }
-        }
-      });
+        });
+      }
+    }
+    
+    if (Object.keys(withdrawals).length > 0) {
       details.withdrawals = withdrawals;
     }
     
@@ -1159,16 +1395,130 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatUpdateCommitteeProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
     
+    // Extract members to remove with detailed information
+    const membersToRemove: Array<{ type: string; hash: string; bech32?: string; credential?: any }> = [];
+    
+    // First try raw data structure
+    const rawMembersToRemove = rawData.governance_action?.UpdateCommitteeAction?.members_to_remove;
+    if (rawMembersToRemove && Array.isArray(rawMembersToRemove)) {
+      rawMembersToRemove.forEach((member: any) => {
+        const credential = member.stake_credential || member;
+        const credentialType = credential.Key ? 'Key' : credential.Script ? 'Script' : 'Unknown';
+        const credentialHash = credential.Key || credential.Script || credential.hash || '';
+        if (credentialHash) {
+          // Create CIP-129 bech32 ID for cold credential
+          const bech32Id = (credentialType === 'Key' || credentialType === 'Script') 
+            ? createCommitteeColdCredentialId(credentialHash, credentialType as 'Key' | 'Script')
+            : null;
+          
+          membersToRemove.push({
+            type: credentialType,
+            hash: credentialHash,
+            bech32: bech32Id || undefined,
+            credential: credential
+          });
+        }
+      });
+    }
+    
+    // Also check proposalDetails.membersToRemove
     if (proposalDetails.membersToRemove && Array.isArray(proposalDetails.membersToRemove)) {
-      details.membersToRemove = proposalDetails.membersToRemove.length;
+      if (membersToRemove.length === 0) {
+        // Only use this if raw data didn't have it
+        proposalDetails.membersToRemove.forEach((member: any) => {
+          const credentialType = member.Key ? 'Key' : member.Script ? 'Script' : 'Unknown';
+          const credentialHash = member.Key || member.Script || member.hash || '';
+          if (credentialHash) {
+            // Create CIP-129 bech32 ID for cold credential
+            const bech32Id = (credentialType === 'Key' || credentialType === 'Script') 
+              ? createCommitteeColdCredentialId(credentialHash, credentialType as 'Key' | 'Script')
+              : null;
+            
+            membersToRemove.push({
+              type: credentialType,
+              hash: credentialHash,
+              bech32: bech32Id || undefined,
+              credential: member
+            });
+          }
+        });
+      }
     }
     
-    if (proposalDetails.membersToAdd && Array.isArray(proposalDetails.membersToAdd)) {
-      details.membersToAdd = proposalDetails.membersToAdd.length;
+    if (membersToRemove.length > 0) {
+      details.membersToRemove = membersToRemove;
     }
     
-    if (proposalDetails.threshold !== null && proposalDetails.threshold !== undefined) {
+    // Extract committee members with detailed information (including term limits)
+    // Note: committee.members represents the full committee AFTER the update
+    // This includes both existing and newly added members
+    const committeeMembers: Array<{ type: string; hash: string; bech32?: string; termLimit?: number; credential?: any }> = [];
+    
+    // First try raw data structure - committee.members shows the full committee
+    const rawCommittee = rawData.governance_action?.UpdateCommitteeAction?.committee;
+    if (rawCommittee?.members && Array.isArray(rawCommittee.members)) {
+      rawCommittee.members.forEach((member: any) => {
+        const credential = member.stake_credential || member;
+        const credentialType = credential.Key ? 'Key' : credential.Script ? 'Script' : 'Unknown';
+        const credentialHash = credential.Key || credential.Script || credential.hash || '';
+        const termLimit = member.term_limit !== undefined ? member.term_limit : null;
+        if (credentialHash) {
+          // Create CIP-129 bech32 ID for cold credential
+          const bech32Id = (credentialType === 'Key' || credentialType === 'Script') 
+            ? createCommitteeColdCredentialId(credentialHash, credentialType as 'Key' | 'Script')
+            : null;
+          
+          committeeMembers.push({
+            type: credentialType,
+            hash: credentialHash,
+            bech32: bech32Id || undefined,
+            termLimit: termLimit !== null ? Number(termLimit) : undefined,
+            credential: credential
+          });
+        }
+      });
+    }
+    
+    // Also check proposalDetails.membersToAdd (if explicitly provided as an array of new members)
+    if (proposalDetails.membersToAdd && Array.isArray(proposalDetails.membersToAdd) && proposalDetails.membersToAdd.length > 0) {
+      // If proposalDetails has membersToAdd, use that instead (it's more specific - just new members)
+      committeeMembers.length = 0; // Clear and replace
+      proposalDetails.membersToAdd.forEach((member: any) => {
+        const credential = member.stake_credential || member;
+        const credentialType = credential?.Key ? 'Key' : credential?.Script ? 'Script' : (member.Key ? 'Key' : member.Script ? 'Script' : 'Unknown');
+        const credentialHash = credential?.Key || credential?.Script || member.Key || member.Script || member.hash || '';
+        const termLimit = member.term_limit !== undefined ? member.term_limit : null;
+        if (credentialHash) {
+          // Create CIP-129 bech32 ID for cold credential
+          const bech32Id = (credentialType === 'Key' || credentialType === 'Script') 
+            ? createCommitteeColdCredentialId(credentialHash, credentialType as 'Key' | 'Script')
+            : null;
+          
+          committeeMembers.push({
+            type: credentialType,
+            hash: credentialHash,
+            bech32: bech32Id || undefined,
+            termLimit: termLimit !== null ? Number(termLimit) : undefined,
+            credential: credential || member
+          });
+        }
+      });
+    }
+    
+    // Store as membersToAdd for display (will show as "Committee Members" if from committee.members)
+    if (committeeMembers.length > 0) {
+      details.membersToAdd = committeeMembers;
+      // Add a flag to indicate if this is the full committee or just additions
+      details.isFullCommittee = !!rawCommittee?.members;
+    }
+    
+    // Extract threshold from raw data
+    const rawThreshold = rawCommittee?.quorum_threshold;
+    if (rawThreshold && rawThreshold.numerator && rawThreshold.denominator) {
+      details.threshold = `${rawThreshold.numerator}/${rawThreshold.denominator}`;
+    } else if (proposalDetails.threshold !== null && proposalDetails.threshold !== undefined) {
       details.threshold = proposalDetails.threshold;
     }
     
