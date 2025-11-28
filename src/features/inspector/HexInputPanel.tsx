@@ -218,6 +218,7 @@ export function HexInputPanel() {
                 onClick={() => {
                   setLocalHex(sample.hex);
                   validateHex(sample.hex);
+                  setNetwork(sample.network);
                 }}
               >
                 <div>

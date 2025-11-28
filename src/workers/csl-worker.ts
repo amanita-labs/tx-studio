@@ -1037,53 +1037,172 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
             // Try to parse voting proposals
             const proposals = votingProposals.to_js_value();
             if (Array.isArray(proposals)) {
-              proposals.forEach((proposal: any) => {
+              proposals.forEach((proposal: any, index: number) => {
                 let proposalType = 'Unknown';
                 let details: Record<string, unknown> = {};
                 
-                // Extract proposal ID from action_id if available
+                // Extract proposal ID - use current transaction ID and proposal index
+                // The governance action ID is the transaction ID + index of the action within the transaction
                 let proposalId = '';
+                
+                // First, try to get from action_id if available (this might be from a different transaction)
                 if (proposal.action_id) {
                   const txId = proposal.action_id.transaction_id || '';
-                  const actionIndex = proposal.action_id.index || 0;
+                  const actionIndex = proposal.action_id.index !== undefined ? proposal.action_id.index : 0;
                   // Create governance action ID according to CIP-0129 (bech32 with gov_action1 prefix)
                   proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
                 } else if (proposal.governance_action_id) {
                   proposalId = proposal.governance_action_id;
+                } else {
+                  // Try to extract from governance_action structure (this is the action being proposed)
+                  const govAction = proposal.governance_action;
+                  if (govAction) {
+                    // Check each action type for gov_action_id
+                    const actionTypes = ['ParameterChangeAction', 'HardForkInitiationAction', 'TreasuryWithdrawalsAction', 
+                                      'NoConfidenceAction', 'NewConstitutionAction', 'UpdateCommitteeAction', 'InfoAction'];
+                    for (const actionType of actionTypes) {
+                      if (govAction[actionType]?.gov_action_id) {
+                        const govActionId = govAction[actionType].gov_action_id;
+                        const txId = govActionId.transaction_id || '';
+                        const actionIndex = govActionId.index !== undefined ? govActionId.index : 0;
+                        proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
+                        break;
+                      }
+                    }
+                  }
+                  
+                  // If still not found, use current transaction ID and proposal index
+                  // This creates the governance action ID for THIS proposal in THIS transaction
+                  if (!proposalId && id) {
+                    proposalId = createGovernanceActionId(id, index) || `${id}#${index}`;
+                  }
                 }
+                
+                // Extract proposal_procedure fields: deposit, reward_account, anchor
+                if (proposal.deposit !== undefined) {
+                  details.deposit = proposal.deposit;
+                }
+                if (proposal.reward_account) {
+                  details.rewardAccount = proposal.reward_account;
+                }
+                const anchor = parseAnchorDetails(proposal.anchor);
+                if (anchor) {
+                  details.anchor = anchor;
+                } else if (proposal.anchor === null || proposal.anchor === undefined) {
+                  details.anchorMissing = true;
+                }
+                
+                // Helper function to extract parent governance action ID
+                const extractParentActionId = (parentActionId: any): string | null => {
+                  if (!parentActionId) return null;
+                  if (typeof parentActionId === 'string') return parentActionId;
+                  if (parentActionId.transaction_id && parentActionId.index !== undefined) {
+                    const txId = parentActionId.transaction_id || '';
+                    const actionIndex = parentActionId.index || 0;
+                    return createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
+                  }
+                  return null;
+                };
                 
                 // Determine proposal type based on governance action
                 if (proposal.governance_action) {
                   const action = proposal.governance_action;
                   
-                  if (action.ParameterChange) {
+                  // Handle both ParameterChange and ParameterChangeAction formats
+                  if (action.ParameterChange || action.ParameterChangeAction) {
                     proposalType = 'ParameterChange';
+                    const paramChange = action.ParameterChange || action.ParameterChangeAction;
+                    // Handle both parameter_changes and protocol_param_updates field names
+                    const paramUpdates = paramChange.parameter_changes || paramChange.protocol_param_updates || {};
+                    // Map parameter names from snake_case to camelCase/standard names
+                    const mappedParams: Record<string, any> = {};
+                    Object.entries(paramUpdates).forEach(([key, value]) => {
+                      if (value !== null && value !== undefined) {
+                        // Map snake_case keys to standard parameter keys
+                        const paramKeyMap: Record<string, number> = {
+                          'minfee_a': 0,
+                          'minfee_b': 1,
+                          'max_block_body_size': 2,
+                          'max_tx_size': 3,
+                          'max_block_header_size': 4,
+                          'key_deposit': 5,
+                          'pool_deposit': 6,
+                          'max_epoch': 7,
+                          'n_opt': 8,
+                          'pool_pledge_influence': 9,
+                          'expansion_rate': 10,
+                          'treasury_growth_rate': 11,
+                          'min_pool_cost': 16,
+                          'ada_per_utxo_byte': 17,
+                          'cost_models': 18,
+                          'execution_costs': 19,
+                          'max_tx_ex_units': 20,
+                          'max_block_ex_units': 21,
+                          'max_value_size': 22,
+                          'collateral_percentage': 23,
+                          'max_collateral_inputs': 24,
+                          'pool_voting_thresholds': 25,
+                          'drep_voting_thresholds': 26,
+                          'min_committee_size': 27,
+                          'committee_term_limit': 28,
+                          'governance_action_validity_period': 29,
+                          'governance_action_deposit': 30,
+                          'drep_deposit': 31,
+                          'drep_inactivity_period': 32,
+                          'ref_script_coins_per_byte': 33
+                        };
+                        const paramKey = paramKeyMap[key] !== undefined ? paramKeyMap[key] : key;
+                        mappedParams[paramKey] = value;
+                      }
+                    });
                     details = {
-                      parameterChanges: action.ParameterChange.parameter_changes || {},
-                      epoch: action.ParameterChange.epoch || null
+                      parameterChanges: mappedParams,
+                      epoch: paramChange.epoch || null,
+                      parentActionId: extractParentActionId(paramChange.prev_gov_action_id || paramChange.parent_action_id || paramChange.gov_action_id)
                     };
-                  } else if (action.HardForkInitiation) {
+                  } else if (action.HardForkInitiation || action.HardForkInitiationAction) {
                     proposalType = 'HardForkInitiation';
+                    const hardFork = action.HardForkInitiation || action.HardForkInitiationAction;
                     details = {
-                      epoch: action.HardForkInitiation.epoch || null,
-                      protocolVersion: action.HardForkInitiation.protocol_version || null
+                      epoch: hardFork.epoch || null,
+                      protocolVersion: hardFork.protocol_version || null,
+                      parentActionId: extractParentActionId(hardFork.prev_gov_action_id || hardFork.parent_action_id || hardFork.gov_action_id)
                     };
-                  } else if (action.TreasuryWithdrawals) {
+                  } else if (action.TreasuryWithdrawals || action.TreasuryWithdrawalsAction) {
                     proposalType = 'TreasuryWithdrawals';
+                    const treasury = action.TreasuryWithdrawals || action.TreasuryWithdrawalsAction;
                     details = {
-                      withdrawals: action.TreasuryWithdrawals.withdrawals || [],
-                      epoch: action.TreasuryWithdrawals.epoch || null
+                      withdrawals: treasury.withdrawals || [],
+                      epoch: treasury.epoch || null,
+                      parentActionId: extractParentActionId(treasury.prev_gov_action_id || treasury.parent_action_id || treasury.gov_action_id)
                     };
-                  } else if (action.NoConfidence) {
+                  } else if (action.NoConfidence || action.NoConfidenceAction) {
                     proposalType = 'NoConfidence';
+                    const noConf = action.NoConfidence || action.NoConfidenceAction;
                     details = {
-                      epoch: action.NoConfidence.epoch || null
+                      epoch: noConf.epoch || null,
+                      parentActionId: extractParentActionId(noConf.prev_gov_action_id || noConf.parent_action_id || noConf.gov_action_id)
                     };
-                  } else if (action.NewConstitution) {
+                  } else if (action.NewConstitution || action.NewConstitutionAction) {
                     proposalType = 'NewConstitution';
+                    const newConst = action.NewConstitution || action.NewConstitutionAction;
+                    const constitution = newConst.constitution || {};
                     details = {
-                      constitution: action.NewConstitution.constitution || null,
-                      epoch: action.NewConstitution.epoch || null
+                      constitution: constitution,
+                      constitutionHash: constitution.anchor?.hash || constitution.hash || null,
+                      scriptHash: constitution.script_hash || null,
+                      epoch: newConst.epoch || null,
+                      parentActionId: extractParentActionId(newConst.prev_gov_action_id || newConst.parent_action_id || newConst.gov_action_id)
+                    };
+                  } else if (action.UpdateCommittee || action.UpdateCommitteeAction) {
+                    proposalType = 'UpdateCommittee';
+                    const updateComm = action.UpdateCommittee || action.UpdateCommitteeAction;
+                    details = {
+                      membersToRemove: updateComm.members_to_remove || [],
+                      membersToAdd: updateComm.members_to_add || [],
+                      threshold: updateComm.threshold || null,
+                      epoch: updateComm.epoch || null,
+                      parentActionId: extractParentActionId(updateComm.prev_gov_action_id || updateComm.parent_action_id || updateComm.gov_action_id)
                     };
                   } else if (action.InfoAction) {
                     proposalType = 'InfoAction';
