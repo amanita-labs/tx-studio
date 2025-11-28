@@ -716,8 +716,8 @@ function GovernanceActionItem({
               })}
             </div>
             
-            {/* Expandable Raw Data Section */}
-            {action.data && (
+            {/* Expandable Raw Data Section - Hidden for governance actions */}
+            {action.data && !isProposal && (
               <Collapsible open={isRawDataOpen} onOpenChange={setIsRawDataOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                   {isRawDataOpen ? (
