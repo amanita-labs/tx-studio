@@ -12,7 +12,7 @@ import { useAppStore } from '@/lib/store';
 import { toast } from 'sonner';
 
 export function TransactionSummary() {
-  const { builderCertificates, builderVotes, builtTxHex, removeCertificate, removeVote } = useAppStore();
+  const { builderCertificates, builtTxHex, removeCertificate } = useAppStore();
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = async (text: string, label: string) => {
@@ -32,9 +32,14 @@ export function TransactionSummary() {
       case 'DRepRegistration': return 'DRep Registration';
       case 'DRepUpdate': return 'DRep Update';
       case 'DRepRetirement': return 'DRep Retirement';
+      case 'Vote': return 'Vote';
       default: return type;
     }
   };
+
+  // Separate votes from other certificates for display
+  const votes = builderCertificates.filter(c => c.type === 'Vote');
+  const certificates = builderCertificates.filter(c => c.type !== 'Vote');
 
   return (
     <Card className="h-full flex flex-col">
@@ -48,15 +53,15 @@ export function TransactionSummary() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <FileText className="h-4 w-4" />
-                Certificates ({builderCertificates.length})
+                Certificates ({certificates.length})
               </h3>
             </div>
             <ScrollArea className="h-32">
-              {builderCertificates.length === 0 ? (
+              {certificates.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No certificates added</p>
               ) : (
                 <div className="space-y-2">
-                  {builderCertificates.map((cert) => (
+                  {certificates.map((cert) => (
                     <div
                       key={cert.id}
                       className="flex items-center justify-between p-2 bg-muted rounded-md"
@@ -88,31 +93,31 @@ export function TransactionSummary() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Vote className="h-4 w-4" />
-                Votes ({builderVotes.length})
+                Votes ({votes.length})
               </h3>
             </div>
             <ScrollArea className="h-32">
-              {builderVotes.length === 0 ? (
+              {votes.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No votes added</p>
               ) : (
                 <div className="space-y-2">
-                  {builderVotes.map((vote) => (
+                  {votes.map((vote) => (
                     <div
                       key={vote.id}
                       className="flex items-center justify-between p-2 bg-muted rounded-md"
                     >
                       <div className="flex-1 min-w-0">
                         <Badge variant="outline" className="mr-2 capitalize">
-                          {vote.vote}
+                          {vote.data.vote as string}
                         </Badge>
                         <span className="text-xs text-muted-foreground truncate font-mono">
-                          {vote.proposalId.slice(0, 16)}...
+                          {(vote.data.proposalId as string)?.slice(0, 16)}...
                         </span>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeVote(vote.id)}
+                        onClick={() => removeCertificate(vote.id)}
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -148,7 +153,7 @@ export function TransactionSummary() {
             </div>
           )}
 
-          {!builtTxHex && builderCertificates.length === 0 && builderVotes.length === 0 && (
+          {!builtTxHex && builderCertificates.length === 0 && (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               Add certificates or votes to build a transaction
             </div>

@@ -17,7 +17,6 @@ export function TransactionActions() {
   const router = useRouter();
   const {
     builderCertificates,
-    builderVotes,
     walletApi,
     builtTxHex,
     signedTxHex,
@@ -31,38 +30,49 @@ export function TransactionActions() {
   const { parseTransaction } = useCSLWorker();
 
   const handleBuild = async () => {
+    console.group('🚀 Building Transaction');
+    
     if (!walletApi) {
+      console.error('❌ Wallet not connected');
       toast.error('Wallet not connected');
+      console.groupEnd();
       return;
     }
 
-    if (builderCertificates.length === 0 && builderVotes.length === 0) {
-      toast.error('Add at least one certificate or vote');
+    if (builderCertificates.length === 0) {
+      console.error('❌ No certificates to build');
+      toast.error('Add at least one certificate');
+      console.groupEnd();
       return;
     }
+
+    console.log('Certificates to build:', builderCertificates.length);
+    console.log('Network:', network);
 
     setBuilding(true);
     try {
       // Get UTXOs from wallet
+      console.log('Step 1: Getting UTXOs from wallet...');
       const utxos = await getUTXOs(walletApi);
+      console.log(`✓ Retrieved ${utxos.length} UTXO(s)`);
+      
       if (utxos.length === 0) {
+        console.error('❌ No UTXOs available');
         toast.error('No UTXOs available in wallet');
+        console.groupEnd();
         return;
       }
 
-      // Convert UTXOs to input format
-      const inputs = utxos.map((utxo: any) => ({
-        txHash: utxo.input?.txHash || utxo.input?.txId,
-        outputIndex: utxo.input?.outputIndex || utxo.input?.index || 0
-      }));
-
       // Get change address
+      console.log('Step 2: Getting change address...');
       const changeAddress = await walletApi.getChangeAddress();
+      console.log('✓ Change address:', changeAddress);
 
       // Combine certificates and votes (votes are certificates)
       const allCertificates = [...builderCertificates];
       
       // Build transaction
+      console.log('Step 3: Assembling transaction...');
       const { txBody, error } = assembleTransaction({
         certificates: allCertificates,
         utxos: utxos,
@@ -71,20 +81,46 @@ export function TransactionActions() {
       });
 
       if (error || !txBody) {
+        console.error('❌ Transaction assembly failed:', error);
+        console.error('Assembly params:', {
+          certificateCount: allCertificates.length,
+          utxoCount: utxos.length,
+          changeAddress,
+          network,
+        });
         toast.error(error?.message || 'Failed to build transaction');
+        console.groupEnd();
         return;
       }
 
       // Calculate fee
+      console.log('Step 4: Calculating fee...');
       const fee = calculateFee(txBody, network);
+      console.log('✓ Fee calculated:', fee.toString());
 
       // Serialize transaction
+      console.log('Step 5: Serializing transaction...');
       const txHex = serializeTransaction(txBody);
+      console.log('✓ Transaction serialized, hex length:', txHex.length);
+      
       setBuiltTxHex(txHex);
+      console.log('✅ Transaction built successfully');
       toast.success('Transaction built successfully');
+      console.groupEnd();
     } catch (error) {
-      console.error('Error building transaction:', error);
+      console.error('❌ Unexpected error building transaction:', error);
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        context: {
+          certificateCount: builderCertificates.length,
+          network,
+          walletConnected: !!walletApi,
+        },
+      });
       toast.error(`Failed to build transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.groupEnd();
     } finally {
       setBuilding(false);
     }
@@ -153,7 +189,7 @@ export function TransactionActions() {
     router.push(`/?hex=${encodeURIComponent(hex)}`);
   };
 
-  const canBuild = walletApi && (builderCertificates.length > 0 || builderVotes.length > 0);
+  const canBuild = walletApi && builderCertificates.length > 0;
   const canSign = walletApi && builtTxHex && !signedTxHex;
   const canSubmit = walletApi && signedTxHex;
 
@@ -187,10 +223,16 @@ export function TransactionActions() {
   return (
     <Card>
       <CardContent className="p-4 space-y-2">
+        {!walletApi && (
+          <div className="mb-2 p-3 bg-muted rounded-md text-sm text-muted-foreground text-center">
+            Connect a wallet to build transactions
+          </div>
+        )}
         <Button
           onClick={handleBuild}
           disabled={!canBuild || building}
           className="w-full"
+          title={!walletApi ? 'Connect a wallet first' : !builderCertificates.length ? 'Add at least one certificate' : undefined}
         >
           {building ? (
             <>

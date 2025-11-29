@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useAppStore, BuilderCertificate } from '@/lib/store';
 import { toast } from 'sonner';
 import { buildVoteDelegationCert } from '@/lib/transaction-builder';
+import { WalletCredentialSelector } from '../components/WalletCredentialSelector';
 import { Users } from 'lucide-react';
 
 export function VoteDelegationTab() {
@@ -49,15 +50,25 @@ export function VoteDelegationTab() {
 
   const handleBuild = async () => {
     if (!validate()) {
+      console.log('❌ Validation failed:', errors);
       return;
     }
 
+    const drepIdValue = drepId.trim();
+    const stakeCredValue = stakeCredential.trim();
+    
+    console.group('📝 Building Vote Delegation Certificate');
+    console.log('Form values:', { drepId: drepIdValue, stakeCredential: stakeCredValue });
+    
     setLoading(true);
     try {
-      const { cert, error } = buildVoteDelegationCert(drepId.trim(), stakeCredential.trim());
+      const { cert, error } = buildVoteDelegationCert(drepIdValue, stakeCredValue);
       
       if (error || !cert) {
+        console.error('❌ Certificate build failed:', error);
+        console.error('Input values:', { drepId: drepIdValue, stakeCredential: stakeCredValue });
         toast.error(error?.message || 'Failed to build certificate');
+        console.groupEnd();
         return;
       }
 
@@ -65,20 +76,30 @@ export function VoteDelegationTab() {
         id: `vote-delegation-${Date.now()}`,
         type: 'VoteDelegation',
         data: {
-          drepId: drepId.trim(),
-          stakeCredential: stakeCredential.trim()
+          drepId: drepIdValue,
+          stakeCredential: stakeCredValue
         }
       };
 
       addCertificate(certificate);
+      console.log('✅ Certificate added to transaction:', certificate);
       toast.success('Vote delegation certificate added to transaction');
       
       // Reset form
       setDrepId('');
       setStakeCredential('');
       setErrors({});
+      console.groupEnd();
     } catch (error) {
+      console.error('❌ Unexpected error building certificate:', error);
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        formValues: { drepId: drepIdValue, stakeCredential: stakeCredValue },
+      });
       toast.error(`Failed to build certificate: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.groupEnd();
     } finally {
       setLoading(false);
     }
@@ -98,13 +119,20 @@ export function VoteDelegationTab() {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="drep-id">Target DRep ID</Label>
-          <Input
-            id="drep-id"
-            placeholder="drep1... or hex"
-            value={drepId}
-            onChange={(e) => setDrepId(e.target.value)}
-            aria-invalid={errors.drepId ? 'true' : 'false'}
-          />
+          <div className="flex gap-2">
+            <Input
+              id="drep-id"
+              placeholder="drep1... or hex"
+              value={drepId}
+              onChange={(e) => setDrepId(e.target.value)}
+              aria-invalid={errors.drepId ? 'true' : 'false'}
+              className="flex-1"
+            />
+            <WalletCredentialSelector
+              credentialType="drep"
+              onSelect={(value) => setDrepId(value)}
+            />
+          </div>
           {errors.drepId && (
             <p className="text-sm text-destructive">{errors.drepId}</p>
           )}
@@ -112,13 +140,20 @@ export function VoteDelegationTab() {
 
         <div className="space-y-2">
           <Label htmlFor="stake-credential">Stake Credential</Label>
-          <Input
-            id="stake-credential"
-            placeholder="stake1... or hex"
-            value={stakeCredential}
-            onChange={(e) => setStakeCredential(e.target.value)}
-            aria-invalid={errors.stakeCredential ? 'true' : 'false'}
-          />
+          <div className="flex gap-2">
+            <Input
+              id="stake-credential"
+              placeholder="stake1... or hex"
+              value={stakeCredential}
+              onChange={(e) => setStakeCredential(e.target.value)}
+              aria-invalid={errors.stakeCredential ? 'true' : 'false'}
+              className="flex-1"
+            />
+            <WalletCredentialSelector
+              credentialType="stake"
+              onSelect={(value) => setStakeCredential(value)}
+            />
+          </div>
           {errors.stakeCredential && (
             <p className="text-sm text-destructive">{errors.stakeCredential}</p>
           )}

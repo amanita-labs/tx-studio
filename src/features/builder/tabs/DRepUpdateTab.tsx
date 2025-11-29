@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useAppStore, BuilderCertificate } from '@/lib/store';
 import { toast } from 'sonner';
 import { buildDRepUpdateCert } from '@/lib/transaction-builder';
+import { WalletCredentialSelector } from '../components/WalletCredentialSelector';
 import { RefreshCw } from 'lucide-react';
 
 export function DRepUpdateTab() {
@@ -100,13 +101,20 @@ export function DRepUpdateTab() {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="drep-id">DRep ID</Label>
-          <Input
-            id="drep-id"
-            placeholder="drep1... or hex"
-            value={drepId}
-            onChange={(e) => setDrepId(e.target.value)}
-            aria-invalid={errors.drepId ? 'true' : 'false'}
-          />
+          <div className="flex gap-2">
+            <Input
+              id="drep-id"
+              placeholder="drep1... or hex"
+              value={drepId}
+              onChange={(e) => setDrepId(e.target.value)}
+              aria-invalid={errors.drepId ? 'true' : 'false'}
+              className="flex-1"
+            />
+            <WalletCredentialSelector
+              credentialType="drep"
+              onSelect={(value) => setDrepId(value)}
+            />
+          </div>
           {errors.drepId && (
             <p className="text-sm text-destructive">{errors.drepId}</p>
           )}
