@@ -9,7 +9,7 @@ import { TransactionActions } from './TransactionActions';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Wallet, Construction } from 'lucide-react';
+import { AlertCircle, Construction } from 'lucide-react';
 
 export function TxBuilder() {
   const { walletConnected } = useAppStore();

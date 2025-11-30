@@ -9,7 +9,7 @@ import { Wallet, ChevronDown, Copy, Check } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { getDRepInfo, getStakeKeys } from '@/lib/wallet-connector';
 import { toast } from 'sonner';
-import type { DRepInfo, StakeKeysInfo, StakeKeyInfo } from '@/lib/wallet-connector';
+import type { DRepInfo, StakeKeysInfo } from '@/lib/wallet-connector';
 import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
 import * as bech32Buffer from 'bech32-buffer';
 
@@ -89,6 +89,7 @@ export function WalletCredentialSelector({
     if (open && walletConnected && walletApi) {
       loadCredentials();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, walletConnected, walletApi]);
 
   const loadCredentials = async () => {
@@ -117,7 +118,7 @@ export function WalletCredentialSelector({
       setCopied(text);
       toast.success('Copied to clipboard');
       setTimeout(() => setCopied(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy');
     }
   };

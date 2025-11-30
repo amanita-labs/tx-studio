@@ -11,7 +11,7 @@ import React from 'react';
 import { safeStringify, isBigInt } from '@/lib/utils';
 
 interface JsonViewerProps {
-  data: any;
+  data: unknown;
   title?: string;
   label?: string | number;
   category?: string;
@@ -49,15 +49,13 @@ export function JsonViewer({
       try {
         await navigator.clipboard.writeText(text);
         toast.success(`${label} copied to clipboard`);
-      } catch (error) {
+      } catch {
         toast.error('Failed to copy to clipboard');
       }
     }
   };
 
-  const formatValue = (value: any, key: string = '', depth: number = 0): React.JSX.Element => {
-    const indent = '  '.repeat(depth);
-    const keyStr = key ? `"${key}": ` : '';
+  const formatValue = (value: unknown, key: string = '', depth: number = 0): React.JSX.Element => {
     
     if (value === null) {
       return <span className="text-gray-500">null</span>;
@@ -85,14 +83,14 @@ export function JsonViewer({
         return (
           <span className="text-blue-500 underline cursor-pointer hover:text-blue-700" 
                 onClick={() => window.open(value, '_blank')}>
-            "{value}"
+            &quot;{value}&quot;
           </span>
         );
       }
       if (value.match(/^[a-fA-F0-9]{64}$/)) {
-        return <span className="text-purple-600 font-mono">"{value}"</span>;
+        return <span className="text-purple-600 font-mono">&quot;{value}&quot;</span>;
       }
-      return <span className="text-orange-600">"{value}"</span>;
+      return <span className="text-orange-600">&quot;{value}&quot;</span>;
     }
     
     if (Array.isArray(value)) {
@@ -151,8 +149,8 @@ export function JsonViewer({
             <div className="ml-4">
               {keys.map((k, index) => (
                 <div key={k} className="flex">
-                  <span className="text-blue-600 mr-2">"{k}":</span>
-                  {formatValue(value[k], '', depth + 1)}
+                  <span className="text-blue-600 mr-2">&quot;{k}&quot;:</span>
+                  {formatValue((value as Record<string, unknown>)[k], '', depth + 1)}
                   {index < keys.length - 1 && <span className="text-gray-500">,</span>}
                 </div>
               ))}

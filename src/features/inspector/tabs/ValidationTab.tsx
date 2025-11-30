@@ -35,6 +35,7 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
 
   useEffect(() => {
     validateTransaction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tx, txHex]);
 
   const validateTransaction = async () => {
@@ -52,41 +53,13 @@ export function ValidationTab({ tx, txHex }: ValidationTabProps) {
     }
   };
 
-  const getSeverityIcon = (severity: string) => {
-    switch (severity) {
-      case 'error': return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'warning': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case 'info': return <Info className="h-4 w-4 text-blue-500" />;
-      default: return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'error': return 'text-destructive';
-      case 'warning': return 'text-yellow-600';
-      case 'info': return 'text-blue-600';
-      default: return 'text-green-600';
-    }
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'security': return <Shield className="h-4 w-4" />;
-      case 'performance': return <Zap className="h-4 w-4" />;
-      case 'compliance': return <FileCheck className="h-4 w-4" />;
-      case 'best-practice': return <Lightbulb className="h-4 w-4" />;
-      default: return <Info className="h-4 w-4" />;
-    }
-  };
-
   const copyReport = async () => {
     if (!report) return;
     
     try {
       await navigator.clipboard.writeText(safeStringify(report, 2));
       toast.success('Validation report copied to clipboard');
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy report');
     }
   };

@@ -1,7 +1,6 @@
 // src/features/inspector/tabs/SearchTab.tsx
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DomainTx } from '@/domain/tx';
 import { TransactionSearchComponent } from '@/components/transaction-search';
 import { SearchResult } from '@/lib/transaction-search';

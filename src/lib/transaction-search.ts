@@ -10,7 +10,7 @@ export interface SearchFilter {
 
 export interface SearchResult {
   field: string;
-  value: any;
+  value: unknown;
   match: string;
   context: string;
   score: number;
@@ -239,15 +239,16 @@ export class TransactionSearch {
       }
 
       // Search in script bytes (if available)
-      if ((script as any).bytes) {
-        const bytes = filter.caseSensitive ? (script as any).bytes : (script as any).bytes.toLowerCase();
+      const scriptWithBytes = script as { bytes?: string };
+      if (scriptWithBytes.bytes) {
+        const bytes = filter.caseSensitive ? scriptWithBytes.bytes : scriptWithBytes.bytes.toLowerCase();
         if (this.matchesQuery(bytes, query, filter.exactMatch)) {
           results.push({
             field: `scripts[${index}].bytes`,
-            value: (script as any).bytes,
-            match: this.extractMatch((script as any).bytes, query),
+            value: scriptWithBytes.bytes,
+            match: this.extractMatch(scriptWithBytes.bytes, query),
             context: `Script ${index + 1} bytes`,
-            score: this.calculateScore((script as any).bytes, query)
+            score: this.calculateScore(scriptWithBytes.bytes, query)
           });
         }
       }

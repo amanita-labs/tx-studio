@@ -37,7 +37,7 @@ export function IoValueTab({ tx }: IoValueTabProps) {
     try {
       await navigator.clipboard.writeText(text);
       toast.success(`${label} copied to clipboard`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy to clipboard');
     }
   };
@@ -485,7 +485,7 @@ export function IoValueTab({ tx }: IoValueTabProps) {
           <CardContent>
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground mb-3">
-                Reference inputs provide data to Plutus scripts without consuming the UTXO. They can be read by scripts but don't affect the transaction's value transfer.
+                Reference inputs provide data to Plutus scripts without consuming the UTXO. They can be read by scripts but don&apos;t affect the transaction&apos;s value transfer.
               </p>
               {tx.referenceInputs.map((refInput, index) => (
                 <div key={index} className="border rounded-lg p-3 space-y-2">

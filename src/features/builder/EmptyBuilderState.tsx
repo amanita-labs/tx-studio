@@ -142,7 +142,6 @@ export function EmptyBuilderState() {
             <Label className="text-sm font-medium">Available Wallets</Label>
             {wallets.map((wallet) => {
               const isExpanded = expandedWallet === wallet.name;
-              const supportsCIP30 = wallet.supportedExtensions?.some(ext => ext.cip === 30) ?? true; // Assume CIP-30 is always supported
               const supportsCIP95 = wallet.supportedExtensions?.some(ext => ext.cip === 95) ?? false;
               const allSupportedCIPs = wallet.supportedExtensions?.map(ext => ext.cip) ?? [];
               
@@ -177,6 +176,7 @@ export function EmptyBuilderState() {
                       ) : (
                         <>
                           {wallet.icon && (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={wallet.icon}
                               alt={wallet.name}

@@ -4,8 +4,8 @@ import { DomainTx } from '@/domain/tx';
 export interface DiffItem {
   path: string;
   type: 'added' | 'removed' | 'modified' | 'unchanged';
-  oldValue?: any;
-  newValue?: any;
+  oldValue?: unknown;
+  newValue?: unknown;
   description: string;
 }
 
@@ -90,7 +90,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareInputs(inputs1: any[], inputs2: any[], changes: DiffItem[]) {
+  private compareInputs(inputs1: DomainTx['inputs'], inputs2: DomainTx['inputs'], changes: DiffItem[]) {
     const maxLength = Math.max(inputs1.length, inputs2.length);
     
     for (let i = 0; i < maxLength; i++) {
@@ -117,7 +117,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareInput(input1: any, input2: any, index: number, changes: DiffItem[]) {
+  private compareInput(input1: DomainTx['inputs'][number], input2: DomainTx['inputs'][number], index: number, changes: DiffItem[]) {
     const inputProps = ['txId', 'index', 'isCollateral'] as const;
     let hasChanges = false;
     
@@ -143,7 +143,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareOutputs(outputs1: any[], outputs2: any[], changes: DiffItem[]) {
+  private compareOutputs(outputs1: DomainTx['outputs'], outputs2: DomainTx['outputs'], changes: DiffItem[]) {
     const maxLength = Math.max(outputs1.length, outputs2.length);
     
     for (let i = 0; i < maxLength; i++) {
@@ -170,7 +170,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareOutput(output1: any, output2: any, index: number, changes: DiffItem[]) {
+  private compareOutput(output1: DomainTx['outputs'][number], output2: DomainTx['outputs'][number], index: number, changes: DiffItem[]) {
     const outputProps = ['address', 'ada'] as const;
     let hasChanges = false;
     
@@ -208,7 +208,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareMetadata(metadata1: any[], metadata2: any[], changes: DiffItem[]) {
+  private compareMetadata(metadata1: NonNullable<DomainTx['metadata']>, metadata2: NonNullable<DomainTx['metadata']>, changes: DiffItem[]) {
     const maxLength = Math.max(metadata1.length, metadata2.length);
     
     for (let i = 0; i < maxLength; i++) {
@@ -235,7 +235,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareMetadataItem(meta1: any, meta2: any, index: number, changes: DiffItem[]) {
+  private compareMetadataItem(meta1: NonNullable<DomainTx['metadata']>[number], meta2: NonNullable<DomainTx['metadata']>[number], index: number, changes: DiffItem[]) {
     if (meta1.label !== meta2.label) {
       changes.push({
         path: `metadata[${index}].label`,
@@ -257,7 +257,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareScripts(scripts1: any[], scripts2: any[], changes: DiffItem[]) {
+  private compareScripts(scripts1: NonNullable<DomainTx['scripts']>, scripts2: NonNullable<DomainTx['scripts']>, changes: DiffItem[]) {
     const maxLength = Math.max(scripts1.length, scripts2.length);
     
     for (let i = 0; i < maxLength; i++) {
@@ -284,7 +284,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareScript(script1: any, script2: any, index: number, changes: DiffItem[]) {
+  private compareScript(script1: NonNullable<DomainTx['scripts']>[number], script2: NonNullable<DomainTx['scripts']>[number], index: number, changes: DiffItem[]) {
     if (JSON.stringify(script1) !== JSON.stringify(script2)) {
       changes.push({
         path: `scripts[${index}]`,
@@ -302,7 +302,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareRedeemers(redeemers1: any[], redeemers2: any[], changes: DiffItem[]) {
+  private compareRedeemers(redeemers1: NonNullable<DomainTx['redeemers']>, redeemers2: NonNullable<DomainTx['redeemers']>, changes: DiffItem[]) {
     const maxLength = Math.max(redeemers1.length, redeemers2.length);
     
     for (let i = 0; i < maxLength; i++) {
@@ -329,7 +329,7 @@ export class TransactionDiffAnalyzer {
     }
   }
 
-  private compareRedeemer(redeemer1: any, redeemer2: any, index: number, changes: DiffItem[]) {
+  private compareRedeemer(redeemer1: NonNullable<DomainTx['redeemers']>[number], redeemer2: NonNullable<DomainTx['redeemers']>[number], index: number, changes: DiffItem[]) {
     if (JSON.stringify(redeemer1) !== JSON.stringify(redeemer2)) {
       changes.push({
         path: `redeemers[${index}]`,

@@ -21,7 +21,7 @@ export function TransactionSummary() {
       setCopied(label);
       toast.success(`Copied ${label}`);
       setTimeout(() => setCopied(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy to clipboard');
     }
   };
@@ -121,7 +121,7 @@ export function TransactionSummary() {
                           {getCertificateLabel(cert.type)}
                         </Badge>
                         <span className="text-xs text-muted-foreground truncate">
-                          {cert.data.drepId || cert.data.stakeCredential || 'Certificate'}
+                          {(cert.data.drepId as string | undefined) || (cert.data.stakeCredential as string | undefined) || 'Certificate'}
                         </span>
                       </div>
                       <Button
@@ -246,7 +246,7 @@ export function TransactionSummary() {
                                 {getTxBodyElementLabel(el.type)}
                               </Badge>
                               <span className="text-xs text-muted-foreground truncate">
-                                {el.data.fee || el.data.slot || el.data.amount || 'Value'}
+                                {(el.data.fee as string | number | undefined)?.toString() || (el.data.slot as string | number | undefined)?.toString() || (el.data.amount as string | number | undefined)?.toString() || 'Value'}
                               </span>
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => removeTxBodyElement(el.id)}>

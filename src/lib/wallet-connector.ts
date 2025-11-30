@@ -5,7 +5,7 @@
 import { Network } from '@/domain/tx';
 
 // Dynamic import to avoid server-side WASM loading issues
-let BrowserWallet: any = null;
+let BrowserWallet: typeof import('@meshsdk/core').BrowserWallet | null = null;
 
 async function getBrowserWallet() {
   if (typeof window === 'undefined') {
@@ -59,7 +59,7 @@ export async function getAvailableWallets(): Promise<WalletInfo[]> {
     
     // Fetch supported extensions for each wallet
     const walletsWithExtensions = await Promise.all(
-      wallets.map(async (w: any) => {
+      wallets.map(async (w: { name: string; version?: string; icon?: string }) => {
         let supportedExtensions: WalletExtension[] = [];
         
         try {
@@ -67,7 +67,7 @@ export async function getAvailableWallets(): Promise<WalletInfo[]> {
           if (typeof BW.getSupportedExtensions === 'function') {
             const extensions = await BW.getSupportedExtensions(w.name);
             if (Array.isArray(extensions)) {
-              supportedExtensions = extensions.map((ext: any) => ({
+              supportedExtensions = extensions.map((ext: { cip: number | string }) => ({
                 cip: typeof ext.cip === 'number' ? ext.cip : parseInt(String(ext.cip), 10),
               }));
             }
@@ -102,7 +102,7 @@ export async function checkWalletSupportsCIP(walletName: string, cip: number): P
     const BW = await getBrowserWallet();
     if (typeof BW.getSupportedExtensions === 'function') {
       const supported = await BW.getSupportedExtensions(walletName);
-      return Array.isArray(supported) && supported.some((ext: any) => ext.cip === cip);
+      return Array.isArray(supported) && supported.some((ext: { cip: number }) => ext.cip === cip);
     }
     return false;
   } catch (error) {
@@ -115,7 +115,7 @@ export async function checkWalletSupportsCIP(walletName: string, cip: number): P
  * @param walletName - Name of the wallet to connect
  * @param cips - Array of CIP numbers to enable (e.g., [30, 95])
  */
-export async function connectWallet(walletName: string, cips: number[] = [30, 95]): Promise<any> {
+export async function connectWallet(walletName: string, cips: number[] = [30, 95]): Promise<unknown> {
   try {
     const BW = await getBrowserWallet();
     // Ensure CIP-30 is always included (it's the base standard)
@@ -132,7 +132,7 @@ export async function connectWallet(walletName: string, cips: number[] = [30, 95
 /**
  * Get wallet information (name, network, balance)
  */
-export async function getWalletInfo(wallet: any): Promise<{
+export async function getWalletInfo(wallet: { name: string; getNetworkId: () => Promise<number>; getUtxos: () => Promise<unknown[]> }): Promise<{
   name: string;
   networkId: number;
   balance: string;
@@ -161,7 +161,7 @@ export async function getWalletInfo(wallet: any): Promise<{
  * Check if connected wallet supports CIP-95 extension
  * Uses Mesh.js getExtensions() API as documented: https://meshjs.dev/apis/wallets/browserwallet#get-extensions
  */
-async function checkCIP95Support(wallet: any): Promise<boolean> {
+async function checkCIP95Support(wallet: { getSupportedExtensions?: () => Promise<Array<{ cip: number }>> }): Promise<boolean> {
   try {
     // Method 1: Use Mesh.js getExtensions() API (recommended)
     if (typeof wallet.getExtensions === 'function') {
@@ -169,7 +169,7 @@ async function checkCIP95Support(wallet: any): Promise<boolean> {
         const extensions = await wallet.getExtensions();
         
         if (Array.isArray(extensions)) {
-          const hasCIP95 = extensions.some((ext: any) => {
+          const hasCIP95 = extensions.some((ext: { cip: number }) => {
             // Handle both { cip: 95 } and { cip: "95" } formats
             const cipValue = ext.cip;
             return cipValue === 95 || cipValue === '95' || String(cipValue) === '95';
@@ -200,7 +200,7 @@ async function checkCIP95Support(wallet: any): Promise<boolean> {
 /**
  * Get DRep information from wallet (CIP-95)
  */
-export async function getDRepInfo(wallet: any): Promise<DRepInfo | null> {
+export async function getDRepInfo(wallet: { getDRep?: () => Promise<{ publicKey?: string; pubDrepKey?: string; publicKeyHash?: string; pubDrepKeyHash?: string; dRepIDCip105?: string; drepIDCip105?: string; dRepIDCip129?: string; drepIDCip129?: string } | null> }): Promise<DRepInfo | null> {
   try {
     // Check if wallet supports CIP-95
     const supportsCIP95 = await checkCIP95Support(wallet);
@@ -232,7 +232,7 @@ export async function getDRepInfo(wallet: any): Promise<DRepInfo | null> {
 /**
  * Get registered and unregistered stake keys from wallet (CIP-95)
  */
-export async function getStakeKeys(wallet: any): Promise<StakeKeysInfo> {
+export async function getStakeKeys(wallet: { getRegisteredPubStakeKeys?: () => Promise<unknown>; getUnregisteredPubStakeKeys?: () => Promise<unknown> }): Promise<StakeKeysInfo> {
   try {
     // Check if wallet supports CIP-95
     const supportsCIP95 = await checkCIP95Support(wallet);
@@ -246,7 +246,7 @@ export async function getStakeKeys(wallet: any): Promise<StakeKeysInfo> {
     const unregistered = await wallet.getUnregisteredPubStakeKeys();
     
     // Handle different response formats
-    const normalizeStakeKeys = (keys: any): StakeKeyInfo[] => {
+    const normalizeStakeKeys = (keys: unknown): StakeKeyInfo[] => {
       if (!keys) return [];
       
       // If it's an array of strings (hashes), convert to objects
@@ -261,7 +261,7 @@ export async function getStakeKeys(wallet: any): Promise<StakeKeysInfo> {
       
       // If it's an object with pubStakeKeys array
       if (keys.pubStakeKeys && Array.isArray(keys.pubStakeKeys)) {
-        return keys.pubStakeKeys.map((key: any) => ({
+        return (keys.pubStakeKeys as Array<string | { pubStakeKey?: string; pubStakeKeyHash?: string }>).map((key) => ({
           pubStakeKey: typeof key === 'string' ? key : (key.pubStakeKey || key.pubStakeKeyHash || ''),
           pubStakeKeyHash: typeof key === 'string' ? key : (key.pubStakeKeyHash || key.pubStakeKey || ''),
         }));
@@ -269,7 +269,7 @@ export async function getStakeKeys(wallet: any): Promise<StakeKeysInfo> {
       
       // If it's an array of objects with pubStakeKey
       if (Array.isArray(keys)) {
-        return keys.map((key: any) => ({
+        return (keys as Array<string | { pubStakeKey?: string; pubStakeKeyHash?: string }>).map((key) => ({
           pubStakeKey: key.pubStakeKey || key.pubStakeKeyHash || (typeof key === 'string' ? key : ''),
           pubStakeKeyHash: key.pubStakeKeyHash || key.pubStakeKey || (typeof key === 'string' ? key : ''),
         }));
@@ -291,7 +291,7 @@ export async function getStakeKeys(wallet: any): Promise<StakeKeysInfo> {
 /**
  * Sign a transaction using the wallet
  */
-export async function signTransaction(wallet: any, txHex: string): Promise<string> {
+export async function signTransaction(wallet: { signTx: (txHex: string, partialSign: boolean) => Promise<string> }, txHex: string): Promise<string> {
   try {
     const signedTx = await wallet.signTx(txHex, false);
     return signedTx;
@@ -304,7 +304,7 @@ export async function signTransaction(wallet: any, txHex: string): Promise<strin
 /**
  * Submit a signed transaction to the network
  */
-export async function submitTransaction(wallet: any, signedTxHex: string): Promise<string> {
+export async function submitTransaction(wallet: { submitTx: (signedTxHex: string) => Promise<string> }, signedTxHex: string): Promise<string> {
   try {
     const txHash = await wallet.submitTx(signedTxHex);
     return txHash;
@@ -317,7 +317,7 @@ export async function submitTransaction(wallet: any, signedTxHex: string): Promi
 /**
  * Get UTXOs from the wallet for transaction building
  */
-export async function getUTXOs(wallet: any): Promise<any[]> {
+export async function getUTXOs(wallet: { getUtxos: () => Promise<unknown[]> }): Promise<unknown[]> {
   try {
     const utxos = await wallet.getUtxos();
     return utxos || [];
@@ -330,7 +330,7 @@ export async function getUTXOs(wallet: any): Promise<any[]> {
 /**
  * Get change address from wallet
  */
-export async function getChangeAddress(wallet: any): Promise<string> {
+export async function getChangeAddress(wallet: { getChangeAddress: () => Promise<string> }): Promise<string> {
   try {
     const address = await wallet.getChangeAddress();
     return address;

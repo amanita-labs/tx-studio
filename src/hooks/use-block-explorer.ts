@@ -2,8 +2,7 @@
 'use client';
 
 import { useAppStore } from '@/lib/store';
-import { BLOCK_EXPLORERS, BlockExplorerId, getExplorerUrl } from '@/lib/types/block-explorer';
-import { Network } from '@/domain/tx';
+import { BLOCK_EXPLORERS, getExplorerUrl } from '@/lib/types/block-explorer';
 
 export function useBlockExplorer() {
   const { blockExplorer, setBlockExplorer, network } = useAppStore();

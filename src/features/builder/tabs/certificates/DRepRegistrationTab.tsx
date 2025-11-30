@@ -30,7 +30,7 @@ export function DRepRegistrationTab() {
           if (drepInfo?.dRepIDCip105) {
             setDrepId(drepInfo.dRepIDCip105);
           }
-        } catch (error) {
+        } catch {
           // Silently fail - wallet might not have DRep info
         }
       }

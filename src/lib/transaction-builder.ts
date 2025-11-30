@@ -21,11 +21,11 @@ export type Anchor = {
  * Helper to safely free CSL objects to prevent memory leaks
  * CSL objects are WASM objects that must be explicitly freed
  */
-function safeFree(...objects: Array<any>): void {
+function safeFree(...objects: Array<unknown>): void {
   for (const obj of objects) {
     try {
-      if (obj && typeof obj.free === 'function') {
-        obj.free();
+      if (obj && typeof obj === 'object' && 'free' in obj && typeof (obj as { free: () => void }).free === 'function') {
+        (obj as { free: () => void }).free();
       }
     } catch (error) {
       // Silently ignore cleanup errors to avoid masking original errors
@@ -160,13 +160,19 @@ function createDRepFromHash(drepHashHex: string): CSL.DRep {
     // Based on CSL patterns and the error showing DRepEnum, DRep likely has:
     // - DRep.new_key_hash(Ed25519KeyHash) for key hash variants
     // - DRep.new_script_hash(ScriptHash) for script hash variants
-    const DRepClass = CSL.DRep as any;
+    // Using type assertion because CSL types may not match runtime API
+    const DRepClass = CSL.DRep as unknown as {
+      new_key_hash?: (hash: CSL.Ed25519KeyHash) => CSL.DRep;
+      new?: (cred: CSL.Credential) => CSL.DRep;
+      from_bytes?: (bytes: Uint8Array) => CSL.DRep;
+    };
     let drep: CSL.DRep | null = null;
     
     // Method 1: DRep.new_key_hash(keyHash) - CSL 15.0.1 enum variant constructor
     // This is the correct way to create a DRep from a key hash in CSL 15.0.1
+    // Note: Using type assertion because CSL types may not match runtime API
     try {
-      drep = DRepClass.new_key_hash(drepKeyHash);
+      drep = (DRepClass as { new_key_hash: (hash: CSL.Ed25519KeyHash) => CSL.DRep }).new_key_hash(drepKeyHash);
       if (drep) {
         // Success - return the DRep object
         // Note: We don't free drepKeyHash and drepCredential here because
@@ -179,8 +185,11 @@ function createDRepFromHash(drepHashHex: string): CSL.DRep {
     
     // Method 2: Try DRep.new() with credential (if it exists in some versions)
     try {
-      drep = DRepClass.new(drepCredential);
-      if (drep) return drep;
+      const drepNew = (DRepClass as { new?: (cred: CSL.Credential) => CSL.DRep }).new;
+      if (drepNew) {
+        drep = drepNew(drepCredential);
+        if (drep) return drep;
+      }
     } catch (error) {
       // Silently continue - this method doesn't exist in CSL 15.0.1
     }
@@ -189,8 +198,11 @@ function createDRepFromHash(drepHashHex: string): CSL.DRep {
     // DRep.from_bytes() expects CBOR-encoded DRep enum, not raw hash
     try {
       const credentialBytes = drepCredential.to_bytes();
-      drep = DRepClass.from_bytes(credentialBytes);
-      if (drep) return drep;
+      const fromBytes = (DRepClass as { from_bytes?: (bytes: Uint8Array) => CSL.DRep }).from_bytes;
+      if (fromBytes) {
+        drep = fromBytes(credentialBytes);
+        if (drep) return drep;
+      }
     } catch (error) {
       console.warn('DRep.from_bytes(credential bytes) failed:', error);
     }
@@ -203,8 +215,11 @@ function createDRepFromHash(drepHashHex: string): CSL.DRep {
       const credentialBytes = drepCredential.to_bytes();
       // Variant 0 = Key hash, Variant 1 = Script hash
       const drepEnumBytes = new Uint8Array([0, ...credentialBytes]);
-      drep = DRepClass.from_bytes(drepEnumBytes);
-      if (drep) return drep;
+      const fromBytes = (DRepClass as { from_bytes?: (bytes: Uint8Array) => CSL.DRep }).from_bytes;
+      if (fromBytes) {
+        drep = fromBytes(drepEnumBytes);
+        if (drep) return drep;
+      }
     } catch (error) {
       console.warn('DRep.from_bytes(enum bytes) failed:', error);
     }
@@ -216,7 +231,7 @@ function createDRepFromHash(drepHashHex: string): CSL.DRep {
       credentialType: drepCredential ? 'Credential' : 'null',
       keyHashType: drepKeyHash ? 'Ed25519KeyHash' : 'null',
       availableMethods: Object.getOwnPropertyNames(DRepClass).filter(name => 
-        typeof DRepClass[name] === 'function' && name !== 'free'
+        typeof (DRepClass as Record<string, unknown>)[name] === 'function' && name !== 'free'
       )
     };
     
@@ -311,7 +326,8 @@ export function buildVoteDelegationCert(
     
     // Create vote delegation certificate
     // Note: CSL API may accept Credential where DRep is expected in some versions
-    voteDelegation = CSL.VoteDelegation.new(stakeCred, drep as any);
+    // Using type assertion because CSL types may not match runtime API
+    voteDelegation = CSL.VoteDelegation.new(stakeCred, drep as unknown as CSL.DRep);
     const cert = CSL.Certificate.new_vote_delegation(voteDelegation);
     
     // Note: We don't free intermediate objects here because they are owned by cert
@@ -323,7 +339,7 @@ export function buildVoteDelegationCert(
     safeFree(drep, stakeKeyHash, stakeCred, voteDelegation);
     
     return {
-      cert: null as any,
+      cert: null as unknown as CSL.Certificate,
       error: {
         message: error instanceof Error ? error.message : 'Failed to build vote delegation certificate',
         field: 'drepId'
@@ -364,10 +380,12 @@ export function buildDRepRegistrationCert(
     // TypeScript types may be incorrect - use type assertion and try runtime API
     try {
       // Method 1: Try with credential and anchor (most likely)
-      drepRegistration = (CSL.DRepRegistration as any).new(drepCredential, anchorObj);
+      const DRepRegistrationClass = CSL.DRepRegistration as unknown as { new: (cred: CSL.Credential, anchor: CSL.Anchor | null) => CSL.DRepRegistration };
+      drepRegistration = DRepRegistrationClass.new(drepCredential, anchorObj);
     } catch (error) {
       // Method 2: Try with DRep instead of Credential
-      drepRegistration = (CSL.DRepRegistration as any).new(drep, anchorObj);
+      const DRepRegistrationClass = CSL.DRepRegistration as unknown as { new: (drep: CSL.DRep, anchor: CSL.Anchor | null) => CSL.DRepRegistration };
+      drepRegistration = DRepRegistrationClass.new(drep, anchorObj);
     }
     
     if (!drepRegistration) {
@@ -382,7 +400,7 @@ export function buildDRepRegistrationCert(
     safeFree(drep, drepCredential, drepKeyHash, anchorObj, drepRegistration);
     
     return {
-      cert: null as any,
+      cert: null as unknown as CSL.Certificate,
       error: {
         message: error instanceof Error ? error.message : 'Failed to build DRep registration certificate',
         field: 'drepId'
@@ -427,12 +445,14 @@ export function buildDRepUpdateCert(
       // Try with anchor as second parameter first
       if (anchorObj) {
         try {
-          drepUpdate = (CSL.DRepUpdate as any).new(drepCredential, anchorObj);
+          const DRepUpdateClass = CSL.DRepUpdate as unknown as { new: (cred: CSL.Credential, anchor: CSL.Anchor) => CSL.DRepUpdate };
+          drepUpdate = DRepUpdateClass.new(drepCredential, anchorObj);
         } catch (twoArgError) {
           // If 2 args fails, try 1 arg and set anchor separately
           drepUpdate = CSL.DRepUpdate.new(drepCredential);
-          if (typeof (drepUpdate as any).set_anchor === 'function') {
-            (drepUpdate as any).set_anchor(anchorObj);
+          const drepUpdateObj = drepUpdate as unknown as { set_anchor?: (anchor: CSL.Anchor) => void };
+          if (typeof drepUpdateObj.set_anchor === 'function') {
+            drepUpdateObj.set_anchor(anchorObj);
           }
         }
       } else {
@@ -455,7 +475,7 @@ export function buildDRepUpdateCert(
     safeFree(drep, drepCredential, drepKeyHash, anchorObj, drepUpdate);
     
     return {
-      cert: null as any,
+      cert: null as unknown as CSL.Certificate,
       error: {
         message: error instanceof Error ? error.message : 'Failed to build DRep update certificate',
         field: 'drepId'
@@ -493,10 +513,12 @@ export function buildDRepRetirementCert(
     // Note: CSL API expects (epoch: BigNum, drep: DRep) based on error messages
     // Try both orders to handle different CSL versions
     try {
-      drepDeregistration = (CSL.DRepDeregistration as any).new(epochBigNum, drep);
+      const DRepDeregistrationClass = CSL.DRepDeregistration as unknown as { new: (epoch: CSL.BigNum, drep: CSL.DRep) => CSL.DRepDeregistration };
+      drepDeregistration = DRepDeregistrationClass.new(epochBigNum, drep);
     } catch (error) {
       // Try reverse order if first fails
-      drepDeregistration = (CSL.DRepDeregistration as any).new(drep as any, epochBigNum);
+      const DRepDeregistrationClass = CSL.DRepDeregistration as unknown as { new: (drep: CSL.DRep, epoch: CSL.BigNum) => CSL.DRepDeregistration };
+      drepDeregistration = DRepDeregistrationClass.new(drep, epochBigNum);
     }
     
     if (!drepDeregistration) {
@@ -511,7 +533,7 @@ export function buildDRepRetirementCert(
     safeFree(drep, epochBigNum, drepDeregistration);
     
     return {
-      cert: null as any,
+      cert: null as unknown as CSL.Certificate,
       error: {
         message: error instanceof Error ? error.message : 'Failed to build DRep retirement certificate',
         field: 'drepId'
@@ -530,7 +552,7 @@ export function buildVoteCert(
   anchor?: Anchor
 ): { cert: CSL.Certificate; error?: BuildError } {
   return {
-    cert: null as any,
+    cert: null as unknown as CSL.Certificate,
     error: {
       message: 'Vote certificates are not supported. Votes must be added to voting_procedures in the transaction body, which requires additional implementation.',
       field: 'proposalId'
@@ -572,13 +594,13 @@ export function buildCertificateFromData(certData: BuilderCertificate): { cert: 
         );
       default:
         return {
-          cert: null as any,
+          cert: null as unknown as CSL.Certificate,
           error: { message: `Unknown certificate type: ${certData.type}` }
         };
     }
   } catch (error) {
     return {
-      cert: null as any,
+      cert: null as unknown as CSL.Certificate,
       error: {
         message: error instanceof Error ? error.message : 'Failed to build certificate',
         field: 'type'
@@ -590,10 +612,20 @@ export function buildCertificateFromData(certData: BuilderCertificate): { cert: 
 /**
  * Assemble transaction from certificates and UTXOs - IMPROVED with better resource management
  */
+type UTXO = {
+  input: {
+    txHash: string;
+    outputIndex: number;
+  };
+  output?: {
+    amount?: Array<{ unit: string; quantity: string | number | bigint }>;
+  };
+};
+
 export function assembleTransaction(params: {
   certificates: BuilderCertificate[];
   txBodyElements?: BuilderTxBodyElement[];
-  utxos: any[];
+  utxos: UTXO[];
   changeAddress: string;
   network: Network;
   fee?: bigint;
@@ -601,7 +633,7 @@ export function assembleTransaction(params: {
   const { certificates, txBodyElements = [], utxos, changeAddress, network, fee } = params;
   
   // Track all CSL objects for cleanup on error
-  const createdObjects: Array<any> = [];
+  const createdObjects: Array<unknown> = [];
   
   try {
     // Validate inputs
@@ -619,7 +651,7 @@ export function assembleTransaction(params: {
     
     if (certificateTypes.length === 0 && voteTypes.length === 0 && txBodyElements.length === 0) {
       return {
-        txBody: null as any,
+        txBody: null as unknown as CSL.TransactionBody,
         error: { message: 'No certificates or transaction body elements to build transaction' }
       };
     }
@@ -663,7 +695,7 @@ export function assembleTransaction(params: {
     if (certList.len() === 0 && errors.length > 0) {
       safeFree(...createdObjects);
       return {
-        txBody: null as any,
+        txBody: null as unknown as CSL.TransactionBody,
         error: { message: `Failed to build certificates: ${errors.map(e => e.message).join(', ')}` }
       };
     }
@@ -696,7 +728,7 @@ export function assembleTransaction(params: {
         
         // Calculate total input value
         const amounts = utxo.output?.amount || [];
-        const lovelaceAmount = amounts.find((a: any) => a.unit === 'lovelace');
+        const lovelaceAmount = amounts.find((a: { unit: string; quantity: string | number | bigint }) => a.unit === 'lovelace');
         if (lovelaceAmount) {
           totalInput += BigInt(lovelaceAmount.quantity);
         }
@@ -743,34 +775,47 @@ export function assembleTransaction(params: {
     // Type definitions may be incorrect, so we use type assertion
     let txBody: CSL.TransactionBody;
     try {
-      txBody = (CSL.TransactionBody as any).new(inputs, outputs);
+      const TransactionBodyClass = CSL.TransactionBody as unknown as { new: (inputs: CSL.TransactionInputs, outputs: CSL.TransactionOutputs) => CSL.TransactionBody };
+      txBody = TransactionBodyClass.new(inputs, outputs);
     } catch (error) {
       // Some CSL versions may require different constructor signature
       // Try alternative: new() then set inputs/outputs separately
-      txBody = (CSL.TransactionBody as any).new();
-      (txBody as any).set_inputs(inputs);
-      (txBody as any).set_outputs(outputs);
+      const TransactionBodyClass = CSL.TransactionBody as unknown as { new: () => CSL.TransactionBody };
+      txBody = TransactionBodyClass.new();
+      const txBodyObj = txBody as unknown as { set_inputs?: (inputs: CSL.TransactionInputs) => void; set_outputs?: (outputs: CSL.TransactionOutputs) => void };
+      if (txBodyObj.set_inputs) txBodyObj.set_inputs(inputs);
+      if (txBodyObj.set_outputs) txBodyObj.set_outputs(outputs);
     }
     
     // Note: inputs and outputs are owned by txBody, don't free them separately
     
     // Set fee - CSL API may use different method names
     const feeBigNum = CSL.BigNum.from_str(calculatedFee.toString());
+    const txBodyObj = txBody as unknown as { set_fee?: (fee: CSL.BigNum) => void; fee?: CSL.BigNum };
     try {
-      (txBody as any).set_fee(feeBigNum);
+      if (txBodyObj.set_fee) {
+        txBodyObj.set_fee(feeBigNum);
+      } else {
+        txBodyObj.fee = feeBigNum;
+      }
     } catch (error) {
       // Alternative method name
-      (txBody as any).fee = feeBigNum;
+      txBodyObj.fee = feeBigNum;
     }
     feeBigNum.free(); // Free immediately after use
     
     // Set certificates (only if we have any)
     if (certList.len() > 0) {
+      const txBodyCertsObj = txBody as unknown as { set_certs?: (certs: CSL.Certificates) => void; certs?: CSL.Certificates };
       try {
-        (txBody as any).set_certs(certList);
+        if (txBodyCertsObj.set_certs) {
+          txBodyCertsObj.set_certs(certList);
+        } else {
+          txBodyCertsObj.certs = certList;
+        }
       } catch (error) {
         // Alternative method name
-        (txBody as any).certs = certList;
+        txBodyCertsObj.certs = certList;
       }
       // Note: certList is owned by txBody now, don't free it separately
     } else {
@@ -780,11 +825,16 @@ export function assembleTransaction(params: {
     // Set TTL (validity interval end) - set to current slot + 3600 (1 hour)
     const currentSlot = Math.floor(Date.now() / 1000) + 3600; // Rough estimate
     const ttlBigNum = CSL.BigNum.from_str(currentSlot.toString());
+    const txBodyTtlObj = txBody as unknown as { set_ttl_bignum?: (ttl: CSL.BigNum) => void; ttl_bignum?: CSL.BigNum };
     try {
-      (txBody as any).set_ttl_bignum(ttlBigNum);
+      if (txBodyTtlObj.set_ttl_bignum) {
+        txBodyTtlObj.set_ttl_bignum(ttlBigNum);
+      } else {
+        txBodyTtlObj.ttl_bignum = ttlBigNum;
+      }
     } catch (error) {
       // Alternative method name
-      (txBody as any).ttl_bignum = ttlBigNum;
+      txBodyTtlObj.ttl_bignum = ttlBigNum;
     }
     ttlBigNum.free(); // Free immediately after use
     
@@ -797,7 +847,7 @@ export function assembleTransaction(params: {
     safeFree(...createdObjects);
     
     return {
-      txBody: null as any,
+      txBody: null as unknown as CSL.TransactionBody,
       error: {
         message: error instanceof Error ? error.message : 'Failed to assemble transaction'
       }

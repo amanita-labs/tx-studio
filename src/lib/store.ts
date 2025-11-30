@@ -1,7 +1,7 @@
 // src/lib/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DomainTx, Network, TxParseResult } from '@/domain/tx';
+import { Network, TxParseResult } from '@/domain/tx';
 import { BlockExplorerId } from '@/lib/types/block-explorer';
 import { EvalResponse } from '@/lib/types/script-eval';
 
@@ -90,7 +90,7 @@ interface AppState {
   builderTxBodyElements: BuilderTxBodyElement[];
   walletConnected: boolean;
   walletName: string | null;
-  walletApi: any | null; // BrowserWallet instance
+  walletApi: unknown | null; // BrowserWallet instance
   builtTxHex: string | null;
   signedTxHex: string | null;
 
@@ -117,7 +117,7 @@ interface AppState {
   addTxBodyElement: (element: BuilderTxBodyElement) => void;
   removeTxBodyElement: (id: string) => void;
   clearBuilder: () => void;
-  setWalletApi: (api: any | null, name: string | null) => void;
+  setWalletApi: (api: unknown | null, name: string | null) => void;
   setBuiltTxHex: (hex: string | null) => void;
   setSignedTxHex: (hex: string | null) => void;
   disconnectWallet: () => void;
@@ -197,7 +197,7 @@ export const useAppStore = create<AppState>()(
         builtTxHex: null,
         signedTxHex: null,
       }),
-      setWalletApi: (api: any | null, name: string | null) => set({
+      setWalletApi: (api: unknown | null, name: string | null) => set({
         walletApi: api,
         walletName: name,
         walletConnected: api !== null,

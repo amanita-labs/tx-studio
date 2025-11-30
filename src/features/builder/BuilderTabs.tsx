@@ -2,11 +2,11 @@
 'use client';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { VoteDelegationTab } from './tabs/VoteDelegationTab';
-import { DRepRegistrationTab } from './tabs/DRepRegistrationTab';
-import { DRepUpdateTab } from './tabs/DRepUpdateTab';
-import { DRepRetirementTab } from './tabs/DRepRetirementTab';
-import { VoteTab } from './tabs/VoteTab';
+import { VoteDelegationTab } from './tabs/certificates/VoteDelegationTab';
+import { DRepRegistrationTab } from './tabs/certificates/DRepRegistrationTab';
+import { DRepUpdateTab } from './tabs/certificates/DRepUpdateTab';
+import { DRepRetirementTab } from './tabs/certificates/DRepRetirementTab';
+import { VoteTab } from './tabs/certificates/VoteTab';
 
 export function BuilderTabs() {
   return (

@@ -4,7 +4,7 @@ import { decode } from 'cbor-x';
 export interface CBORNode {
   id: string;
   type: 'array' | 'object' | 'string' | 'number' | 'boolean' | 'null' | 'undefined' | 'bytes' | 'tag';
-  value: any;
+  value: unknown;
   startByte: number;
   endByte: number;
   children?: CBORNode[];
@@ -77,10 +77,8 @@ export class CBORAnnotator {
 
     const firstByte = bytes[offset];
     const majorType = (firstByte & 0xE0) >> 5;
-    const minorType = firstByte & 0x1F;
 
     let node: CBORNode;
-    let endOffset = offset + 1;
 
     switch (majorType) {
       case 0: // Unsigned integer

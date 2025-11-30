@@ -180,7 +180,7 @@ export function TransactionActions() {
     try {
       await navigator.clipboard.writeText(hex);
       toast.success('Transaction hex copied to clipboard');
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy to clipboard');
     }
   };
@@ -200,7 +200,7 @@ export function TransactionActions() {
   const canSubmit = walletApi && signedTxHex;
 
   // Parse transaction for export dialog
-  const [parsedTx, setParsedTx] = useState<any>(null);
+  const [parsedTx, setParsedTx] = useState<import('@/domain/tx').DomainTx | null>(null);
   const [isParsingForExport, setIsParsingForExport] = useState(false);
   
   // Parse transaction when hex becomes available

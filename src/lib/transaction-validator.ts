@@ -13,7 +13,7 @@ export interface ValidationResult {
   rule: ValidationRule;
   passed: boolean;
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 export interface ValidationReport {
@@ -316,7 +316,10 @@ export class TransactionValidator {
 
   private validateCollateralRatio(tx: DomainTx, rule: ValidationRule): ValidationResult {
     const collateralInputs = tx.inputs.filter(input => input.isCollateral);
-    const scriptInputs = tx.inputs.filter(input => (input.resolved as any)?.scriptRef);
+    const scriptInputs = tx.inputs.filter(input => {
+      const resolved = input.resolved as { scriptRef?: unknown } | undefined;
+      return resolved?.scriptRef !== undefined;
+    });
     
     if (scriptInputs.length === 0) {
       return {

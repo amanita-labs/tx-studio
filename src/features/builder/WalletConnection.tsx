@@ -87,38 +87,30 @@ export function WalletConnection() {
     }
   };
 
-  // Calculate stake key hash from pubStakeKey
-  // The pubStakeKey is a public key (64 hex chars), we need to hash it to get the stake key hash (56 hex chars)
-  const getStakeKeyHash = (pubStakeKey: string): string | null => {
-    try {
-      // pubStakeKey is 64 hex chars (32 bytes) - this is the public key
-      // We need to hash it to get the stake key hash (28 bytes = 56 hex chars)
-      if (!pubStakeKey || !/^[0-9a-fA-F]{64}$/i.test(pubStakeKey)) {
-        return null;
-      }
-      
-      const pubKeyBytes = Buffer.from(pubStakeKey.toLowerCase(), 'hex');
-      if (pubKeyBytes.length !== 32) {
-        return null;
-      }
-      
-      // Use CSL to hash the public key to get Ed25519KeyHash
-      // Ed25519KeyHash.from_bytes computes blake2b-224 hash
-      const keyHash = CSL.Ed25519KeyHash.from_bytes(pubKeyBytes);
-      const hashHex = keyHash.to_hex();
-      keyHash.free();
-      
-      return hashHex;
-    } catch (error) {
-      console.warn('Failed to calculate stake key hash:', error);
-      return null;
+  // Extract stake key hash from pubStakeKey or pubStakeKeyHash
+  // pubStakeKeyHash is preferred (56 hex chars = 28 bytes hash)
+  // pubStakeKey might be the hash (56 chars) or public key (64 chars)
+  const getStakeKeyHash = (keyInfo: { pubStakeKey: string; pubStakeKeyHash?: string }): string | null => {
+    // Prefer pubStakeKeyHash if available and valid
+    if (keyInfo.pubStakeKeyHash && /^[0-9a-fA-F]{56}$/i.test(keyInfo.pubStakeKeyHash)) {
+      return keyInfo.pubStakeKeyHash.toLowerCase();
     }
+    
+    // If pubStakeKey is 56 hex chars, treat it as a hash
+    if (keyInfo.pubStakeKey && /^[0-9a-fA-F]{56}$/i.test(keyInfo.pubStakeKey)) {
+      return keyInfo.pubStakeKey.toLowerCase();
+    }
+    
+    // If pubStakeKey is 64 hex chars (public key), we can't hash it without blake2b
+    // Return null - the hash should be provided by the wallet
+    return null;
   };
 
   useEffect(() => {
     if (walletConnected && walletApi) {
       loadWalletInfo();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletConnected, walletApi]);
 
   const loadWalletInfo = async () => {
@@ -156,7 +148,7 @@ export function WalletConnection() {
       setCopied(label);
       toast.success(`Copied ${label}`);
       setTimeout(() => setCopied(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy to clipboard');
     }
   };
@@ -396,9 +388,9 @@ export function WalletConnection() {
                               </div>
                               <div className="space-y-3">
                                 {stakeKeys.registered.map((keyInfo, idx) => {
-                                  // Calculate stake key hash from pubStakeKey if not provided
-                                  const stakeKeyHash = keyInfo.pubStakeKeyHash || getStakeKeyHash(keyInfo.pubStakeKey) || keyInfo.pubStakeKey;
-                                  const stakeAddress = getStakeAddress(stakeKeyHash);
+                                  // Extract stake key hash from keyInfo
+                                  const stakeKeyHash = getStakeKeyHash(keyInfo);
+                                  const stakeAddress = stakeKeyHash ? getStakeAddress(stakeKeyHash) : null;
                                   
                                   return (
                                     <div key={idx} className="space-y-2 p-2 bg-muted/30 rounded-md">
@@ -484,8 +476,8 @@ export function WalletConnection() {
                               </div>
                               <div className="space-y-3">
                                 {stakeKeys.unregistered.map((keyInfo, idx) => {
-                                  // Calculate stake key hash from pubStakeKey if not provided
-                                  const stakeKeyHash = keyInfo.pubStakeKeyHash || getStakeKeyHash(keyInfo.pubStakeKey) || null;
+                                  // Extract stake key hash from keyInfo
+                                  const stakeKeyHash = getStakeKeyHash(keyInfo);
                                   const stakeAddress = stakeKeyHash ? getStakeAddress(stakeKeyHash) : null;
                                   
                                   return (
