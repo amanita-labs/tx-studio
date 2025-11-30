@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
-import { assembleTransaction, serializeTransaction, calculateFee } from '@/lib/transaction-builder';
+import { assembleTransaction, serializeTransaction, calculateFee, freeTransactionBody } from '@/lib/transaction-builder';
 import { getUTXOs, signTransaction, submitTransaction } from '@/lib/wallet-connector';
 import { toast } from 'sonner';
 import { Wrench, FileSignature, Send, Copy, Eye, Download, Loader2 } from 'lucide-react';
@@ -102,6 +102,9 @@ export function TransactionActions() {
       console.log('Step 5: Serializing transaction...');
       const txHex = serializeTransaction(txBody);
       console.log('✓ Transaction serialized, hex length:', txHex.length);
+      
+      // Free transaction body after serialization to prevent memory leaks
+      freeTransactionBody(txBody);
       
       setBuiltTxHex(txHex);
       console.log('✅ Transaction built successfully');

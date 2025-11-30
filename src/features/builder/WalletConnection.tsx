@@ -6,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Wallet, LogOut, Copy, CheckCircle2, Loader2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Wallet, LogOut, Copy, CheckCircle2, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { getWalletInfo, getDRepInfo, getStakeKeys, type DRepInfo, type StakeKeysInfo } from '@/lib/wallet-connector';
 import { toast } from 'sonner';
 import { formatAda } from '@/lib/utils/ada';
+import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
 
 export function WalletConnection() {
   const { walletApi, walletName, walletConnected, setWalletApi } = useAppStore();
@@ -20,10 +22,44 @@ export function WalletConnection() {
     balance: string;
     network: string;
   } | null>(null);
+  const { network } = useAppStore();
   const [drepInfo, setDrepInfo] = useState<DRepInfo | null>(null);
   const [stakeKeys, setStakeKeys] = useState<StakeKeysInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [showKeyDetails, setShowKeyDetails] = useState(false);
+  
+  // Convert stake key hash to stake address (stake1...)
+  const getStakeAddress = (stakeKeyHash: string): string | null => {
+    try {
+      // Validate hex format
+      if (!/^[0-9a-fA-F]{56}$/.test(stakeKeyHash)) {
+        return null;
+      }
+      
+      const networkId = network === 'mainnet' ? 1 : 0;
+      const hashBytes = Buffer.from(stakeKeyHash, 'hex');
+      
+      if (hashBytes.length !== 28) {
+        return null;
+      }
+      
+      const keyHash = CSL.Ed25519KeyHash.from_bytes(hashBytes);
+      const stakeCredential = CSL.Credential.from_keyhash(keyHash);
+      const rewardAddress = CSL.RewardAddress.new(networkId, stakeCredential);
+      const stakeAddress = rewardAddress.to_address().to_bech32();
+      
+      // Clean up CSL objects
+      keyHash.free();
+      stakeCredential.free();
+      rewardAddress.free();
+      
+      return stakeAddress;
+    } catch (error) {
+      console.warn('Failed to convert stake key hash to address:', error);
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (walletConnected && walletApi) {
@@ -117,59 +153,16 @@ export function WalletConnection() {
               )}
             </div>
 
-            {drepInfo && (
+            {(drepInfo?.dRepIDCip129 || stakeKeys) && (
               <>
                 <Separator />
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">pubDrepKey</span>
-                      <Badge variant="secondary">CIP-95</Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
-                        {drepInfo.publicKey}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(drepInfo.publicKey, 'pubDrepKey')}
-                      >
-                        {copied === 'pubDrepKey' ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">DRep ID (CIP-105)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
-                        {drepInfo.dRepIDCip105}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(drepInfo.dRepIDCip105, 'DRep ID')}
-                      >
-                        {copied === 'DRep ID' ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {drepInfo.dRepIDCip129 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-muted-foreground">DRep ID (CIP-129)</span>
+                <div>
+                  {/* Default view: Only CIP-129 DRep ID */}
+                  {drepInfo?.dRepIDCip129 && (
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">DRep ID</span>
+                        <Badge variant="secondary">CIP-95</Badge>
                       </div>
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
@@ -178,9 +171,9 @@ export function WalletConnection() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(drepInfo.dRepIDCip129, 'DRep ID CIP-129')}
+                          onClick={() => drepInfo.dRepIDCip129 && copyToClipboard(drepInfo.dRepIDCip129, 'DRep ID')}
                         >
-                          {copied === 'DRep ID CIP-129' ? (
+                          {copied === 'DRep ID' ? (
                             <CheckCircle2 className="h-4 w-4 text-green-500" />
                           ) : (
                             <Copy className="h-4 w-4" />
@@ -189,77 +182,216 @@ export function WalletConnection() {
                       </div>
                     </div>
                   )}
-                </div>
-              </>
-            )}
-
-            {stakeKeys && (stakeKeys.registered.length > 0 || stakeKeys.unregistered.length > 0) && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm font-medium mb-2">pubStakeKey</div>
-                    {stakeKeys.registered.length > 0 && (
-                      <div className="mb-2">
-                        <div className="text-xs text-muted-foreground mb-1">Registered ({stakeKeys.registered.length})</div>
-                        <div className="space-y-1">
-                          {stakeKeys.registered.slice(0, 2).map((keyInfo, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
-                                {keyInfo.pubStakeKey}
-                              </code>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => copyToClipboard(keyInfo.pubStakeKey, `pubStakeKey-registered-${idx}`)}
-                              >
-                                {copied === `pubStakeKey-registered-${idx}` ? (
-                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                ) : (
-                                  <Copy className="h-4 w-4" />
-                                )}
-                              </Button>
+                  
+                  {/* Collapsible section for all key details */}
+                  <Collapsible open={showKeyDetails} onOpenChange={setShowKeyDetails}>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="outline" size="sm" className="w-full">
+                        {showKeyDetails ? (
+                          <>
+                            <ChevronUp className="h-4 w-4 mr-2" />
+                            Hide All Key Details
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4 mr-2" />
+                            Show All Key Details
+                          </>
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-4">
+                      {/* DRep Key Details */}
+                      {drepInfo && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            DRep Credentials
+                          </div>
+                          
+                          {drepInfo.publicKey && (
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">pubDrepKey</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+                                  {drepInfo.publicKey}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(drepInfo.publicKey, 'pubDrepKey')}
+                                >
+                                  {copied === 'pubDrepKey' ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
                             </div>
-                          ))}
-                          {stakeKeys.registered.length > 2 && (
-                            <div className="text-xs text-muted-foreground">
-                              +{stakeKeys.registered.length - 2} more
+                          )}
+                          
+                          {drepInfo.publicKeyHash && (
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Public Key Hash</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+                                  {drepInfo.publicKeyHash}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => drepInfo.publicKeyHash && copyToClipboard(drepInfo.publicKeyHash, 'pubDrepKeyHash')}
+                                >
+                                  {copied === 'pubDrepKeyHash' ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {drepInfo.dRepIDCip105 && (
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">DRep ID (CIP-105)</div>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+                                  {drepInfo.dRepIDCip105}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(drepInfo.dRepIDCip105, 'DRep ID CIP-105')}
+                                >
+                                  {copied === 'DRep ID CIP-105' ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                    {stakeKeys.unregistered.length > 0 && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Unregistered ({stakeKeys.unregistered.length})</div>
-                        <div className="space-y-1">
-                          {stakeKeys.unregistered.slice(0, 2).map((keyInfo, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
-                                {keyInfo.pubStakeKey}
-                              </code>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => copyToClipboard(keyInfo.pubStakeKey, `pubStakeKey-unregistered-${idx}`)}
-                              >
-                                {copied === `pubStakeKey-unregistered-${idx}` ? (
-                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                ) : (
-                                  <Copy className="h-4 w-4" />
-                                )}
-                              </Button>
+                      )}
+                      
+                      {/* Stake Key Details */}
+                      {stakeKeys && (stakeKeys.registered.length > 0 || stakeKeys.unregistered.length > 0) && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Stake Credentials
+                          </div>
+                          
+                          {stakeKeys.registered.length > 0 && (
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-2">
+                                Registered Stake Addresses ({stakeKeys.registered.length})
+                              </div>
+                              <div className="space-y-2">
+                                {stakeKeys.registered.map((keyInfo, idx) => {
+                                  const stakeKeyHash = keyInfo.pubStakeKeyHash || keyInfo.pubStakeKey;
+                                  const stakeAddress = getStakeAddress(stakeKeyHash);
+                                  
+                                  return (
+                                    <div key={idx} className="space-y-1">
+                                      {stakeAddress && (
+                                        <div className="flex items-center gap-2">
+                                          <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+                                            {stakeAddress}
+                                          </code>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => copyToClipboard(stakeAddress, `stake-address-registered-${idx}`)}
+                                          >
+                                            {copied === `stake-address-registered-${idx}` ? (
+                                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : (
+                                              <Copy className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                        <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate text-muted-foreground">
+                                          {keyInfo.pubStakeKey}
+                                        </code>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => copyToClipboard(keyInfo.pubStakeKey, `pubStakeKey-registered-${idx}`)}
+                                        >
+                                          {copied === `pubStakeKey-registered-${idx}` ? (
+                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                          ) : (
+                                            <Copy className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          ))}
-                          {stakeKeys.unregistered.length > 2 && (
-                            <div className="text-xs text-muted-foreground">
-                              +{stakeKeys.unregistered.length - 2} more
+                          )}
+                          
+                          {stakeKeys.unregistered.length > 0 && (
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-2">
+                                Unregistered Stake Addresses ({stakeKeys.unregistered.length})
+                              </div>
+                              <div className="space-y-2">
+                                {stakeKeys.unregistered.map((keyInfo, idx) => {
+                                  const stakeKeyHash = keyInfo.pubStakeKeyHash || keyInfo.pubStakeKey;
+                                  const stakeAddress = getStakeAddress(stakeKeyHash);
+                                  
+                                  return (
+                                    <div key={idx} className="space-y-1">
+                                      {stakeAddress && (
+                                        <div className="flex items-center gap-2">
+                                          <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
+                                            {stakeAddress}
+                                          </code>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => copyToClipboard(stakeAddress, `stake-address-unregistered-${idx}`)}
+                                          >
+                                            {copied === `stake-address-unregistered-${idx}` ? (
+                                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            ) : (
+                                              <Copy className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                        <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate text-muted-foreground">
+                                          {keyInfo.pubStakeKey}
+                                        </code>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => copyToClipboard(keyInfo.pubStakeKey, `pubStakeKey-unregistered-${idx}`)}
+                                        >
+                                          {copied === `pubStakeKey-unregistered-${idx}` ? (
+                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                          ) : (
+                                            <Copy className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
               </>
             )}

@@ -10,6 +10,8 @@ import { useAppStore } from '@/lib/store';
 import { getDRepInfo, getStakeKeys } from '@/lib/wallet-connector';
 import { toast } from 'sonner';
 import type { DRepInfo, StakeKeysInfo, StakeKeyInfo } from '@/lib/wallet-connector';
+import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
+import * as bech32Buffer from 'bech32-buffer';
 
 interface WalletCredentialSelectorProps {
   onSelect: (value: string) => void;
@@ -23,11 +25,65 @@ export function WalletCredentialSelector({
   disabled = false 
 }: WalletCredentialSelectorProps) {
   const { walletApi, walletConnected } = useAppStore();
+  const { network } = useAppStore();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [drepInfo, setDrepInfo] = useState<DRepInfo | null>(null);
   const [stakeKeys, setStakeKeys] = useState<StakeKeysInfo | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  
+  // Convert stake key hash to stake address (stake1...)
+  const getStakeAddress = (stakeKeyHash: string): string | null => {
+    try {
+      // Validate hex format
+      if (!/^[0-9a-fA-F]{56}$/.test(stakeKeyHash)) {
+        return null;
+      }
+      
+      const networkId = network === 'mainnet' ? 1 : 0;
+      const hashBytes = Buffer.from(stakeKeyHash, 'hex');
+      
+      if (hashBytes.length !== 28) {
+        return null;
+      }
+      
+      const keyHash = CSL.Ed25519KeyHash.from_bytes(hashBytes);
+      const stakeCredential = CSL.Credential.from_keyhash(keyHash);
+      const rewardAddress = CSL.RewardAddress.new(networkId, stakeCredential);
+      const stakeAddress = rewardAddress.to_address().to_bech32();
+      
+      // Clean up CSL objects
+      keyHash.free();
+      stakeCredential.free();
+      rewardAddress.free();
+      
+      return stakeAddress;
+    } catch (error) {
+      console.warn('Failed to convert stake key hash to address:', error);
+      return null;
+    }
+  };
+
+  // Generate CIP-129 DRep ID from public key hash if not provided
+  const generateCip129DRepId = (publicKeyHash: string): string | null => {
+    try {
+      // Validate hex format (28 bytes = 56 hex chars)
+      if (!publicKeyHash || !/^[0-9a-fA-F]{56}$/i.test(publicKeyHash)) {
+        return null;
+      }
+      
+      const hashBytes = Buffer.from(publicKeyHash.toLowerCase(), 'hex');
+      if (hashBytes.length !== 28) {
+        return null;
+      }
+      
+      // Use bech32-buffer to encode with 'drep' prefix (CIP-129)
+      return bech32Buffer.encode('drep', hashBytes).toString();
+    } catch (error) {
+      console.warn('Failed to generate CIP-129 DRep ID:', error);
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (open && walletConnected && walletApi) {
@@ -75,8 +131,13 @@ export function WalletCredentialSelector({
     return null;
   }
 
+  // For DRep: if wallet supports CIP-95, we should always have a credential
+  // Generate CIP-129 DRep ID from hash if not provided
+  const drepIdCip129 = drepInfo?.dRepIDCip129 || 
+    (drepInfo?.publicKeyHash ? generateCip129DRepId(drepInfo.publicKeyHash) : null);
+  
   const hasCredentials = credentialType === 'drep' 
-    ? drepInfo !== null && (drepInfo.publicKey || drepInfo.dRepIDCip105 || drepInfo.dRepIDCip129)
+    ? drepInfo !== null && drepIdCip129 !== null
     : stakeKeys !== null && (stakeKeys.registered.length > 0 || stakeKeys.unregistered.length > 0);
 
   return (
@@ -116,44 +177,16 @@ export function WalletCredentialSelector({
             </div>
           ) : (
             <div className="p-2 space-y-1">
-              {credentialType === 'drep' && drepInfo && (
+              {credentialType === 'drep' && drepInfo && drepIdCip129 && (
                 <>
-                  {drepInfo.publicKey && (
-                    <CredentialItem
-                      label="pubDrepKey"
-                      value={drepInfo.publicKey}
-                      onSelect={handleSelect}
-                      onCopy={copyToClipboard}
-                      copied={copied === drepInfo.publicKey}
-                    />
-                  )}
-                  {drepInfo.dRepIDCip105 && (
-                    <CredentialItem
-                      label="DRep ID (CIP-105)"
-                      value={drepInfo.dRepIDCip105}
-                      onSelect={handleSelect}
-                      onCopy={copyToClipboard}
-                      copied={copied === drepInfo.dRepIDCip105}
-                    />
-                  )}
-                  {drepInfo.dRepIDCip129 && (
-                    <CredentialItem
-                      label="DRep ID (CIP-129)"
-                      value={drepInfo.dRepIDCip129}
-                      onSelect={handleSelect}
-                      onCopy={copyToClipboard}
-                      copied={copied === drepInfo.dRepIDCip129}
-                    />
-                  )}
-                  {drepInfo.publicKeyHash && (
-                    <CredentialItem
-                      label="Public Key Hash"
-                      value={drepInfo.publicKeyHash}
-                      onSelect={handleSelect}
-                      onCopy={copyToClipboard}
-                      copied={copied === drepInfo.publicKeyHash}
-                    />
-                  )}
+                  {/* Only show CIP-129 DRep ID (canonical format) */}
+                  <CredentialItem
+                    label="DRep ID"
+                    value={drepIdCip129}
+                    onSelect={handleSelect}
+                    onCopy={copyToClipboard}
+                    copied={copied === drepIdCip129}
+                  />
                 </>
               )}
               {credentialType === 'stake' && stakeKeys && (
@@ -161,35 +194,53 @@ export function WalletCredentialSelector({
                   {stakeKeys.registered.length > 0 && (
                     <div className="px-2 py-1.5">
                       <p className="text-xs font-medium text-muted-foreground mb-1">
-                        Registered Stake Keys
+                        Registered Stake Addresses
                       </p>
-                      {stakeKeys.registered.map((keyInfo, index) => (
-                        <CredentialItem
-                          key={`registered-${index}`}
-                          label={`pubStakeKey (Registered #${index + 1})`}
-                          value={keyInfo.pubStakeKey}
-                          onSelect={handleSelect}
-                          onCopy={copyToClipboard}
-                          copied={copied === keyInfo.pubStakeKey}
-                        />
-                      ))}
+                      {stakeKeys.registered.map((keyInfo, index) => {
+                        const stakeKeyHash = keyInfo.pubStakeKeyHash || keyInfo.pubStakeKey;
+                        const stakeAddress = getStakeAddress(stakeKeyHash);
+                        
+                        if (!stakeAddress) {
+                          return null;
+                        }
+                        
+                        return (
+                          <CredentialItem
+                            key={`registered-${index}`}
+                            label={`Stake Address (Registered #${index + 1})`}
+                            value={stakeAddress}
+                            onSelect={handleSelect}
+                            onCopy={copyToClipboard}
+                            copied={copied === stakeAddress}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                   {stakeKeys.unregistered.length > 0 && (
                     <div className="px-2 py-1.5">
                       <p className="text-xs font-medium text-muted-foreground mb-1">
-                        Unregistered Stake Keys
+                        Unregistered Stake Addresses
                       </p>
-                      {stakeKeys.unregistered.map((keyInfo, index) => (
-                        <CredentialItem
-                          key={`unregistered-${index}`}
-                          label={`pubStakeKey (Unregistered #${index + 1})`}
-                          value={keyInfo.pubStakeKey}
-                          onSelect={handleSelect}
-                          onCopy={copyToClipboard}
-                          copied={copied === keyInfo.pubStakeKey}
-                        />
-                      ))}
+                      {stakeKeys.unregistered.map((keyInfo, index) => {
+                        const stakeKeyHash = keyInfo.pubStakeKeyHash || keyInfo.pubStakeKey;
+                        const stakeAddress = getStakeAddress(stakeKeyHash);
+                        
+                        if (!stakeAddress) {
+                          return null;
+                        }
+                        
+                        return (
+                          <CredentialItem
+                            key={`unregistered-${index}`}
+                            label={`Stake Address (Unregistered #${index + 1})`}
+                            value={stakeAddress}
+                            onSelect={handleSelect}
+                            onCopy={copyToClipboard}
+                            copied={copied === stakeAddress}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </>

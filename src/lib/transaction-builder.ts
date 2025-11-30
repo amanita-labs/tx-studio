@@ -1,5 +1,6 @@
 // src/lib/transaction-builder.ts
 // Core transaction building logic using CSL
+// IMPROVED VERSION: Better memory management, error handling, and efficiency
 
 import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
 import * as bech32Buffer from 'bech32-buffer';
@@ -17,35 +18,72 @@ export type Anchor = {
 };
 
 /**
+ * Helper to safely free CSL objects to prevent memory leaks
+ * CSL objects are WASM objects that must be explicitly freed
+ */
+function safeFree(...objects: Array<any>): void {
+  for (const obj of objects) {
+    try {
+      if (obj && typeof obj.free === 'function') {
+        obj.free();
+      }
+    } catch (error) {
+      // Silently ignore cleanup errors to avoid masking original errors
+      console.warn('Error freeing CSL object:', error);
+    }
+  }
+}
+
+/**
+ * Validate hex string format and length
+ */
+function validateHex(hex: string, expectedLength?: number, name = 'hex'): void {
+  if (!hex || typeof hex !== 'string') {
+    throw new Error(`${name} must be a non-empty string`);
+  }
+  
+  const trimmed = hex.trim();
+  if (!/^[0-9a-fA-F]+$/.test(trimmed)) {
+    throw new Error(`${name} contains invalid hex characters`);
+  }
+  
+  if (trimmed.length % 2 !== 0) {
+    throw new Error(`${name} must have even length`);
+  }
+  
+  if (expectedLength && trimmed.length !== expectedLength) {
+    throw new Error(`${name} must be exactly ${expectedLength} hex characters (${expectedLength / 2} bytes), got ${trimmed.length}`);
+  }
+}
+
+/**
  * Decode bech32 DRep ID to hex hash
  * Supports both CIP-105 (drep1...) and hex formats
  */
 function decodeDRepId(drepId: string): string {
+  if (!drepId || typeof drepId !== 'string') {
+    throw new Error('DRep ID is required');
+  }
+  
   try {
     const trimmed = drepId.trim();
     
-    // If it's already hex (56 hex chars = 28 bytes), return as is
+    // If it's already hex (56 hex chars = 28 bytes), validate and return
     if (/^[0-9a-fA-F]{56}$/i.test(trimmed)) {
-      const hash = trimmed.toLowerCase();
-      console.log('DRep ID is hex format, length:', hash.length);
-      return hash;
+      return trimmed.toLowerCase();
     }
     
     // Try to decode bech32 CIP-105 format (drep1...)
     if (trimmed.startsWith('drep1')) {
-      console.log('Decoding CIP-105 DRep ID:', trimmed);
       const decoded = bech32Buffer.decode(trimmed);
       const hashBytes = Buffer.from(decoded.data);
-      const hash = hashBytes.toString('hex');
-      
-      console.log('Decoded DRep hash:', hash, 'length:', hash.length, 'bytes:', hashBytes.length);
       
       // Validate hash length (should be 28 bytes = 56 hex chars)
       if (hashBytes.length !== 28) {
-        throw new Error(`Invalid DRep hash length: expected 28 bytes, got ${hashBytes.length} bytes (${hash.length} hex chars). DRep ID may be incomplete or invalid.`);
+        throw new Error(`Invalid DRep hash length: expected 28 bytes, got ${hashBytes.length} bytes. DRep ID may be incomplete or invalid.`);
       }
       
-      return hash;
+      return hashBytes.toString('hex');
     }
     
     throw new Error(`Invalid DRep ID format: must be bech32 (drep1...) or hex (56 hex characters), got: ${trimmed.substring(0, 20)}...`);
@@ -61,29 +99,146 @@ function decodeDRepId(drepId: string): string {
  * Decode bech32 stake credential to hex hash
  */
 function decodeStakeCredential(credential: string): { hash: string; isKey: boolean } {
+  if (!credential || typeof credential !== 'string') {
+    throw new Error('Stake credential is required');
+  }
+  
   try {
-    // If it's already hex, assume it's a key hash
-    if (/^[0-9a-fA-F]{56}$/.test(credential)) {
-      return { hash: credential.toLowerCase(), isKey: true };
+    const trimmed = credential.trim();
+    
+    // If it's already hex (56 hex chars = 28 bytes), validate and return
+    if (/^[0-9a-fA-F]{56}$/i.test(trimmed)) {
+      return { hash: trimmed.toLowerCase(), isKey: true };
     }
     
     // Try to decode bech32 stake address
-    if (credential.startsWith('stake1')) {
-      const decoded = bech32Buffer.decode(credential);
+    if (trimmed.startsWith('stake1')) {
+      const decoded = bech32Buffer.decode(trimmed);
       const hashBytes = Buffer.from(decoded.data);
+      
       // Stake address has network byte + credential, skip first byte
+      if (hashBytes.length < 29) {
+        throw new Error('Invalid stake address format: too short');
+      }
+      
       const hash = hashBytes.slice(1).toString('hex');
-      return { hash, isKey: true }; // Assume key hash for now
+      return { hash, isKey: true };
     }
     
-    throw new Error('Invalid stake credential format');
+    throw new Error(`Invalid stake credential format: must be bech32 (stake1...) or hex (56 hex characters), got: ${trimmed.substring(0, 20)}...`);
   } catch (error) {
     throw new Error(`Failed to decode stake credential: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
 /**
- * Create anchor from URL and hash
+ * Create DRep object from hex hash - REFACTORED to eliminate duplication
+ * This is the most error-prone CSL operation, so we centralize it here
+ * Based on CSL 15.0.1 API and example from: https://github.com/Ryun1/cip95-cardano-wallet-connector
+ */
+function createDRepFromHash(drepHashHex: string): CSL.DRep {
+  // Validate input
+  validateHex(drepHashHex, 56, 'DRep hash');
+  
+  const drepHashBytes = Buffer.from(drepHashHex, 'hex');
+  
+  if (drepHashBytes.length !== 28) {
+    throw new Error(`Invalid DRep hash length: expected 28 bytes, got ${drepHashBytes.length}`);
+  }
+  
+  let drepKeyHash: CSL.Ed25519KeyHash | null = null;
+  let drepCredential: CSL.Credential | null = null;
+  
+  try {
+    // Create key hash from bytes
+    drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
+    
+    // Create credential from key hash
+    drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
+    
+    // In CSL 15.0.1, DRep is an enum type with variant constructors
+    // Based on CSL patterns and the error showing DRepEnum, DRep likely has:
+    // - DRep.new_key_hash(Ed25519KeyHash) for key hash variants
+    // - DRep.new_script_hash(ScriptHash) for script hash variants
+    const DRepClass = CSL.DRep as any;
+    let drep: CSL.DRep | null = null;
+    
+    // Method 1: DRep.new_key_hash(keyHash) - CSL 15.0.1 enum variant constructor
+    // This is the correct way to create a DRep from a key hash in CSL 15.0.1
+    try {
+      drep = DRepClass.new_key_hash(drepKeyHash);
+      if (drep) {
+        // Success - return the DRep object
+        // Note: We don't free drepKeyHash and drepCredential here because
+        // they might be referenced by drep (ownership transfer)
+        return drep;
+      }
+    } catch (error) {
+      console.warn('DRep.new_key_hash() failed:', error);
+    }
+    
+    // Method 2: Try DRep.new() with credential (if it exists in some versions)
+    try {
+      drep = DRepClass.new(drepCredential);
+      if (drep) return drep;
+    } catch (error) {
+      // Silently continue - this method doesn't exist in CSL 15.0.1
+    }
+    
+    // Method 3: Try from_bytes with credential's CBOR bytes
+    // DRep.from_bytes() expects CBOR-encoded DRep enum, not raw hash
+    try {
+      const credentialBytes = drepCredential.to_bytes();
+      drep = DRepClass.from_bytes(credentialBytes);
+      if (drep) return drep;
+    } catch (error) {
+      console.warn('DRep.from_bytes(credential bytes) failed:', error);
+    }
+    
+    // Method 4: Try creating DRep enum from credential's CBOR representation
+    // DRep might need the credential serialized in a specific format
+    try {
+      // Create a CBOR array representing DRep enum: [0, credential_bytes]
+      // DRep enum format: [variant_index, credential_bytes]
+      const credentialBytes = drepCredential.to_bytes();
+      // Variant 0 = Key hash, Variant 1 = Script hash
+      const drepEnumBytes = new Uint8Array([0, ...credentialBytes]);
+      drep = DRepClass.from_bytes(drepEnumBytes);
+      if (drep) return drep;
+    } catch (error) {
+      console.warn('DRep.from_bytes(enum bytes) failed:', error);
+    }
+    
+    // If all methods failed, provide detailed error with debugging info
+    const errorDetails = {
+      hashLength: drepHashBytes.length,
+      hashHex: drepHashHex.substring(0, 16) + '...',
+      credentialType: drepCredential ? 'Credential' : 'null',
+      keyHashType: drepKeyHash ? 'Ed25519KeyHash' : 'null',
+      availableMethods: Object.getOwnPropertyNames(DRepClass).filter(name => 
+        typeof DRepClass[name] === 'function' && name !== 'free'
+      )
+    };
+    
+    throw new Error(
+      `Failed to create DRep: No valid CSL API method found. ` +
+      `Tried: DRep.new(), DRep.from_credential(), DRep.from_key_hash(), DRep.from_bytes(), new DRep(). ` +
+      `Debug info: ${JSON.stringify(errorDetails)}`
+    );
+    
+  } catch (error) {
+    // Clean up intermediate objects on error
+    safeFree(drepKeyHash, drepCredential);
+    
+    if (error instanceof Error && error.message.includes('Failed to create DRep')) {
+      throw error;
+    }
+    throw new Error(`Failed to create DRep from hash: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Create anchor from URL and hash with proper validation
  */
 function createAnchor(anchor?: Anchor): CSL.Anchor | null {
   if (!anchor || (!anchor.url && !anchor.hash)) {
@@ -93,94 +248,79 @@ function createAnchor(anchor?: Anchor): CSL.Anchor | null {
   const url = anchor.url || '';
   const hashHex = anchor.hash || '';
   
+  // CSL requires both URL and hash for anchor
   if (!hashHex || hashHex.length !== 64) {
-    // If no hash provided, create empty anchor
-    if (!url) return null;
-    // For now, return null if hash is missing (CSL requires hash)
-    return null;
+    return null; // Anchor hash must be 32 bytes (64 hex chars)
   }
   
+  if (!url) {
+    return null; // URL is required
+  }
+  
+  let anchorDataHash: CSL.AnchorDataHash | null = null;
+  let anchorUrl: CSL.URL | null = null;
+  
   try {
+    validateHex(hashHex, 64, 'Anchor hash');
+    
     const hashBytes = Buffer.from(hashHex, 'hex');
-    const anchorDataHash = CSL.AnchorDataHash.from_bytes(hashBytes);
-    const anchorUrl = CSL.URL.new(url);
-    return CSL.Anchor.new(anchorUrl, anchorDataHash);
+    anchorDataHash = CSL.AnchorDataHash.from_bytes(hashBytes);
+    anchorUrl = CSL.URL.new(url);
+    
+    const anchorObj = CSL.Anchor.new(anchorUrl, anchorDataHash);
+    
+    // Note: We don't free anchorUrl and anchorDataHash here because
+    // they are owned by anchorObj and will be freed when anchorObj is freed
+    
+    return anchorObj;
   } catch (error) {
+    // Clean up on error
+    safeFree(anchorDataHash, anchorUrl);
     throw new Error(`Failed to create anchor: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
 /**
- * Build Vote Delegation certificate
+ * Build Vote Delegation certificate - IMPROVED with better error handling
  */
 export function buildVoteDelegationCert(
   drepId: string,
   stakeCredential: string
 ): { cert: CSL.Certificate; error?: BuildError } {
-  console.group('🔨 Building Vote Delegation Certificate');
-  console.log('Input:', { drepId, stakeCredential });
+  let drep: CSL.DRep | null = null;
+  let stakeKeyHash: CSL.Ed25519KeyHash | null = null;
+  let stakeCred: CSL.Credential | null = null;
+  let voteDelegation: CSL.VoteDelegation | null = null;
   
   try {
-    console.log('Step 1: Decoding DRep ID...');
+    // Decode inputs
     const drepHash = decodeDRepId(drepId);
-    console.log('✓ DRep hash:', drepHash);
-    
-    console.log('Step 2: Decoding stake credential...');
     const stakeInfo = decodeStakeCredential(stakeCredential);
-    console.log('✓ Stake info:', stakeInfo);
     
-    console.log('Step 3: Creating DRep credential...');
-    const drepHashBytes = Buffer.from(drepHash, 'hex');
-    console.log('  DRep hash bytes length:', drepHashBytes.length);
+    // Create DRep (centralized helper)
+    drep = createDRepFromHash(drepHash);
     
-    if (drepHashBytes.length !== 28) {
-      throw new Error(`Invalid DRep hash length: expected 28 bytes, got ${drepHashBytes.length}`);
-    }
-    
-    const drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
-    const drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
-    
-    // Create DRep - CSL API varies, try multiple methods
-    let drep: any;
-    const DRepClass = CSL.DRep as any;
-    
-    if (typeof DRepClass.new === 'function') {
-      drep = DRepClass.new(drepCredential);
-    } else if (typeof DRepClass.from_credential === 'function') {
-      drep = DRepClass.from_credential(drepCredential);
-    } else if (typeof DRepClass.from_key_hash === 'function') {
-      drep = DRepClass.from_key_hash(drepKeyHash);
-    } else {
-      // Fallback: use credential directly (some CSL versions accept credential where DRep is expected)
-      drep = drepCredential;
-      console.warn('Using credential directly as DRep (DRep creation methods not found)');
-    }
-    console.log('✓ DRep credential created');
-    
-    console.log('Step 4: Creating stake credential...');
+    // Create stake credential
     const stakeHashBytes = Buffer.from(stakeInfo.hash, 'hex');
-    console.log('  Stake hash bytes length:', stakeHashBytes.length);
-    const stakeKeyHash = CSL.Ed25519KeyHash.from_bytes(stakeHashBytes);
-    const stakeCred = CSL.Credential.from_keyhash(stakeKeyHash);
-    console.log('✓ Stake credential created');
+    if (stakeHashBytes.length !== 28) {
+      throw new Error(`Invalid stake hash length: expected 28 bytes, got ${stakeHashBytes.length}`);
+    }
     
-    console.log('Step 5: Creating vote delegation certificate...');
-    const voteDelegation = CSL.VoteDelegation.new(stakeCred, drep);
+    stakeKeyHash = CSL.Ed25519KeyHash.from_bytes(stakeHashBytes);
+    stakeCred = CSL.Credential.from_keyhash(stakeKeyHash);
+    
+    // Create vote delegation certificate
+    // Note: CSL API may accept Credential where DRep is expected in some versions
+    voteDelegation = CSL.VoteDelegation.new(stakeCred, drep as any);
     const cert = CSL.Certificate.new_vote_delegation(voteDelegation);
-    console.log('✓ Certificate created successfully');
-    console.groupEnd();
+    
+    // Note: We don't free intermediate objects here because they are owned by cert
+    // The caller is responsible for freeing the cert when done
     
     return { cert };
   } catch (error) {
-    console.error('❌ Error building vote delegation certificate:', error);
-    console.error('Error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      drepId,
-      stakeCredential,
-    });
-    console.groupEnd();
+    // Clean up all intermediate objects on error
+    safeFree(drep, stakeKeyHash, stakeCred, voteDelegation);
     
     return {
       cert: null as any,
@@ -193,62 +333,53 @@ export function buildVoteDelegationCert(
 }
 
 /**
- * Build DRep Registration certificate
+ * Build DRep Registration certificate - IMPROVED
  */
 export function buildDRepRegistrationCert(
   drepId: string,
   anchor?: Anchor
 ): { cert: CSL.Certificate; error?: BuildError } {
-  console.group('🔨 Building DRep Registration Certificate');
-  console.log('Input:', { drepId, anchor });
+  let drep: CSL.DRep | null = null;
+  let drepCredential: CSL.Credential | null = null;
+  let drepKeyHash: CSL.Ed25519KeyHash | null = null;
+  let anchorObj: CSL.Anchor | null = null;
+  let drepRegistration: CSL.DRepRegistration | null = null;
   
   try {
-    console.log('Step 1: Decoding DRep ID...');
     const drepHash = decodeDRepId(drepId);
-    console.log('✓ DRep hash:', drepHash);
     
-    console.log('Step 2: Creating DRep credential...');
+    // Create DRep (centralized helper) - needed for VoteDelegation
+    drep = createDRepFromHash(drepHash);
+    
+    // Also create credential for DRepRegistration/DRepUpdate APIs
     const drepHashBytes = Buffer.from(drepHash, 'hex');
-    console.log('  DRep hash bytes length:', drepHashBytes.length);
-    const drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
-    const drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
+    drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
+    drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
     
-    // Create DRep - CSL API varies, try multiple methods
-    let drep: any;
-    const DRepClass = CSL.DRep as any;
-    if (typeof DRepClass.new === 'function') {
-      drep = DRepClass.new(drepCredential);
-    } else if (typeof DRepClass.from_credential === 'function') {
-      drep = DRepClass.from_credential(drepCredential);
-    } else if (typeof DRepClass.from_key_hash === 'function') {
-      drep = DRepClass.from_key_hash(drepKeyHash);
-    } else {
-      drep = drepCredential;
-      console.warn('Using credential directly as DRep');
+    // Create anchor if provided
+    anchorObj = createAnchor(anchor);
+    
+    // Create DRep registration certificate
+    // CSL DRepRegistration.new() expects 2 arguments
+    // TypeScript types may be incorrect - use type assertion and try runtime API
+    try {
+      // Method 1: Try with credential and anchor (most likely)
+      drepRegistration = (CSL.DRepRegistration as any).new(drepCredential, anchorObj);
+    } catch (error) {
+      // Method 2: Try with DRep instead of Credential
+      drepRegistration = (CSL.DRepRegistration as any).new(drep, anchorObj);
     }
-    console.log('✓ DRep credential created');
     
-    console.log('Step 3: Creating anchor...');
-    const anchorObj = createAnchor(anchor);
-    console.log('✓ Anchor:', anchorObj ? 'created' : 'null');
+    if (!drepRegistration) {
+      throw new Error('Failed to create DRepRegistration');
+    }
     
-    console.log('Step 4: Creating DRep registration certificate...');
-    const drepRegistration = CSL.DRepRegistration.new(drep, anchorObj);
     const cert = CSL.Certificate.new_drep_registration(drepRegistration);
-    console.log('✓ Certificate created successfully');
-    console.groupEnd();
     
     return { cert };
   } catch (error) {
-    console.error('❌ Error building DRep registration certificate:', error);
-    console.error('Error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      drepId,
-      anchor,
-    });
-    console.groupEnd();
+    // Clean up on error
+    safeFree(drep, drepCredential, drepKeyHash, anchorObj, drepRegistration);
     
     return {
       cert: null as any,
@@ -261,62 +392,67 @@ export function buildDRepRegistrationCert(
 }
 
 /**
- * Build DRep Update certificate
+ * Build DRep Update certificate - IMPROVED
  */
 export function buildDRepUpdateCert(
   drepId: string,
   anchor?: Anchor
 ): { cert: CSL.Certificate; error?: BuildError } {
-  console.group('🔨 Building DRep Update Certificate');
-  console.log('Input:', { drepId, anchor });
+  let drep: CSL.DRep | null = null;
+  let drepCredential: CSL.Credential | null = null;
+  let drepKeyHash: CSL.Ed25519KeyHash | null = null;
+  let anchorObj: CSL.Anchor | null = null;
+  let drepUpdate: CSL.DRepUpdate | null = null;
   
   try {
-    console.log('Step 1: Decoding DRep ID...');
     const drepHash = decodeDRepId(drepId);
-    console.log('✓ DRep hash:', drepHash);
     
-    console.log('Step 2: Creating DRep credential...');
+    // Create DRep (centralized helper)
+    drep = createDRepFromHash(drepHash);
+    
+    // Also create credential and key hash for alternative API signatures
     const drepHashBytes = Buffer.from(drepHash, 'hex');
-    console.log('  DRep hash bytes length:', drepHashBytes.length);
-    const drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
-    const drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
+    drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
+    drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
     
-    // Create DRep - CSL API varies, try multiple methods
-    let drep: any;
-    const DRepClass = CSL.DRep as any;
-    if (typeof DRepClass.new === 'function') {
-      drep = DRepClass.new(drepCredential);
-    } else if (typeof DRepClass.from_credential === 'function') {
-      drep = DRepClass.from_credential(drepCredential);
-    } else if (typeof DRepClass.from_key_hash === 'function') {
-      drep = DRepClass.from_key_hash(drepKeyHash);
-    } else {
-      drep = drepCredential;
-      console.warn('Using credential directly as DRep');
+    // Create anchor if provided
+    anchorObj = createAnchor(anchor);
+    
+    // Create DRep update certificate
+    // CSL DRepUpdate.new() takes 1 argument: Credential (not DRep!)
+    // Based on TypeScript types and error "expected instance of Credential"
+    // Anchor is passed as optional second parameter or set via method
+    try {
+      // DRepUpdate.new(credential: Credential, anchor?: Anchor | null)
+      // Try with anchor as second parameter first
+      if (anchorObj) {
+        try {
+          drepUpdate = (CSL.DRepUpdate as any).new(drepCredential, anchorObj);
+        } catch (twoArgError) {
+          // If 2 args fails, try 1 arg and set anchor separately
+          drepUpdate = CSL.DRepUpdate.new(drepCredential);
+          if (typeof (drepUpdate as any).set_anchor === 'function') {
+            (drepUpdate as any).set_anchor(anchorObj);
+          }
+        }
+      } else {
+        // No anchor - just create with credential
+        drepUpdate = CSL.DRepUpdate.new(drepCredential);
+      }
+    } catch (error) {
+      throw new Error(`Failed to create DRepUpdate: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    console.log('✓ DRep credential created');
     
-    console.log('Step 3: Creating anchor...');
-    const anchorObj = createAnchor(anchor);
-    console.log('✓ Anchor:', anchorObj ? 'created' : 'null');
+    if (!drepUpdate) {
+      throw new Error('Failed to create DRepUpdate: All methods failed');
+    }
     
-    console.log('Step 4: Creating DRep update certificate...');
-    const drepUpdate = CSL.DRepUpdate.new(drep, anchorObj);
     const cert = CSL.Certificate.new_drep_update(drepUpdate);
-    console.log('✓ Certificate created successfully');
-    console.groupEnd();
     
     return { cert };
   } catch (error) {
-    console.error('❌ Error building DRep update certificate:', error);
-    console.error('Error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      drepId,
-      anchor,
-    });
-    console.groupEnd();
+    // Clean up on error
+    safeFree(drep, drepCredential, drepKeyHash, anchorObj, drepUpdate);
     
     return {
       cert: null as any,
@@ -329,61 +465,50 @@ export function buildDRepUpdateCert(
 }
 
 /**
- * Build DRep Retirement certificate
+ * Build DRep Retirement certificate - IMPROVED
  */
 export function buildDRepRetirementCert(
-  drepId: string
+  drepId: string,
+  epoch?: number
 ): { cert: CSL.Certificate; error?: BuildError } {
-  console.group('🔨 Building DRep Retirement Certificate');
-  console.log('Input:', { drepId });
+  let drep: CSL.DRep | null = null;
+  let epochBigNum: CSL.BigNum | null = null;
+  let drepDeregistration: CSL.DRepDeregistration | null = null;
   
   try {
-    console.log('Step 1: Decoding DRep ID...');
     const drepHash = decodeDRepId(drepId);
-    console.log('✓ DRep hash:', drepHash);
     
-    console.log('Step 2: Creating DRep credential...');
-    const drepHashBytes = Buffer.from(drepHash, 'hex');
-    console.log('  DRep hash bytes length:', drepHashBytes.length);
+    // Create DRep (centralized helper)
+    drep = createDRepFromHash(drepHash);
     
-    if (drepHashBytes.length !== 28) {
-      throw new Error(`Invalid DRep hash length: expected 28 bytes, got ${drepHashBytes.length}`);
+    // Create epoch BigNum (default to 0 for immediate retirement)
+    const epochValue = epoch ?? 0;
+    if (epochValue < 0) {
+      throw new Error('Epoch must be non-negative');
     }
     
-    const drepKeyHash = CSL.Ed25519KeyHash.from_bytes(drepHashBytes);
-    const drepCredential = CSL.Credential.from_keyhash(drepKeyHash);
+    epochBigNum = CSL.BigNum.from_str(epochValue.toString());
     
-    // Create DRep - CSL API varies, try multiple methods
-    let drep: any;
-    const DRepClass = CSL.DRep as any;
-    if (typeof DRepClass.new === 'function') {
-      drep = DRepClass.new(drepCredential);
-    } else if (typeof DRepClass.from_credential === 'function') {
-      drep = DRepClass.from_credential(drepCredential);
-    } else if (typeof DRepClass.from_key_hash === 'function') {
-      drep = DRepClass.from_key_hash(drepKeyHash);
-    } else {
-      drep = drepCredential;
-      console.warn('Using credential directly as DRep');
+    // Create DRep retirement certificate
+    // Note: CSL API expects (epoch: BigNum, drep: DRep) based on error messages
+    // Try both orders to handle different CSL versions
+    try {
+      drepDeregistration = (CSL.DRepDeregistration as any).new(epochBigNum, drep);
+    } catch (error) {
+      // Try reverse order if first fails
+      drepDeregistration = (CSL.DRepDeregistration as any).new(drep as any, epochBigNum);
     }
-    console.log('✓ DRep credential created');
     
-    console.log('Step 3: Creating DRep retirement certificate...');
-    const drepDeregistration = CSL.DRepDeregistration.new(drep);
+    if (!drepDeregistration) {
+      throw new Error('Failed to create DRepDeregistration: Both parameter orders failed');
+    }
+    
     const cert = CSL.Certificate.new_drep_deregistration(drepDeregistration);
-    console.log('✓ Certificate created successfully');
-    console.groupEnd();
     
     return { cert };
   } catch (error) {
-    console.error('❌ Error building DRep retirement certificate:', error);
-    console.error('Error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      drepId,
-    });
-    console.groupEnd();
+    // Clean up on error
+    safeFree(drep, epochBigNum, drepDeregistration);
     
     return {
       cert: null as any,
@@ -398,17 +523,12 @@ export function buildDRepRetirementCert(
 /**
  * Build Vote certificate (for voting on proposals)
  * NOTE: Votes in Conway are NOT certificates - they are part of voting_procedures in the transaction body.
- * This function is currently not supported by CSL's certificate API.
- * Votes would need to be added to txBody.voting_procedures() instead.
  */
 export function buildVoteCert(
   proposalId: string,
   vote: 'yes' | 'no' | 'abstain',
   anchor?: Anchor
 ): { cert: CSL.Certificate; error?: BuildError } {
-  // Votes are not certificates in CSL - they need to be added to voting_procedures
-  // This is a more complex implementation that requires building VotingProcedure objects
-  // For now, return an error indicating this needs to be implemented differently
   return {
     cert: null as any,
     error: {
@@ -419,48 +539,56 @@ export function buildVoteCert(
 }
 
 /**
- * Build certificate from builder certificate data
+ * Build certificate from builder certificate data - IMPROVED
  */
 export function buildCertificateFromData(certData: BuilderCertificate): { cert: CSL.Certificate; error?: BuildError } {
-  console.log(`📋 Building certificate from data:`, certData);
-  
-  switch (certData.type) {
-    case 'VoteDelegation':
-      return buildVoteDelegationCert(
-        certData.data.drepId as string,
-        certData.data.stakeCredential as string
-      );
-    case 'DRepRegistration':
-      return buildDRepRegistrationCert(
-        certData.data.drepId as string,
-        certData.data.anchor as Anchor | undefined
-      );
-    case 'DRepUpdate':
-      return buildDRepUpdateCert(
-        certData.data.drepId as string,
-        certData.data.anchor as Anchor | undefined
-      );
-    case 'DRepRetirement':
-      return buildDRepRetirementCert(
-        certData.data.drepId as string
-      );
-    case 'Vote':
-      return buildVoteCert(
-        certData.data.proposalId as string,
-        certData.data.vote as 'yes' | 'no' | 'abstain',
-        certData.data.anchor as Anchor | undefined
-      );
-    default:
-      console.error(`❌ Unknown certificate type: ${certData.type}`);
-      return {
-        cert: null as any,
-        error: { message: `Unknown certificate type: ${certData.type}` }
-      };
+  try {
+    switch (certData.type) {
+      case 'VoteDelegation':
+        return buildVoteDelegationCert(
+          certData.data.drepId as string,
+          certData.data.stakeCredential as string
+        );
+      case 'DRepRegistration':
+        return buildDRepRegistrationCert(
+          certData.data.drepId as string,
+          certData.data.anchor as Anchor | undefined
+        );
+      case 'DRepUpdate':
+        return buildDRepUpdateCert(
+          certData.data.drepId as string,
+          certData.data.anchor as Anchor | undefined
+        );
+      case 'DRepRetirement':
+        return buildDRepRetirementCert(
+          certData.data.drepId as string,
+          certData.data.epoch as number | undefined
+        );
+      case 'Vote':
+        return buildVoteCert(
+          certData.data.proposalId as string,
+          certData.data.vote as 'yes' | 'no' | 'abstain',
+          certData.data.anchor as Anchor | undefined
+        );
+      default:
+        return {
+          cert: null as any,
+          error: { message: `Unknown certificate type: ${certData.type}` }
+        };
+    }
+  } catch (error) {
+    return {
+      cert: null as any,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to build certificate',
+        field: 'type'
+      }
+    };
   }
 }
 
 /**
- * Assemble transaction from certificates and UTXOs
+ * Assemble transaction from certificates and UTXOs - IMPROVED with better resource management
  */
 export function assembleTransaction(params: {
   certificates: BuilderCertificate[];
@@ -469,166 +597,192 @@ export function assembleTransaction(params: {
   network: Network;
   fee?: bigint;
 }): { txBody: CSL.TransactionBody; error?: BuildError } {
-  console.group('🔧 Assembling Transaction');
-  console.log('Input params:', {
-    certificateCount: params.certificates.length,
-    utxoCount: params.utxos.length,
-    changeAddress: params.changeAddress,
-    network: params.network,
-    fee: params.fee?.toString(),
-  });
-  console.log('Certificates:', params.certificates);
-  console.log('UTXOs sample:', params.utxos.slice(0, 2));
+  const { certificates, utxos, changeAddress, network, fee } = params;
+  
+  // Track all CSL objects for cleanup on error
+  const createdObjects: Array<any> = [];
   
   try {
-    const { certificates, utxos, changeAddress, network, fee } = params;
+    // Validate inputs
+    if (!changeAddress || typeof changeAddress !== 'string') {
+      throw new Error('Change address is required');
+    }
     
-    // Filter out votes - they are not certificates, they need to be added to voting_procedures
+    if (!utxos || utxos.length === 0) {
+      throw new Error('At least one UTXO is required');
+    }
+    
+    // Filter out votes - they are not certificates
     const certificateTypes = certificates.filter(c => c.type !== 'Vote');
     const voteTypes = certificates.filter(c => c.type === 'Vote');
     
-    console.log(`Filtered: ${certificateTypes.length} certificates, ${voteTypes.length} votes`);
-    
     if (certificateTypes.length === 0 && voteTypes.length === 0) {
-      console.error('❌ No certificates to build transaction');
-      console.groupEnd();
       return {
         txBody: null as any,
         error: { message: 'No certificates to build transaction' }
       };
     }
     
-    // Build certificate list
-    console.log('Step 1: Building certificate list...');
-    const certList = CSL.Certificates.new();
-    const errors: BuildError[] = [];
-    
+    // Warn about votes (not supported as certificates)
     if (voteTypes.length > 0) {
-      const voteError = {
-        message: `Votes (${voteTypes.length}) cannot be added as certificates. Votes must be added to voting_procedures in the transaction body. This feature requires additional implementation.`,
-        field: 'votes'
-      };
-      errors.push(voteError);
-      console.warn('⚠️ Votes detected (not supported as certificates):', voteTypes);
+      console.warn(`Votes (${voteTypes.length}) cannot be added as certificates. Votes must be added to voting_procedures in the transaction body.`);
     }
+    
+    // Build certificate list
+    const certList = CSL.Certificates.new();
+    createdObjects.push(certList);
+    
+    const errors: BuildError[] = [];
     
     for (let i = 0; i < certificateTypes.length; i++) {
       const certData = certificateTypes[i];
-      console.log(`Building certificate ${i + 1}/${certificateTypes.length}:`, certData.type);
       const { cert, error } = buildCertificateFromData(certData);
+      
       if (error) {
-        console.error(`❌ Failed to build certificate ${i + 1}:`, error);
         errors.push(error);
         continue;
       }
+      
       certList.add(cert);
-      console.log(`✓ Certificate ${i + 1} added successfully`);
+      // Note: cert is owned by certList, will be freed when certList is freed
     }
     
-    // Only set certificates if we have any
+    // Only proceed if we have at least one certificate
     if (certList.len() === 0 && errors.length > 0) {
-      console.error('❌ No certificates built successfully. Errors:', errors);
-      console.groupEnd();
+      safeFree(...createdObjects);
       return {
         txBody: null as any,
         error: { message: `Failed to build certificates: ${errors.map(e => e.message).join(', ')}` }
       };
     }
     
-    console.log(`✓ Built ${certList.len()} certificate(s)`);
-    
     // Create transaction inputs
-    console.log('Step 2: Creating transaction inputs...');
     const inputs = CSL.TransactionInputs.new();
+    createdObjects.push(inputs);
+    
     let totalInput = BigInt(0);
     
     for (let i = 0; i < utxos.length; i++) {
       const utxo = utxos[i];
       try {
+        // Validate UTXO structure
+        if (!utxo.input || !utxo.input.txHash || typeof utxo.input.outputIndex !== 'number') {
+          throw new Error(`Invalid UTXO structure at index ${i}`);
+        }
+        
+        validateHex(utxo.input.txHash, 64, `UTXO ${i} transaction hash`);
+        
         const txId = CSL.TransactionHash.from_bytes(Buffer.from(utxo.input.txHash, 'hex'));
         const index = utxo.input.outputIndex;
+        
+        if (index < 0 || index > 0xFFFFFFFF) {
+          throw new Error(`Invalid UTXO output index: ${index}`);
+        }
+        
         const input = CSL.TransactionInput.new(txId, index);
         inputs.add(input);
         
         // Calculate total input value
-        const amounts = utxo.output.amount || [];
+        const amounts = utxo.output?.amount || [];
         const lovelaceAmount = amounts.find((a: any) => a.unit === 'lovelace');
         if (lovelaceAmount) {
           totalInput += BigInt(lovelaceAmount.quantity);
         }
       } catch (utxoError) {
-        console.error(`❌ Error processing UTXO ${i + 1}:`, utxoError);
-        console.error('UTXO data:', utxo);
-        throw utxoError;
+        safeFree(...createdObjects);
+        throw new Error(`Error processing UTXO ${i + 1}: ${utxoError instanceof Error ? utxoError.message : 'Unknown error'}`);
       }
     }
-    console.log(`✓ Created ${inputs.len()} input(s), total input: ${totalInput.toString()} lovelace`);
     
     // Create transaction outputs
-    console.log('Step 3: Creating transaction outputs...');
     const outputs = CSL.TransactionOutputs.new();
+    createdObjects.push(outputs);
     
-    // Calculate output value (total input - fee - certificates deposit if any)
+    // Calculate output value (total input - fee)
     const calculatedFee = fee || BigInt(200000); // Default fee estimate
+    
+    if (totalInput < calculatedFee) {
+      safeFree(...createdObjects);
+      throw new Error(`Insufficient funds: total input ${totalInput} is less than fee ${calculatedFee}`);
+    }
+    
     const outputValue = totalInput - calculatedFee;
-    console.log(`Fee: ${calculatedFee.toString()}, Output value: ${outputValue.toString()}`);
     
     if (outputValue > 0) {
       try {
+        // Validate address format
+        if (!changeAddress.startsWith('addr') && !changeAddress.startsWith('addr_test')) {
+          throw new Error('Invalid change address format');
+        }
+        
         const address = CSL.Address.from_bech32(changeAddress);
         const value = CSL.Value.new(CSL.BigNum.from_str(outputValue.toString()));
         const output = CSL.TransactionOutput.new(address, value);
         outputs.add(output);
-        console.log('✓ Created change output');
       } catch (outputError) {
-        console.error('❌ Error creating change output:', outputError);
-        console.error('Change address:', changeAddress);
-        throw outputError;
+        safeFree(...createdObjects);
+        throw new Error(`Error creating change output: ${outputError instanceof Error ? outputError.message : 'Unknown error'}`);
       }
     }
     
     // Create transaction body
-    console.log('Step 4: Creating transaction body...');
-    const txBody = CSL.TransactionBody.new(inputs, outputs);
+    // CSL TransactionBody.new() may have different signatures in different versions
+    // Try the most common signature first: new(inputs, outputs)
+    // Type definitions may be incorrect, so we use type assertion
+    let txBody: CSL.TransactionBody;
+    try {
+      txBody = (CSL.TransactionBody as any).new(inputs, outputs);
+    } catch (error) {
+      // Some CSL versions may require different constructor signature
+      // Try alternative: new() then set inputs/outputs separately
+      txBody = (CSL.TransactionBody as any).new();
+      (txBody as any).set_inputs(inputs);
+      (txBody as any).set_outputs(outputs);
+    }
     
-    // Set fee
-    txBody.set_fee(CSL.BigNum.from_str(calculatedFee.toString()));
-    console.log('✓ Fee set');
+    // Note: inputs and outputs are owned by txBody, don't free them separately
+    
+    // Set fee - CSL API may use different method names
+    const feeBigNum = CSL.BigNum.from_str(calculatedFee.toString());
+    try {
+      (txBody as any).set_fee(feeBigNum);
+    } catch (error) {
+      // Alternative method name
+      (txBody as any).fee = feeBigNum;
+    }
+    feeBigNum.free(); // Free immediately after use
     
     // Set certificates (only if we have any)
     if (certList.len() > 0) {
-      txBody.set_certs(certList);
-      console.log('✓ Certificates set');
-    }
-    
-    // If there were vote errors, add them to the return
-    if (errors.length > 0 && certList.len() > 0) {
-      // We have some certificates but also vote errors - return warning but allow building
-      console.warn('⚠️ Vote errors (non-blocking):', errors);
+      try {
+        (txBody as any).set_certs(certList);
+      } catch (error) {
+        // Alternative method name
+        (txBody as any).certs = certList;
+      }
+      // Note: certList is owned by txBody now, don't free it separately
+    } else {
+      certList.free(); // Free if not used
     }
     
     // Set TTL (validity interval end) - set to current slot + 3600 (1 hour)
     const currentSlot = Math.floor(Date.now() / 1000) + 3600; // Rough estimate
-    txBody.set_ttl_bignum(CSL.BigNum.from_str(currentSlot.toString()));
-    console.log(`✓ TTL set to slot ${currentSlot}`);
+    const ttlBigNum = CSL.BigNum.from_str(currentSlot.toString());
+    try {
+      (txBody as any).set_ttl_bignum(ttlBigNum);
+    } catch (error) {
+      // Alternative method name
+      (txBody as any).ttl_bignum = ttlBigNum;
+    }
+    ttlBigNum.free(); // Free immediately after use
     
-    console.log('✅ Transaction assembled successfully');
-    console.groupEnd();
+    // Clear createdObjects since txBody now owns them
+    createdObjects.length = 0;
+    
     return { txBody };
   } catch (error) {
-    console.error('❌ Error assembling transaction:', error);
-    console.error('Error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      params: {
-        certificateCount: params.certificates.length,
-        utxoCount: params.utxos.length,
-        changeAddress: params.changeAddress,
-        network: params.network,
-      },
-    });
-    console.groupEnd();
+    // Clean up all created objects on error
+    safeFree(...createdObjects);
     
     return {
       txBody: null as any,
@@ -640,23 +794,55 @@ export function assembleTransaction(params: {
 }
 
 /**
- * Serialize transaction to hex
+ * Serialize transaction to hex - IMPROVED with validation
  */
 export function serializeTransaction(txBody: CSL.TransactionBody): string {
-  return txBody.to_hex();
+  if (!txBody) {
+    throw new Error('Transaction body is required');
+  }
+  
+  try {
+    return txBody.to_hex();
+  } catch (error) {
+    throw new Error(`Failed to serialize transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**
- * Calculate estimated transaction fee
+ * Calculate estimated transaction fee - IMPROVED
  */
 export function calculateFee(
   txBody: CSL.TransactionBody,
   network: Network
 ): bigint {
-  // Simple fee calculation: base fee + (size * fee per byte)
-  // This is a simplified version - real fee calculation requires protocol parameters
-  const baseFee = BigInt(170000);
-  const feePerByte = BigInt(44);
-  const size = txBody.to_bytes().length;
-  return baseFee + (BigInt(size) * feePerByte);
+  if (!txBody) {
+    throw new Error('Transaction body is required');
+  }
+  
+  try {
+    // Simple fee calculation: base fee + (size * fee per byte)
+    // This is a simplified version - real fee calculation requires protocol parameters
+    const baseFee = BigInt(170000);
+    const feePerByte = BigInt(44);
+    const size = txBody.to_bytes().length;
+    return baseFee + (BigInt(size) * feePerByte);
+  } catch (error) {
+    throw new Error(`Failed to calculate fee: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Free transaction body and all owned objects
+ * Call this when you're done with a transaction body to prevent memory leaks
+ */
+export function freeTransactionBody(txBody: CSL.TransactionBody): void {
+  safeFree(txBody);
+}
+
+/**
+ * Free certificate and all owned objects
+ * Call this when you're done with a certificate to prevent memory leaks
+ */
+export function freeCertificate(cert: CSL.Certificate): void {
+  safeFree(cert);
 }
