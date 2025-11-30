@@ -15,7 +15,49 @@ export interface OnChainMeta {
 
 export type BuilderCertificate = {
   id: string;
-  type: 'VoteDelegation' | 'DRepRegistration' | 'DRepUpdate' | 'DRepRetirement' | 'Vote';
+  type: 
+    | 'StakeRegistration' 
+    | 'StakeDeregistration' 
+    | 'StakeDelegation' 
+    | 'PoolRegistration' 
+    | 'PoolRetirement' 
+    | 'AccountRegistration' 
+    | 'AccountUnregistration' 
+    | 'VoteDelegation' 
+    | 'StakeVoteDelegation' 
+    | 'StakeRegDelegation' 
+    | 'VoteRegDelegation' 
+    | 'StakeVoteRegDelegation' 
+    | 'CommitteeAuth' 
+    | 'CommitteeResignation' 
+    | 'DRepRegistration' 
+    | 'DRepUpdate' 
+    | 'DRepRetirement' 
+    | 'Vote';
+  data: Record<string, unknown>;
+};
+
+export type BuilderTxBodyElement = {
+  id: string;
+  type: 
+    | 'TransactionInputs'
+    | 'CollateralInputs'
+    | 'ReferenceInputs'
+    | 'TransactionOutputs'
+    | 'CollateralReturn'
+    | 'Fee'
+    | 'ValidityIntervalStart'
+    | 'ValidityIntervalEnd'
+    | 'TotalCollateral'
+    | 'Withdrawals'
+    | 'Mint'
+    | 'AuxiliaryDataHash'
+    | 'ScriptDataHash'
+    | 'RequiredSigners'
+    | 'VotingProcedures'
+    | 'ProposalProcedures'
+    | 'TreasuryAmount'
+    | 'TreasuryDonation';
   data: Record<string, unknown>;
 };
 
@@ -45,6 +87,7 @@ interface AppState {
 
   // Builder state
   builderCertificates: BuilderCertificate[];
+  builderTxBodyElements: BuilderTxBodyElement[];
   walletConnected: boolean;
   walletName: string | null;
   walletApi: any | null; // BrowserWallet instance
@@ -71,6 +114,8 @@ interface AppState {
   // Builder actions
   addCertificate: (cert: BuilderCertificate) => void;
   removeCertificate: (id: string) => void;
+  addTxBodyElement: (element: BuilderTxBodyElement) => void;
+  removeTxBodyElement: (id: string) => void;
   clearBuilder: () => void;
   setWalletApi: (api: any | null, name: string | null) => void;
   setBuiltTxHex: (hex: string | null) => void;
@@ -98,6 +143,7 @@ export const useAppStore = create<AppState>()(
 
       // Builder state
       builderCertificates: [],
+      builderTxBodyElements: [],
       walletConnected: false,
       walletName: null,
       walletApi: null,
@@ -139,8 +185,15 @@ export const useAppStore = create<AppState>()(
       removeCertificate: (id: string) => set((state) => ({
         builderCertificates: state.builderCertificates.filter(c => c.id !== id)
       })),
+      addTxBodyElement: (element: BuilderTxBodyElement) => set((state) => ({
+        builderTxBodyElements: [...state.builderTxBodyElements, element]
+      })),
+      removeTxBodyElement: (id: string) => set((state) => ({
+        builderTxBodyElements: state.builderTxBodyElements.filter(e => e.id !== id)
+      })),
       clearBuilder: () => set({
         builderCertificates: [],
+        builderTxBodyElements: [],
         builtTxHex: null,
         signedTxHex: null,
       }),

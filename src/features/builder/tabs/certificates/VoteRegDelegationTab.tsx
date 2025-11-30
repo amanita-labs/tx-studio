@@ -1,4 +1,4 @@
-// src/features/builder/tabs/DRepUpdateTab.tsx
+// src/features/builder/tabs/certificates/VoteRegDelegationTab.tsx
 'use client';
 
 import { useState } from 'react';
@@ -8,20 +8,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore, BuilderCertificate } from '@/lib/store';
 import { toast } from 'sonner';
-import { buildDRepUpdateCert } from '@/lib/transaction-builder';
-import { WalletCredentialSelector } from '../components/WalletCredentialSelector';
-import { RefreshCw } from 'lucide-react';
+import { WalletCredentialSelector } from '../../components/WalletCredentialSelector';
+import { Vote } from 'lucide-react';
 
-export function DRepUpdateTab() {
+export function VoteRegDelegationTab() {
   const { addCertificate } = useAppStore();
+  const [stakeCredential, setStakeCredential] = useState('');
   const [drepId, setDrepId] = useState('');
-  const [anchorUrl, setAnchorUrl] = useState('');
-  const [anchorHash, setAnchorHash] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ drepId?: string; anchorHash?: string }>({});
+  const [errors, setErrors] = useState<{ stakeCredential?: string; drepId?: string }>({});
 
   const validate = (): boolean => {
-    const newErrors: { drepId?: string; anchorHash?: string } = {};
+    const newErrors: { stakeCredential?: string; drepId?: string } = {};
+
+    if (!stakeCredential.trim()) {
+      newErrors.stakeCredential = 'Stake credential is required';
+    } else {
+      const isBech32 = stakeCredential.startsWith('stake1');
+      const isHex = /^[0-9a-fA-F]{56}$/.test(stakeCredential);
+      if (!isBech32 && !isHex) {
+        newErrors.stakeCredential = 'Stake credential must be bech32 (stake1...) or hex format (56 hex chars)';
+      }
+    }
 
     if (!drepId.trim()) {
       newErrors.drepId = 'DRep ID is required';
@@ -30,15 +38,6 @@ export function DRepUpdateTab() {
       const isHex = /^[0-9a-fA-F]+$/.test(drepId);
       if (!isBech32 && !isHex) {
         newErrors.drepId = 'DRep ID must be bech32 (drep1...) or hex format';
-      }
-    }
-
-    if (anchorHash.trim()) {
-      const isHex = /^[0-9a-fA-F]+$/.test(anchorHash);
-      if (!isHex) {
-        newErrors.anchorHash = 'Anchor hash must be hex format';
-      } else if (anchorHash.length !== 64) {
-        newErrors.anchorHash = 'Anchor hash must be 64 hex characters (32 bytes)';
       }
     }
 
@@ -53,32 +52,21 @@ export function DRepUpdateTab() {
 
     setLoading(true);
     try {
-      const anchor = anchorUrl.trim() || anchorHash.trim() 
-        ? { url: anchorUrl.trim() || undefined, hash: anchorHash.trim() || undefined }
-        : undefined;
-
-      const { cert, error } = buildDRepUpdateCert(drepId.trim(), anchor);
-      
-      if (error || !cert) {
-        toast.error(error?.message || 'Failed to build certificate');
-        return;
-      }
-
+      // TODO: Implement buildVoteRegDelegationCert in transaction-builder.ts
       const certificate: BuilderCertificate = {
-        id: `drep-update-${Date.now()}`,
-        type: 'DRepUpdate',
+        id: `vote-reg-delegation-${Date.now()}`,
+        type: 'VoteRegDelegation',
         data: {
-          drepId: drepId.trim(),
-          anchor
+          stakeCredential: stakeCredential.trim(),
+          drepId: drepId.trim()
         }
       };
 
       addCertificate(certificate);
-      toast.success('DRep update certificate added to transaction');
+      toast.success('Vote registration + delegation certificate added to transaction');
       
-      // Reset form (keep DRep ID)
-      setAnchorUrl('');
-      setAnchorHash('');
+      setStakeCredential('');
+      setDrepId('');
       setErrors({});
     } catch (error) {
       toast.error(`Failed to build certificate: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -91,14 +79,35 @@ export function DRepUpdateTab() {
     <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <RefreshCw className="h-5 w-5" />
-          DRep Update
+          <Vote className="h-5 w-5" />
+          Vote Registration + Delegation
         </CardTitle>
         <CardDescription>
-          Update your DRep registration information (e.g., anchor)
+          Register vote and delegate to a DRep in a single certificate
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="stake-credential">Stake Credential</Label>
+          <div className="flex gap-2">
+            <Input
+              id="stake-credential"
+              placeholder="stake1... or hex"
+              value={stakeCredential}
+              onChange={(e) => setStakeCredential(e.target.value)}
+              aria-invalid={errors.stakeCredential ? 'true' : 'false'}
+              className="flex-1"
+            />
+            <WalletCredentialSelector
+              credentialType="stake"
+              onSelect={(value) => setStakeCredential(value)}
+            />
+          </div>
+          {errors.stakeCredential && (
+            <p className="text-sm text-destructive">{errors.stakeCredential}</p>
+          )}
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="drep-id">DRep ID</Label>
           <div className="flex gap-2">
@@ -117,30 +126,6 @@ export function DRepUpdateTab() {
           </div>
           {errors.drepId && (
             <p className="text-sm text-destructive">{errors.drepId}</p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="anchor-url">New Anchor URL (optional)</Label>
-          <Input
-            id="anchor-url"
-            placeholder="https://..."
-            value={anchorUrl}
-            onChange={(e) => setAnchorUrl(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="anchor-hash">New Anchor Hash (optional)</Label>
-          <Input
-            id="anchor-hash"
-            placeholder="64 hex characters"
-            value={anchorHash}
-            onChange={(e) => setAnchorHash(e.target.value)}
-            aria-invalid={errors.anchorHash ? 'true' : 'false'}
-          />
-          {errors.anchorHash && (
-            <p className="text-sm text-destructive">{errors.anchorHash}</p>
           )}
         </div>
 

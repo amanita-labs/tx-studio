@@ -10,7 +10,7 @@ import { useAppStore, BuilderCertificate } from '@/lib/store';
 import { toast } from 'sonner';
 import { buildDRepRegistrationCert } from '@/lib/transaction-builder';
 import { getDRepInfo } from '@/lib/wallet-connector';
-import { WalletCredentialSelector } from '../components/WalletCredentialSelector';
+import { WalletCredentialSelector } from '../../components/WalletCredentialSelector';
 import { UserPlus } from 'lucide-react';
 
 export function DRepRegistrationTab() {

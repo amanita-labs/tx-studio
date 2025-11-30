@@ -17,6 +17,7 @@ export function TransactionActions() {
   const router = useRouter();
   const {
     builderCertificates,
+    builderTxBodyElements,
     walletApi,
     builtTxHex,
     signedTxHex,
@@ -39,9 +40,9 @@ export function TransactionActions() {
       return;
     }
 
-    if (builderCertificates.length === 0) {
-      console.error('❌ No certificates to build');
-      toast.error('Add at least one certificate');
+    if (builderCertificates.length === 0 && builderTxBodyElements.length === 0) {
+      console.error('❌ No certificates or transaction body elements to build');
+      toast.error('Add at least one certificate or transaction body element');
       console.groupEnd();
       return;
     }
@@ -73,8 +74,10 @@ export function TransactionActions() {
       
       // Build transaction
       console.log('Step 3: Assembling transaction...');
+      console.log('Transaction body elements:', builderTxBodyElements.length);
       const { txBody, error } = assembleTransaction({
         certificates: allCertificates,
+        txBodyElements: builderTxBodyElements,
         utxos: utxos,
         changeAddress: changeAddress,
         network: network
@@ -235,7 +238,7 @@ export function TransactionActions() {
           onClick={handleBuild}
           disabled={!canBuild || building}
           className="w-full"
-          title={!walletApi ? 'Connect a wallet first' : !builderCertificates.length ? 'Add at least one certificate' : undefined}
+          title={!walletApi ? 'Connect a wallet first' : !builderCertificates.length && !builderTxBodyElements.length ? 'Add at least one certificate or transaction body element' : undefined}
         >
           {building ? (
             <>

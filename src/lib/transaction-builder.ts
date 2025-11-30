@@ -5,7 +5,7 @@
 import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
 import * as bech32Buffer from 'bech32-buffer';
 import { Network } from '@/domain/tx';
-import { BuilderCertificate } from '@/lib/store';
+import { BuilderCertificate, BuilderTxBodyElement } from '@/lib/store';
 
 export type BuildError = {
   message: string;
@@ -592,12 +592,13 @@ export function buildCertificateFromData(certData: BuilderCertificate): { cert: 
  */
 export function assembleTransaction(params: {
   certificates: BuilderCertificate[];
+  txBodyElements?: BuilderTxBodyElement[];
   utxos: any[];
   changeAddress: string;
   network: Network;
   fee?: bigint;
 }): { txBody: CSL.TransactionBody; error?: BuildError } {
-  const { certificates, utxos, changeAddress, network, fee } = params;
+  const { certificates, txBodyElements = [], utxos, changeAddress, network, fee } = params;
   
   // Track all CSL objects for cleanup on error
   const createdObjects: Array<any> = [];
@@ -616,11 +617,22 @@ export function assembleTransaction(params: {
     const certificateTypes = certificates.filter(c => c.type !== 'Vote');
     const voteTypes = certificates.filter(c => c.type === 'Vote');
     
-    if (certificateTypes.length === 0 && voteTypes.length === 0) {
+    if (certificateTypes.length === 0 && voteTypes.length === 0 && txBodyElements.length === 0) {
       return {
         txBody: null as any,
-        error: { message: 'No certificates to build transaction' }
+        error: { message: 'No certificates or transaction body elements to build transaction' }
       };
+    }
+
+    // TODO: Process transaction body elements
+    // This will require implementing builder functions for each element type
+    if (txBodyElements.length > 0) {
+      console.log(`⚠️ Transaction body elements (${txBodyElements.length}) are not yet fully implemented in assembleTransaction`);
+      // For now, we'll continue with certificate-based building
+      // Full implementation will require:
+      // - Processing inputs/outputs from txBodyElements
+      // - Setting fees, validity intervals, withdrawals, mint, etc.
+      // - Handling governance procedures, treasury amounts, etc.
     }
     
     // Warn about votes (not supported as certificates)

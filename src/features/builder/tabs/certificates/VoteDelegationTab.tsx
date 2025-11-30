@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useAppStore, BuilderCertificate } from '@/lib/store';
 import { toast } from 'sonner';
 import { buildVoteDelegationCert } from '@/lib/transaction-builder';
-import { WalletCredentialSelector } from '../components/WalletCredentialSelector';
+import { WalletCredentialSelector } from '../../components/WalletCredentialSelector';
 import { Users } from 'lucide-react';
 
 export function VoteDelegationTab() {

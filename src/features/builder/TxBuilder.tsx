@@ -3,7 +3,7 @@
 
 import { EmptyBuilderState } from './EmptyBuilderState';
 import { WalletConnection } from './WalletConnection';
-import { BuilderTabs } from './BuilderTabs';
+import { BuilderSections } from './BuilderSections';
 import { TransactionSummary } from './TransactionSummary';
 import { TransactionActions } from './TransactionActions';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -33,7 +33,7 @@ export function TxBuilder() {
             </div>
           )}
           <ScrollArea className="flex-1">
-            <BuilderTabs />
+            <BuilderSections />
           </ScrollArea>
         </div>
 
