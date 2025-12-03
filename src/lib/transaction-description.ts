@@ -132,18 +132,49 @@ export function generateTransactionDescription(tx: DomainTx): string {
 
   // If no specific actions identified, provide a generic description
   if (parts.length === 0) {
-    const inputCount = tx.inputs.length;
-    const outputCount = tx.outputs.length;
-    
-    if (inputCount > 0 || outputCount > 0) {
-      parts.push(`transfers value${inputCount > 0 && outputCount > 0 ? ` from ${inputCount} input${inputCount === 1 ? '' : 's'} to ${outputCount} output${outputCount === 1 ? '' : 's'}` : ''}`);
-    } else {
-      parts.push('performs a transaction');
+    parts.push('performs a transaction');
+  }
+
+  // Add transaction structure information
+  const structureParts: string[] = [];
+  
+  // Input/output counts (always include)
+  const inputCount = tx.inputs.length;
+  const outputCount = tx.outputs.length;
+  if (inputCount > 0 || outputCount > 0) {
+    const ioParts: string[] = [];
+    if (inputCount > 0) {
+      ioParts.push(`${inputCount} input${inputCount === 1 ? '' : 's'}`);
     }
+    if (outputCount > 0) {
+      ioParts.push(`${outputCount} output${outputCount === 1 ? '' : 's'}`);
+    }
+    structureParts.push(`with ${ioParts.join(' and ')}`);
+  }
+  
+  // Required signers
+  const requiredSigners = tx.signers?.filter(s => s.isRequired === true).length || 0;
+  if (requiredSigners > 0) {
+    structureParts.push(`requiring ${requiredSigners} signer${requiredSigners === 1 ? '' : 's'}`);
+  }
+  
+  // Witnesses
+  const hasWitnesses = (tx.witnesses.vkeyCount || 0) > 0 || 
+                       (tx.witnesses.nativeCount || 0) > 0 || 
+                       (tx.witnesses.plutusCount || 0) > 0;
+  if (hasWitnesses) {
+    structureParts.push('with witnesses');
+  } else {
+    structureParts.push('unsigned');
+  }
+
+  // Combine main description with structure information
+  let description = parts.join(', ');
+  if (structureParts.length > 0) {
+    description += ` (${structureParts.join(', ')})`;
   }
 
   // Capitalize first letter and add period
-  const description = parts.join(', ');
   return description.charAt(0).toUpperCase() + description.slice(1) + '.';
 }
 
