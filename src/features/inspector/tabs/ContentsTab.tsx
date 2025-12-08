@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
-import { formatLovelace, formatAda } from '@/lib/utils/ada';
+import { formatLovelace, formatAda, formatAssetQuantity } from '@/lib/utils/ada';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
@@ -2235,35 +2235,94 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                 </CardContent>
               </Card>
             ) : (
-              contents.minting.items.map((mint: any, index: number) => (
-                <Card key={index}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium">Minting Action {mint.index + 1}</h4>
-                        <p className="text-sm text-muted-foreground">{mint.description}</p>
+              contents.minting.items.map((mint: any, index: number) => {
+                const assetId = `${mint.policyId}${mint.assetName}`;
+                const assetNameDisplay = mint.assetName || '(empty - policy native token)';
+                return (
+                  <Card key={index}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-medium">Minting Action {mint.index + 1}</h4>
+                          <p className="text-sm text-muted-foreground">{mint.description}</p>
+                        </div>
+                        <Badge variant={Number(mint.quantity) > 0 ? "default" : "destructive"}>
+                          {Number(mint.quantity) > 0 ? '+' : ''}{formatAssetQuantity(BigInt(mint.quantity))}
+                        </Badge>
                       </div>
-                      <Badge variant={Number(mint.quantity) > 0 ? "default" : "destructive"}>
-                        {Number(mint.quantity) > 0 ? '+' : ''}{mint.quantity}
-                      </Badge>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium">Asset Name:</span>
-                        <div className="font-mono text-xs mt-1">{mint.assetName}</div>
+                      <div className="mt-4 space-y-3">
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Asset Name:</span>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                              {assetNameDisplay}
+                            </code>
+                            {mint.assetName && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 flex-shrink-0"
+                                onClick={() => copyToClipboard(mint.assetName, 'Asset Name')}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Policy ID:</span>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                              {mint.policyId}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 flex-shrink-0"
+                              onClick={() => copyToClipboard(mint.policyId, 'Policy ID')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <BlockExplorerLink 
+                              type="policy" 
+                              params={{ policyId: mint.policyId }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1 pt-1 border-t">
+                          <span className="text-xs text-muted-foreground">Quantity:</span>
+                          <div className="text-xs font-mono">
+                            {formatAssetQuantity(BigInt(mint.quantity))}
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1 pt-1 border-t">
+                          <span className="text-xs text-muted-foreground">Asset ID:</span>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                              {assetId}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 flex-shrink-0"
+                              onClick={() => copyToClipboard(assetId, 'Asset ID')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <BlockExplorerLink 
+                              type="asset" 
+                              params={{ assetId, policyId: mint.policyId, assetName: mint.assetName }}
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-medium">Policy ID:</span>
-                        <div className="font-mono text-xs mt-1 break-all">{mint.policyId}</div>
-                      </div>
-                      <div>
-                        <span className="font-medium">Quantity:</span>
-                        <div className="font-mono text-xs mt-1">{mint.quantity}</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </div>
         </TabsContent>

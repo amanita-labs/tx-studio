@@ -356,26 +356,84 @@ export function IoValueTab({ tx }: IoValueTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {tx.mint.map((mint, index) => (
-                <div key={index} className="flex items-center justify-between border rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <code className="text-xs bg-muted px-2 py-1 rounded">
-                      {mint.policyId.slice(0, 8)}...{mint.assetName}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToClipboard(`${mint.policyId}${mint.assetName}`, 'Asset ID')}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
+            <div className="space-y-3">
+              {tx.mint.map((mint, index) => {
+                const assetId = `${mint.policyId}${mint.assetName}`;
+                const assetNameDisplay = mint.assetName || '(empty - policy native token)';
+                return (
+                  <div key={index} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Minting Action {index + 1}</span>
+                      <span className="text-sm font-mono">
+                        {mint.quantity > BigInt(0) ? '+' : ''}{formatAssetQuantity(mint.quantity)}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Asset Name:</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                            {assetNameDisplay}
+                          </code>
+                          {mint.assetName && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 flex-shrink-0"
+                              onClick={() => copyToClipboard(mint.assetName, 'Asset Name')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Policy ID:</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                            {mint.policyId}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 flex-shrink-0"
+                            onClick={() => copyToClipboard(mint.policyId, 'Policy ID')}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <BlockExplorerLink 
+                            type="policy" 
+                            params={{ policyId: mint.policyId }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1 pt-1 border-t">
+                        <span className="text-xs text-muted-foreground">Asset ID:</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                            {assetId}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 flex-shrink-0"
+                            onClick={() => copyToClipboard(assetId, 'Asset ID')}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <BlockExplorerLink 
+                            type="asset" 
+                            params={{ assetId, policyId: mint.policyId, assetName: mint.assetName }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-sm font-mono">
-                    {mint.quantity > BigInt(0) ? '+' : ''}{formatAssetQuantity(mint.quantity)}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
