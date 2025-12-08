@@ -26,6 +26,8 @@ export interface BlockExplorer {
     epoch: string;
     slot: string;
     script: string;
+    asset: string;
+    policy: string;
   };
 }
 
@@ -51,6 +53,8 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
       script: '/script/{scriptHash}',
+      asset: '/token/{assetId}',
+      policy: '/tokenPolicy/{policyId}',
     },
   },
   cexplorer: {
@@ -74,6 +78,8 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       epoch: '/epoch/{epoch}',
       slot: '/slot/{slot}',
       script: '/script/{scriptHash}',
+      asset: '/asset/{assetId}',
+      policy: '/policy/{policyId}',
     },
   },
 };
@@ -119,6 +125,10 @@ export function getExplorerUrl(
       // CExplorer: use the full bech32 string or legacy format
       url = url.replace('{proposalId}', proposalId);
     }
+  } else if (type === 'asset') {
+    // Asset ID is the concatenation of policyId + assetName
+    const assetId = params.assetId || (params.policyId + params.assetName || '');
+    url = url.replace('{assetId}', assetId);
   } else {
     // Replace placeholders with actual values for all other types
     Object.entries(params).forEach(([key, value]) => {
