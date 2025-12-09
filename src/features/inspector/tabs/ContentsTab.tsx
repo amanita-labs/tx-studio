@@ -535,12 +535,9 @@ function GovernanceActionItem({
                 
                 // Handle membersToAdd array
                 if (key === 'membersToAdd' && Array.isArray(value)) {
-                  const isFullCommittee = action.details?.isFullCommittee;
-                  const sectionLabel = isFullCommittee ? 'Committee Members' : displayLabel;
-                  
                   return (
                     <div key={key} className="col-span-2">
-                      <div className="font-medium mb-2">{sectionLabel}:</div>
+                      <div className="font-medium mb-2">{displayLabel}:</div>
                       <div className="space-y-3 pl-4 border-l-2 border-muted">
                         {value.length === 0 ? (
                           <div className="text-xs text-muted-foreground">No members to add</div>
@@ -1121,32 +1118,14 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     const proposalDetails = proposal.details || {};
     const rawData = proposalDetails.raw || {};
     
-    // Extract governance action ID - try multiple sources
-    let governanceActionId = proposal.id || null;
-    
-    // If not found, try to extract from raw governance_action structure
-    if (!governanceActionId || governanceActionId === 'N/A') {
-      const govAction = rawData.governance_action;
-      if (govAction) {
-        // Check each action type for gov_action_id
-        const actionTypes = ['ParameterChangeAction', 'HardForkInitiationAction', 'TreasuryWithdrawalsAction', 
-                          'NoConfidenceAction', 'NewConstitutionAction', 'UpdateCommitteeAction', 'InfoAction'];
-        for (const actionType of actionTypes) {
-          if (govAction[actionType]?.gov_action_id) {
-            const govActionId = govAction[actionType].gov_action_id;
-            const txId = govActionId.transaction_id || '';
-            const actionIndex = govActionId.index !== undefined ? govActionId.index : 0;
-            // Format as txId#index (the worker should have already encoded it as CIP-129, but if not, show this format)
-            if (txId) {
-              governanceActionId = `${txId}#${actionIndex}`;
-            }
-            break;
-          }
-        }
-      }
-    }
+    // Extract governance action ID - use proposal.id which is set by the worker
+    // The worker creates this using CIP-0129: bech32_encode("gov_action", txId_bytes(32) + index_bytes(1))
+    // where txId is the current transaction ID and index is the governance action index within the transaction
+    const governanceActionId = proposal.id || null;
     
     // Always include governance action ID prominently
+    // Note: proposal.id should always be set by the worker using the current transaction ID + index
+    // Do NOT extract from raw governance_action structure as that contains the parent action ID, not the current action ID
     details.governanceActionId = governanceActionId || 'N/A';
     
     // Extract deposit - check multiple locations
@@ -1610,11 +1589,9 @@ export function ContentsTab({ tx }: ContentsTabProps) {
       });
     }
     
-    // Store as membersToAdd for display (will show as "Committee Members" if from committee.members)
+    // Store as membersToAdd for display
     if (committeeMembers.length > 0) {
       details.membersToAdd = committeeMembers;
-      // Add a flag to indicate if this is the full committee or just additions
-      details.isFullCommittee = !!rawCommittee?.members;
     }
     
     // Extract threshold from raw data

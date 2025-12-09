@@ -313,6 +313,53 @@ function parseAnchorDetails(anchor: any): AnchorInfo {
   };
 }
 
+/**
+ * Extracts reward account address from CSL proposal_procedure.
+ * Handles both Address objects and bech32 strings, preserving the network ID
+ * from the address itself rather than using a transaction-level network ID.
+ */
+function extractRewardAccount(rewardAccount: any): string | null {
+  if (!rewardAccount) return null;
+
+  try {
+    // If it's already a bech32 string, use it as-is (preserves network ID)
+    if (typeof rewardAccount === 'string') {
+      // Validate it's a valid stake address format
+      if (rewardAccount.startsWith('stake1') || rewardAccount.startsWith('stake_test1')) {
+        return rewardAccount;
+      }
+      // If it's not a valid format, try to parse it as an Address
+    }
+
+    // If it's a CSL Address object, convert to bech32
+    // CSL's Address.to_bech32() preserves the network ID encoded in the address
+    if (rewardAccount && typeof rewardAccount === 'object' && 'to_bech32' in rewardAccount) {
+      try {
+        return rewardAccount.to_bech32();
+      } catch (error) {
+        console.warn('Failed to convert Address to bech32:', error);
+      }
+    }
+
+    // If it's bytes or hex, try to parse as Address
+    if (typeof rewardAccount === 'string' && /^[0-9a-fA-F]+$/.test(rewardAccount)) {
+      try {
+        const addressBytes = Buffer.from(rewardAccount, 'hex');
+        const address = CSL.Address.from_bytes(addressBytes);
+        return address.to_bech32();
+      } catch (error) {
+        console.warn('Failed to parse reward account from hex:', error);
+      }
+    }
+
+    // Fallback: try to convert to string
+    return String(rewardAccount);
+  } catch (error) {
+    console.warn('Error extracting reward account:', error);
+    return null;
+  }
+}
+
 function getMetadatumType(metadatum: any): string {
   const kind = metadatum.kind();
   const types = ['text', 'int', 'bytes', 'list', 'map'];
@@ -1034,56 +1081,73 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         // Parse voting proposals if available
         if (votingProposals) {
           try {
-            // Try to parse voting proposals
-            const proposals = votingProposals.to_js_value();
-            if (Array.isArray(proposals)) {
-              proposals.forEach((proposal: any, index: number) => {
+            // Try to access CSL objects directly first to preserve network ID in addresses
+            // Then convert to JS values for easier processing
+            const proposalsLen = votingProposals.len();
+            const proposals = [];
+            
+            // First pass: extract reward accounts directly from CSL Address objects
+            const rewardAccounts: (string | null)[] = [];
+            for (let i = 0; i < proposalsLen; i++) {
+              try {
+                const proposal = votingProposals.get(i);
+                const procedure = proposal.proposal_procedure();
+                if (procedure) {
+                  const rewardAccountAddr = procedure.reward_account();
+                  if (rewardAccountAddr) {
+                    // Convert Address to bech32 directly - this preserves the network ID from the address
+                    try {
+                      rewardAccounts[i] = rewardAccountAddr.to_bech32();
+                    } catch (error) {
+                      console.warn('Failed to convert reward account address to bech32:', error);
+                      rewardAccounts[i] = null;
+                    }
+                  } else {
+                    rewardAccounts[i] = null;
+                  }
+                } else {
+                  rewardAccounts[i] = null;
+                }
+              } catch (error) {
+                console.warn('Error extracting reward account from CSL:', error);
+                rewardAccounts[i] = null;
+              }
+            }
+            
+            // Second pass: convert to JS values for easier processing
+            const proposalsJs = votingProposals.to_js_value();
+            if (Array.isArray(proposalsJs)) {
+              proposalsJs.forEach((proposal: any, index: number) => {
                 let proposalType = 'Unknown';
                 let details: Record<string, unknown> = {};
                 
-                // Extract proposal ID - use current transaction ID and proposal index
-                // The governance action ID is the transaction ID + index of the action within the transaction
+                // Governance Action ID according to CIP-0129:
+                // Always use the current transaction ID + governance action index within this transaction
+                // Format: bech32_encode("gov_action", txId_bytes(32) + index_bytes(1))
+                // The index is the position of this governance action in the voting_proposals array
                 let proposalId = '';
-                
-                // First, try to get from action_id if available (this might be from a different transaction)
-                if (proposal.action_id) {
-                  const txId = proposal.action_id.transaction_id || '';
-                  const actionIndex = proposal.action_id.index !== undefined ? proposal.action_id.index : 0;
-                  // Create governance action ID according to CIP-0129 (bech32 with gov_action1 prefix)
-                  proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
-                } else if (proposal.governance_action_id) {
-                  proposalId = proposal.governance_action_id;
+                if (id) {
+                  // Always use current transaction ID and proposal index for the Governance Action ID
+                  proposalId = createGovernanceActionId(id, index) || `${id}#${index}`;
                 } else {
-                  // Try to extract from governance_action structure (this is the action being proposed)
-                  const govAction = proposal.governance_action;
-                  if (govAction) {
-                    // Check each action type for gov_action_id
-                    const actionTypes = ['ParameterChangeAction', 'HardForkInitiationAction', 'TreasuryWithdrawalsAction', 
-                                      'NoConfidenceAction', 'NewConstitutionAction', 'UpdateCommitteeAction', 'InfoAction'];
-                    for (const actionType of actionTypes) {
-                      if (govAction[actionType]?.gov_action_id) {
-                        const govActionId = govAction[actionType].gov_action_id;
-                        const txId = govActionId.transaction_id || '';
-                        const actionIndex = govActionId.index !== undefined ? govActionId.index : 0;
-                        proposalId = createGovernanceActionId(txId, actionIndex) || `${txId}#${actionIndex}`;
-                        break;
-                      }
-                    }
-                  }
-                  
-                  // If still not found, use current transaction ID and proposal index
-                  // This creates the governance action ID for THIS proposal in THIS transaction
-                  if (!proposalId && id) {
-                    proposalId = createGovernanceActionId(id, index) || `${id}#${index}`;
-                  }
+                  // Fallback if transaction ID is not available
+                  console.warn('Transaction ID not available for governance action ID creation');
+                  proposalId = `unknown#${index}`;
                 }
                 
                 // Extract proposal_procedure fields: deposit, reward_account, anchor
                 if (proposal.deposit !== undefined) {
                   details.deposit = proposal.deposit;
                 }
-                if (proposal.reward_account) {
-                  details.rewardAccount = proposal.reward_account;
+                // Use the reward account extracted directly from CSL Address object (preserves network ID)
+                if (rewardAccounts[index]) {
+                  details.rewardAccount = rewardAccounts[index];
+                } else if (proposal.reward_account) {
+                  // Fallback: use helper function if direct extraction failed
+                  const rewardAccount = extractRewardAccount(proposal.reward_account);
+                  if (rewardAccount) {
+                    details.rewardAccount = rewardAccount;
+                  }
                 }
                 const anchor = parseAnchorDetails(proposal.anchor);
                 if (anchor) {
