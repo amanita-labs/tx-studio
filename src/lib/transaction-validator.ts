@@ -52,27 +52,11 @@ export class TransactionValidator {
       validationType: 'generic'
     },
     {
-      id: 'fee-reasonable',
-      name: 'Reasonable Fee',
-      description: 'Transaction fee should be within reasonable bounds',
-      severity: 'warning',
-      category: 'security',
-      validationType: 'generic'
-    },
-    {
       id: 'output-min-ada',
       name: 'Minimum ADA Output',
       description: 'All outputs should contain minimum ADA amount',
       severity: 'error',
       category: 'security',
-      validationType: 'generic'
-    },
-    {
-      id: 'dust-outputs',
-      name: 'Dust Outputs',
-      description: 'Avoid creating dust outputs (very small amounts)',
-      severity: 'warning',
-      category: 'best-practice',
       validationType: 'generic'
     },
     {
@@ -89,14 +73,6 @@ export class TransactionValidator {
       description: 'Transaction TTL should be reasonable',
       severity: 'warning',
       category: 'compliance',
-      validationType: 'generic'
-    },
-    {
-      id: 'metadata-size',
-      name: 'Metadata Size',
-      description: 'Metadata should not exceed size limits',
-      severity: 'warning',
-      category: 'performance',
       validationType: 'generic'
     },
     {
@@ -241,18 +217,12 @@ export class TransactionValidator {
       switch (rule.id) {
         case 'tx-size-limit':
           return this.validateTransactionSize(tx, rule);
-        case 'fee-reasonable':
-          return this.validateFee(tx, rule);
         case 'output-min-ada':
           return this.validateMinAdaOutputs(tx, rule);
-        case 'dust-outputs':
-          return this.validateDustOutputs(tx, rule);
         case 'input-output-balance':
           return this.validateInputOutputBalance(tx, rule);
         case 'ttl-valid':
           return this.validateTTL(tx, rule);
-        case 'metadata-size':
-          return this.validateMetadataSize(tx, rule);
         case 'script-complexity':
           return this.validateScriptComplexity(tx, rule);
         case 'collateral-ratio':
@@ -295,7 +265,7 @@ export class TransactionValidator {
   }
 
   private validateTransactionSize(tx: DomainTx, rule: ValidationRule): ValidationResult {
-    const maxSize = 16384; // 16KB limit
+    const maxSize = 10000; // 10KB limit
     const currentSize = tx.sizeBytes;
     const passed = currentSize <= maxSize;
     
@@ -309,25 +279,8 @@ export class TransactionValidator {
     };
   }
 
-  private validateFee(tx: DomainTx, rule: ValidationRule): ValidationResult {
-    const fee = tx.feeLovelace;
-    const minFee = 155381n; // Base fee
-    const maxFee = 1000000000n; // 1000 ADA max fee (reasonable upper bound)
-    
-    const passed = fee >= minFee && fee <= maxFee;
-    
-    return {
-      rule,
-      passed,
-      message: passed
-        ? `Transaction fee (${this.formatLovelace(fee)}) is reasonable`
-        : `Transaction fee (${this.formatLovelace(fee)}) is outside reasonable bounds`,
-      details: { fee, minFee, maxFee }
-    };
-  }
-
   private validateMinAdaOutputs(tx: DomainTx, rule: ValidationRule): ValidationResult {
-    const minAda = 1000000n; // 1 ADA minimum
+    const minAda = 900000n; // 0.9 ADA minimum
     const invalidOutputs = tx.outputs.filter(output => output.ada < minAda);
     const passed = invalidOutputs.length === 0;
     
@@ -338,21 +291,6 @@ export class TransactionValidator {
         ? 'All outputs meet minimum ADA requirement'
         : `${invalidOutputs.length} output(s) below minimum ADA requirement`,
       details: { invalidOutputs, minAda }
-    };
-  }
-
-  private validateDustOutputs(tx: DomainTx, rule: ValidationRule): ValidationResult {
-    const dustThreshold = 2000000n; // 2 ADA dust threshold
-    const dustOutputs = tx.outputs.filter(output => output.ada < dustThreshold);
-    const passed = dustOutputs.length === 0;
-    
-    return {
-      rule,
-      passed,
-      message: passed
-        ? 'No dust outputs detected'
-        : `${dustOutputs.length} potential dust output(s) detected`,
-      details: { dustOutputs, dustThreshold }
     };
   }
 
@@ -388,7 +326,8 @@ export class TransactionValidator {
     
     const currentSlot = Date.now() / 1000; // Approximate current slot
     const ttlSlot = tx.ttl;
-    const passed = ttlSlot > currentSlot;
+    // Only show warning when current time is outside TTL (currentSlot > ttlSlot)
+    const passed = currentSlot <= ttlSlot;
     
     return {
       rule,
@@ -397,24 +336,6 @@ export class TransactionValidator {
         ? `TTL (${ttlSlot}) is valid`
         : `TTL (${ttlSlot}) may have expired`,
       details: { ttlSlot, currentSlot }
-    };
-  }
-
-  private validateMetadataSize(tx: DomainTx, rule: ValidationRule): ValidationResult {
-    const maxMetadataSize = 16384; // 16KB limit
-    const totalMetadataSize = (tx.metadata || []).reduce((sum, meta) => {
-      return sum + (meta.cbor?.length || 0);
-    }, 0);
-    
-    const passed = totalMetadataSize <= maxMetadataSize;
-    
-    return {
-      rule,
-      passed,
-      message: passed
-        ? `Metadata size (${totalMetadataSize} bytes) is within limits`
-        : `Metadata size (${totalMetadataSize} bytes) exceeds limit of ${maxMetadataSize} bytes`,
-      details: { totalMetadataSize, maxMetadataSize }
     };
   }
 
