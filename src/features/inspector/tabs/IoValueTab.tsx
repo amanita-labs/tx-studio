@@ -14,6 +14,13 @@ interface IoValueTabProps {
   tx: DomainTx;
 }
 
+function truncateAddress(address: string, startLength: number = 15, endLength: number = 4): string {
+  if (address.length <= startLength + endLength) {
+    return address;
+  }
+  return `${address.slice(0, startLength)}...${address.slice(-endLength)}`;
+}
+
 export function IoValueTab({ tx }: IoValueTabProps) {
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -82,7 +89,7 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                               <span className="text-xs text-muted-foreground">Address</span>
                               <div className="flex items-center gap-2">
                                 <code className="text-xs bg-muted px-2 py-1 rounded">
-                                  {input.resolved.address.slice(0, 20)}...
+                                  {truncateAddress(input.resolved.address)}
                                 </code>
                                 <Button
                                   variant="ghost"
@@ -193,7 +200,7 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                               <span className="text-xs text-muted-foreground">Address</span>
                               <div className="flex items-center gap-2">
                                 <code className="text-xs bg-muted px-2 py-1 rounded">
-                                  {input.resolved.address.slice(0, 20)}...
+                                  {truncateAddress(input.resolved.address)}
                                 </code>
                                 <Button
                                   variant="ghost"
@@ -281,7 +288,7 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                           <span className="text-xs text-muted-foreground">Address</span>
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-2 py-1 rounded">
-                              {output.address.slice(0, 20)}...
+                              {truncateAddress(output.address)}
                             </code>
                             <Button
                               variant="ghost"
@@ -515,7 +522,7 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                   <span className="text-sm font-medium">Address</span>
                   <div className="flex items-center gap-2">
                     <code className="text-xs bg-muted px-2 py-1 rounded">
-                      {tx.collateralReturn.address.slice(0, 20)}...
+                      {truncateAddress(tx.collateralReturn.address)}
                     </code>
                     <Button
                       variant="ghost"
