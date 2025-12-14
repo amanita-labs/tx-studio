@@ -69,7 +69,7 @@ export function useBlockfrost(): UseBlockfrostReturn {
         let errorMessage = 'An unexpected error occurred';
         
         if (err instanceof TypeError && err.message.includes('fetch')) {
-          errorMessage = 'Network error. API routes may not be available in static export mode. Please deploy to Vercel for Blockfrost features.';
+          errorMessage = 'Network error. API routes are not available in static export mode. Blockfrost features only work in development mode or with a hosting provider that supports Next.js API routes.';
         } else if (err instanceof Error) {
           errorMessage = err.message;
         }

@@ -42,32 +42,15 @@ This app uses [Blockfrost](https://blockfrost.io) to fetch transaction data from
 
 ### Deployment
 
-#### Vercel (Recommended for Blockfrost Features)
+#### GitHub Pages
 
-Vercel supports Next.js API routes, which are required for Blockfrost integration:
+The app is configured for static export to GitHub Pages. Note that **API routes are not supported** in static export mode, so the Blockfrost fetch feature will not work in production deployment.
 
-1. **Connect Repository to Vercel**:
-   - Import your GitHub repository in Vercel dashboard
-   - Vercel will auto-detect Next.js configuration
+To deploy:
 
-2. **Configure Environment Variables**:
-   - Go to Project Settings → Environment Variables
-   - Add the following variables:
-     - `BLOCKFROST_MAINNET_PROJECT_ID`
-     - `BLOCKFROST_PREPROD_PROJECT_ID`
-     - `BLOCKFROST_PREVIEW_PROJECT_ID`
-   - Set values for Production, Preview, and Development environments
-
-3. **Deploy**:
-   - Vercel will automatically deploy on push to main branch
-   - API routes will be available at `/api/blockfrost/transactions/[hash]`
-
-#### GitHub Pages (Static Export Only)
-
-GitHub Pages deployment works but **does not support API routes**. The Blockfrost fetch feature will not work in this deployment mode. To deploy:
-
-1. The existing GitHub Actions workflow will build and deploy automatically
-2. The app will work for manual hex input, but Blockfrost fetching will be disabled
+1. The existing GitHub Actions workflow will build and deploy automatically on push to main branch
+2. The app will work for manual hex input, but Blockfrost fetching will be disabled in production
+3. For Blockfrost features to work, you'll need to use a hosting provider that supports Next.js API routes (server-side rendering)
 
 ## Development
 
