@@ -314,25 +314,120 @@ function parseAnchorDetails(anchor: any): AnchorInfo {
 }
 
 /**
- * Extracts reward account address from CSL proposal_procedure.
- * Handles both Address objects and bech32 strings, preserving the network ID
- * from the address itself rather than using a transaction-level network ID.
+ * Converts a stake address to use the specified network ID.
+ * Handles both Address objects and bech32 strings, converting them to use
+ * the provided network ID instead of preserving the original network ID.
  */
-function extractRewardAccount(rewardAccount: any): string | null {
-  if (!rewardAccount) return null;
+function convertStakeAddressToNetwork(address: any, networkId: number): string | null {
+  if (!address) return null;
 
   try {
-    // If it's already a bech32 string, use it as-is (preserves network ID)
+    let cslAddress: any = null;
+
+    // Parse the address if it's a bech32 string
+    if (typeof address === 'string') {
+      if (address.startsWith('stake1') || address.startsWith('stake_test1')) {
+        try {
+          cslAddress = CSL.Address.from_bech32(address);
+        } catch (error) {
+          console.warn('Failed to parse bech32 address:', error);
+          return null;
+        }
+      } else if (/^[0-9a-fA-F]+$/.test(address)) {
+        // Hex string
+        try {
+          const addressBytes = Buffer.from(address, 'hex');
+          cslAddress = CSL.Address.from_bytes(addressBytes);
+        } catch (error) {
+          console.warn('Failed to parse hex address:', error);
+          return null;
+        }
+      } else {
+        return null;
+      }
+    } else if (address && typeof address === 'object' && 'to_bech32' in address) {
+      // Already a CSL Address object
+      cslAddress = address;
+    } else {
+      return null;
+    }
+
+    // Extract the reward address and credential
+    try {
+      const rewardAddress = CSL.RewardAddress.from_address(cslAddress);
+      if (!rewardAddress) {
+        console.warn('Address is not a reward address');
+        return null;
+      }
+
+      // Get the current bech32 address to decode
+      const currentBech32 = cslAddress.to_bech32();
+      
+      // Decode bech32 to get the raw data
+      // For stake addresses: stake1 (mainnet) or stake_test1 (testnet)
+      const decoded = bech32Buffer.decode(currentBech32);
+      const data = Buffer.from(decoded.data);
+      
+      // Reward address data structure: 
+      // - Byte 0: header (bits 0-3: network, bit 4: credential type)
+      // - Bytes 1-28: credential hash (28 bytes)
+      if (data.length < 29) {
+        console.warn('Invalid reward address data length');
+        return null;
+      }
+      
+      const headerByte = data[0];
+      const credentialBytes = data.slice(1, 29);
+      
+      // Determine credential type from header byte
+      // Bit 4 (0x10) indicates script (1) vs key (0)
+      const isScript = (headerByte & 0x10) !== 0;
+      
+      // Create credential from hash
+      let stakeCredential: any;
+      if (isScript) {
+        const scriptHash = CSL.ScriptHash.from_bytes(credentialBytes);
+        stakeCredential = CSL.Credential.from_scripthash(scriptHash);
+      } else {
+        const keyHash = CSL.Ed25519KeyHash.from_bytes(credentialBytes);
+        stakeCredential = CSL.Credential.from_keyhash(keyHash);
+      }
+      
+      // Create a new RewardAddress with the specified network ID
+      const newRewardAddress = CSL.RewardAddress.new(networkId, stakeCredential);
+      return newRewardAddress.to_address().to_bech32();
+    } catch (error) {
+      console.warn('Failed to convert reward address to network:', error);
+      return null;
+    }
+  } catch (error) {
+    console.warn('Error converting stake address to network:', error);
+    return null;
+  }
+}
+
+/**
+ * Extracts reward account address from CSL proposal_procedure.
+ * Converts the address to use the specified network ID instead of preserving
+ * the network ID from the address itself.
+ */
+function extractRewardAccount(rewardAccount: any, networkId?: number): string | null {
+  if (!rewardAccount) return null;
+
+  // If networkId is provided, convert to that network
+  if (networkId !== undefined) {
+    const converted = convertStakeAddressToNetwork(rewardAccount, networkId);
+    if (converted) return converted;
+  }
+
+  try {
+    // Fallback: if no networkId provided, use original behavior (for backwards compatibility)
     if (typeof rewardAccount === 'string') {
-      // Validate it's a valid stake address format
       if (rewardAccount.startsWith('stake1') || rewardAccount.startsWith('stake_test1')) {
         return rewardAccount;
       }
-      // If it's not a valid format, try to parse it as an Address
     }
 
-    // If it's a CSL Address object, convert to bech32
-    // CSL's Address.to_bech32() preserves the network ID encoded in the address
     if (rewardAccount && typeof rewardAccount === 'object' && 'to_bech32' in rewardAccount) {
       try {
         return rewardAccount.to_bech32();
@@ -341,7 +436,6 @@ function extractRewardAccount(rewardAccount: any): string | null {
       }
     }
 
-    // If it's bytes or hex, try to parse as Address
     if (typeof rewardAccount === 'string' && /^[0-9a-fA-F]+$/.test(rewardAccount)) {
       try {
         const addressBytes = Buffer.from(rewardAccount, 'hex');
@@ -352,7 +446,6 @@ function extractRewardAccount(rewardAccount: any): string | null {
       }
     }
 
-    // Fallback: try to convert to string
     return String(rewardAccount);
   } catch (error) {
     console.warn('Error extracting reward account:', error);
@@ -1095,9 +1188,9 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                 if (procedure) {
                   const rewardAccountAddr = procedure.reward_account();
                   if (rewardAccountAddr) {
-                    // Convert Address to bech32 directly - this preserves the network ID from the address
+                    // Convert Address to bech32 using the selected network ID
                     try {
-                      rewardAccounts[i] = rewardAccountAddr.to_bech32();
+                      rewardAccounts[i] = convertStakeAddressToNetwork(rewardAccountAddr, networkId);
                     } catch (error) {
                       console.warn('Failed to convert reward account address to bech32:', error);
                       rewardAccounts[i] = null;
@@ -1139,12 +1232,12 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                 if (proposal.deposit !== undefined) {
                   details.deposit = proposal.deposit;
                 }
-                // Use the reward account extracted directly from CSL Address object (preserves network ID)
+                // Use the reward account extracted directly from CSL Address object (converted to selected network)
                 if (rewardAccounts[index]) {
                   details.rewardAccount = rewardAccounts[index];
                 } else if (proposal.reward_account) {
                   // Fallback: use helper function if direct extraction failed
-                  const rewardAccount = extractRewardAccount(proposal.reward_account);
+                  const rewardAccount = extractRewardAccount(proposal.reward_account, networkId);
                   if (rewardAccount) {
                     details.rewardAccount = rewardAccount;
                   }
