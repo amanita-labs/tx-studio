@@ -6,7 +6,6 @@ const nextConfig: NextConfig = {
     : {}
   ),
   distDir: 'out',
-  basePath: '',
   images: {
     unoptimized: true,
   },
