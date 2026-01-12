@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     : {}
   ),
   distDir: 'out',
-  basePath: process.env.GITHUB_PAGES === 'true' && process.env.NODE_ENV === 'production' ? '/tx-studio' : '',
+  basePath: '',
   images: {
     unoptimized: true,
   },
