@@ -11,6 +11,7 @@
     "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
+    "@blockfrost/blockfrost-js": "^6.1.0",
     "@emurgo/cardano-serialization-lib-asmjs": "^15.0.1",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-accordion": "^1.2.12",

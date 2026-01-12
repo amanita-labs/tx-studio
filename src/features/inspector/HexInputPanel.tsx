@@ -14,6 +14,8 @@ import { isValidHex } from '@/lib/utils/hex';
 import { SAMPLE_TRANSACTIONS } from '@/lib/sample-data';
 import { useCSLWorker } from '@/hooks/use-csl-worker';
 import { toast } from 'sonner';
+import { BlockfrostFetch } from '@/components/blockfrost-fetch';
+import { Network } from '@/domain/tx';
 
 export function HexInputPanel() {
   const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setError, clearTx } = useAppStore();
@@ -131,6 +133,39 @@ export function HexInputPanel() {
     URL.revokeObjectURL(url);
   };
 
+  const handleBlockfrostFetch = useCallback(async (hex: string, fetchedNetwork: Network) => {
+    // Set the fetched hex
+    setLocalHex(hex);
+    setIsValid(true);
+    
+    // Update network if different
+    if (fetchedNetwork !== network) {
+      setNetwork(fetchedNetwork);
+    }
+    
+    // Set the hex and parse the transaction
+    setTxHex(hex);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await parseTransaction(hex, fetchedNetwork);
+      setParsedTx(result);
+      
+      if (result.success) {
+        toast.success('Transaction fetched and parsed successfully');
+      } else {
+        toast.error(`Parsing failed: ${result.error}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(errorMessage);
+      toast.error(`Parsing failed: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [network, setTxHex, setNetwork, setLoading, setError, setParsedTx, parseTransaction]);
+
   const sampleTransactions = SAMPLE_TRANSACTIONS;
 
   return (
@@ -153,6 +188,12 @@ export function HexInputPanel() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Blockfrost Fetch Component - Compact inline version */}
+        <BlockfrostFetch
+          onTransactionFetched={handleBlockfrostFetch}
+          network={network}
+        />
+
         <div className="space-y-2">
           <Label htmlFor="hex-input">Transaction Hex</Label>
           <div className="relative">

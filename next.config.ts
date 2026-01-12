@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'export',
+  ...(process.env.STATIC_EXPORT === 'true' 
+    ? { output: 'export' }
+    : {}
+  ),
   distDir: 'out',
-  basePath: process.env.NODE_ENV === 'production' ? '/tx-studio' : '',
+  basePath: '',
   images: {
     unoptimized: true,
   },
