@@ -64,8 +64,22 @@ export async function GET(
 
     // Handle specific error types
     if (error instanceof Error) {
+      // Check for 404 errors (transaction not found)
+      // Blockfrost SDK errors have a status_code property
+      const statusCode = (error as any)?.status_code;
+      if (statusCode === 404 || error.message.toLowerCase().includes('not found') || error.message.includes('404')) {
+        return NextResponse.json<FetchTransactionResponse>(
+          {
+            success: false,
+            error: `Transaction not found on ${network} network. The transaction may not exist on this network, or it may be on a different network (mainnet, preprod, or preview).`,
+            statusCode: 404,
+          },
+          { status: 404 }
+        );
+      }
+
       // Check for rate limiting
-      if (error.message.includes('rate limit') || error.message.includes('429')) {
+      if (statusCode === 429 || error.message.includes('rate limit') || error.message.includes('429')) {
         return NextResponse.json<FetchTransactionResponse>(
           {
             success: false,
@@ -73,18 +87,6 @@ export async function GET(
             statusCode: 429,
           },
           { status: 429 }
-        );
-      }
-
-      // Check for not found
-      if (error.message.includes('not found') || error.message.includes('404')) {
-        return NextResponse.json<FetchTransactionResponse>(
-          {
-            success: false,
-            error: 'Transaction not found',
-            statusCode: 404,
-          },
-          { status: 404 }
         );
       }
 

@@ -45,15 +45,44 @@ export async function fetchTransactionByHash(
 ): Promise<{ transaction: BlockfrostTransaction; hex: string }> {
   // Fetch transaction metadata first to validate it exists
   const api = createBlockfrostClient(network);
-  const transaction = await api.txs(hash);
   
-  // Then fetch the CBOR hex
-  const hex = await fetchTransactionHex(network, hash);
+  try {
+    const transaction = await api.txs(hash);
+    
+    // Then fetch the CBOR hex
+    const hex = await fetchTransactionHex(network, hash);
 
-  return {
-    transaction,
-    hex,
-  };
+    return {
+      transaction,
+      hex,
+    };
+  } catch (error: any) {
+    // Handle Blockfrost SDK errors
+    if (error?.status_code === 404) {
+      throw new Error('Transaction not found');
+    }
+    if (error?.status_code === 429) {
+      throw new Error('Rate limit exceeded. Please try again later.');
+    }
+    if (error?.status_code === 403) {
+      throw new Error('Blockfrost API key invalid or insufficient permissions');
+    }
+    if (error?.status_code === 400) {
+      throw new Error(`Invalid request: ${error.message || 'Bad request'}`);
+    }
+    
+    // Re-throw if it's already an Error instance
+    if (error instanceof Error) {
+      throw error;
+    }
+    
+    // Handle SDK error objects
+    if (error?.message) {
+      throw new Error(`Blockfrost API error: ${error.message}`);
+    }
+    
+    throw new Error('Failed to fetch transaction');
+  }
 }
 
 /**
