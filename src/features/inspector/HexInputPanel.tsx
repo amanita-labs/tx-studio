@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { HexEditor } from '@/components/hex-editor';
-import { Copy, Download, AlertCircle, CheckCircle2, ChevronDown } from 'lucide-react';
+import { Copy, Download, AlertCircle, CheckCircle2, ChevronDown, Share2 } from 'lucide-react';
 import { isValidHex } from '@/lib/utils/hex';
 import { isValidTransactionHash } from '@/lib/blockfrost/config';
 import { SAMPLE_TRANSACTIONS } from '@/lib/sample-data';
@@ -20,7 +20,7 @@ import { BlockfrostFetch } from '@/components/blockfrost-fetch';
 import { Network } from '@/domain/tx';
 
 export function HexInputPanel() {
-  const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setError, clearTx } = useAppStore();
+  const { txHex, parsedTx, network, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setError, clearTx } = useAppStore();
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
   const [isSampleOpen, setIsSampleOpen] = useState(false);
@@ -304,6 +304,21 @@ export function HexInputPanel() {
     URL.revokeObjectURL(url);
   };
 
+  const handleShare = async () => {
+    if (!parsedTx?.success) {
+      toast.error('No transaction to share');
+      return;
+    }
+    
+    try {
+      const shareUrl = `${window.location.origin}/${parsedTx.tx.id}`;
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Shareable link copied to clipboard');
+    } catch {
+      toast.error('Failed to copy share link');
+    }
+  };
+
   const handleBlockfrostFetch = useCallback(async (hex: string, fetchedNetwork: Network) => {
     // Set the fetched hex
     setLocalHex(hex);
@@ -386,6 +401,12 @@ export function HexInputPanel() {
                 <Copy className="h-4 w-4 mr-2" />
                 Copy
               </Button>
+              {parsedTx?.success && (
+                <Button variant="outline" onClick={handleShare}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share
+                </Button>
+              )}
               <Button variant="outline" onClick={() => {
                 clearTx();
                 setLocalHex('');
