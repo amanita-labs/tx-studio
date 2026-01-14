@@ -13,6 +13,8 @@ interface AppState {
   // UI state
   activeTab: string;
   isLoading: boolean;
+  isDetectingNetwork: boolean;
+  networkDetected: boolean; // true if network was successfully detected, false if detection failed or not attempted
   error: string | null;
   
   // Theme
@@ -27,6 +29,8 @@ interface AppState {
   setNetwork: (network: Network) => void;
   setActiveTab: (tab: string) => void;
   setLoading: (loading: boolean) => void;
+  setDetectingNetwork: (detecting: boolean) => void;
+  setNetworkDetected: (detected: boolean) => void;
   setError: (error: string | null) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setBlockExplorer: (explorer: BlockExplorerId) => void;
@@ -42,6 +46,8 @@ export const useAppStore = create<AppState>()(
       network: 'mainnet',
       activeTab: 'overview',
       isLoading: false,
+      isDetectingNetwork: false,
+      networkDetected: false,
       error: null,
       theme: 'system',
       blockExplorer: 'cardanoscan',
@@ -52,6 +58,8 @@ export const useAppStore = create<AppState>()(
       setNetwork: (network: Network) => set({ network }),
       setActiveTab: (tab: string) => set({ activeTab: tab }),
       setLoading: (loading: boolean) => set({ isLoading: loading }),
+      setDetectingNetwork: (detecting: boolean) => set({ isDetectingNetwork: detecting }),
+      setNetworkDetected: (detected: boolean) => set({ networkDetected: detected }),
       setError: (error: string | null) => set({ error }),
       setTheme: (theme: 'light' | 'dark' | 'system') => set({ theme }),
       setBlockExplorer: (explorer: BlockExplorerId) => set({ blockExplorer: explorer }),
@@ -59,6 +67,8 @@ export const useAppStore = create<AppState>()(
         txHex: '', 
         parsedTx: null, 
         error: null,
+        isDetectingNetwork: false,
+        networkDetected: false,
         activeTab: 'overview'
       }),
     }),

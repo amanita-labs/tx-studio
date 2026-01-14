@@ -5,6 +5,7 @@ import { FetchTransactionResponse } from '@/lib/types/blockfrost';
 
 interface UseBlockfrostReturn {
   fetchTransaction: (hash: string, network: Network) => Promise<FetchTransactionResponse>;
+  searchTransactionAcrossNetworks: (hash: string) => Promise<FetchTransactionResponse>;
   isLoading: boolean;
   error: string | null;
 }
@@ -87,8 +88,80 @@ export function useBlockfrost(): UseBlockfrostReturn {
     []
   );
 
+  const searchTransactionAcrossNetworks = useCallback(
+    async (hash: string): Promise<FetchTransactionResponse> => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Validate hash format (basic check)
+        const trimmedHash = hash.trim();
+        if (trimmedHash.length !== 64) {
+          const errorMsg = 'Transaction hash must be 64 hexadecimal characters';
+          setError(errorMsg);
+          return {
+            success: false,
+            error: errorMsg,
+          };
+        }
+
+        // Call our multi-network search API route
+        const response = await fetch(
+          `/api/blockfrost/transactions/${encodeURIComponent(trimmedHash)}/search-all`
+        );
+
+        // Check if response is ok before trying to parse JSON
+        if (!response.ok) {
+          let errorMsg = 'Failed to search transaction across networks';
+          try {
+            const errorData: FetchTransactionResponse = await response.json();
+            errorMsg = errorData.success === false ? errorData.error : `HTTP ${response.status}: ${response.statusText}`;
+          } catch {
+            errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+          }
+          setError(errorMsg);
+          return {
+            success: false,
+            error: errorMsg,
+            statusCode: response.status,
+          };
+        }
+
+        const data: FetchTransactionResponse = await response.json();
+
+        if (!data.success) {
+          setError(data.error || 'Failed to search transaction across networks');
+          return data;
+        }
+
+        // Clear error on success
+        setError(null);
+        return data;
+      } catch (err) {
+        let errorMessage = 'An unexpected error occurred';
+        
+        if (err instanceof TypeError && err.message.includes('fetch')) {
+          errorMessage = 'Network error. API routes are not available in static export mode. Blockfrost features only work in development mode or with a hosting provider that supports Next.js API routes.';
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+        
+        setError(errorMessage);
+        console.error('Multi-network search error:', err);
+        return {
+          success: false,
+          error: errorMessage,
+        };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
   return {
     fetchTransaction,
+    searchTransactionAcrossNetworks,
     isLoading,
     error,
   };

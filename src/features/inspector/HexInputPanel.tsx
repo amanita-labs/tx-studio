@@ -11,18 +11,22 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { HexEditor } from '@/components/hex-editor';
 import { Copy, Download, AlertCircle, CheckCircle2, ChevronDown } from 'lucide-react';
 import { isValidHex } from '@/lib/utils/hex';
+import { isValidTransactionHash } from '@/lib/blockfrost/config';
 import { SAMPLE_TRANSACTIONS } from '@/lib/sample-data';
 import { useCSLWorker } from '@/hooks/use-csl-worker';
+import { useBlockfrost } from '@/hooks/use-blockfrost';
+import { computeTransactionHash } from '@/lib/utils/tx-hash';
 import { toast } from 'sonner';
 import { BlockfrostFetch } from '@/components/blockfrost-fetch';
 import { Network } from '@/domain/tx';
 
 export function HexInputPanel() {
-  const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setError, clearTx } = useAppStore();
+  const { txHex, network, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setError, clearTx } = useAppStore();
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
   const [isSampleOpen, setIsSampleOpen] = useState(false);
   const { parseTransaction } = useCSLWorker();
+  const { searchTransactionAcrossNetworks } = useBlockfrost();
 
   const validateHex = useCallback((hex: string) => {
     if (!hex) {
@@ -46,39 +50,163 @@ export function HexInputPanel() {
   };
 
   const handlePaste = useCallback(async (pastedValue: string) => {
-    // Check if the pasted value is valid hex and long enough
-    if (pastedValue && isValidHex(pastedValue) && pastedValue.length >= 100) {
-      // Set the hex value
-      setLocalHex(pastedValue);
-      setIsValid(true);
-      
-      // Auto-dissect the transaction
-      setTxHex(pastedValue);
+    const trimmed = pastedValue.trim();
+    
+    // Check if it's a transaction hash (64 hex chars)
+    if (isValidTransactionHash(trimmed)) {
       setLoading(true);
       setError(null);
-
+      
       try {
-        const result = await parseTransaction(pastedValue, network);
-        setParsedTx(result);
+        // Fetch transaction hex first (needed for parsing)
+        const result = await searchTransactionAcrossNetworks(trimmed);
         
-        if (result.success) {
-          toast.success('Transaction parsed successfully');
+        if (result.success && result.hex) {
+          const hexToUse = result.hex;
+          setLocalHex(hexToUse);
+          setIsValid(true);
+          setTxHex(hexToUse);
+          
+          // Parse immediately with detected network (or default to mainnet)
+          const networkToUse = result.network || network;
+          const parseResult = await parseTransaction(hexToUse, networkToUse);
+          setParsedTx(parseResult);
+          setLoading(false);
+          
+          if (parseResult.success) {
+            toast.success('Transaction parsed successfully');
+          } else {
+            toast.error(`Parsing failed: ${parseResult.error}`);
+          }
+          
+          // Update network if detected
+          if (result.network) {
+            setNetwork(result.network);
+          }
         } else {
-          toast.error(`Parsing failed: ${result.error}`);
+          toast.error(result.error || 'Transaction not found on any network');
+          setError(result.error || 'Transaction not found');
+          setLoading(false);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         setError(errorMessage);
-        toast.error(`Parsing failed: ${errorMessage}`);
-      } finally {
+        toast.error(`Search failed: ${errorMessage}`);
         setLoading(false);
       }
     }
-  }, [network, setTxHex, setLoading, setError, setParsedTx, parseTransaction]);
+    // Check if the pasted value is valid hex and long enough (full transaction)
+    else if (pastedValue && isValidHex(pastedValue) && pastedValue.length >= 100) {
+      // Set the hex value
+      setLocalHex(pastedValue);
+      setIsValid(true);
+      setTxHex(pastedValue);
+      
+      // Parse immediately (don't wait for network detection)
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const parseResult = await parseTransaction(pastedValue, network);
+        setParsedTx(parseResult);
+        setLoading(false);
+        
+        if (parseResult.success) {
+          toast.success('Transaction parsed successfully');
+        } else {
+          toast.error(`Parsing failed: ${parseResult.error}`);
+        }
+        
+        // Detect network in background (don't block UI)
+        setDetectingNetwork(true);
+        setNetworkDetected(false); // Reset detection state
+        (async () => {
+          try {
+            const hash = await computeTransactionHash(pastedValue);
+            const result = await searchTransactionAcrossNetworks(hash);
+            
+            if (result.success && result.network) {
+              setNetwork(result.network);
+              setNetworkDetected(true);
+              // Optionally update hex if fetched version is different
+              if (result.hex && result.hex !== pastedValue) {
+                setTxHex(result.hex);
+                setLocalHex(result.hex);
+                // Re-parse with detected network
+                const reparseResult = await parseTransaction(result.hex, result.network);
+                setParsedTx(reparseResult);
+              }
+            } else {
+              // Transaction not found on any network
+              setNetworkDetected(false);
+            }
+          } catch (error) {
+            // Network detection failed - transaction is already parsed
+            console.warn('Network detection failed:', error);
+            setNetworkDetected(false);
+          } finally {
+            setDetectingNetwork(false);
+          }
+        })();
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setError(errorMessage);
+        toast.error(`Parsing failed: ${errorMessage}`);
+        setLoading(false);
+      }
+    }
+  }, [network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks]);
 
   const handleDissect = useCallback(async () => {
     if (!localHex.trim()) {
       toast.error('Please enter a transaction hex');
+      return;
+    }
+    
+    const trimmedHex = localHex.trim();
+    
+    // Check if it's a transaction hash (64 hex chars)
+    if (isValidTransactionHash(trimmedHex)) {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Fetch transaction hex first
+        const result = await searchTransactionAcrossNetworks(trimmedHex);
+        
+        if (result.success && result.hex) {
+          const hexToUse = result.hex;
+          setLocalHex(hexToUse);
+          setIsValid(true);
+          setTxHex(hexToUse);
+          
+          // Parse immediately with detected network (or default to mainnet)
+          const networkToUse = result.network || network;
+          const parseResult = await parseTransaction(hexToUse, networkToUse);
+          setParsedTx(parseResult);
+          setLoading(false);
+          
+          if (parseResult.success) {
+            toast.success('Transaction parsed successfully');
+          } else {
+            toast.error(`Parsing failed: ${parseResult.error}`);
+          }
+          
+          // Update network if detected
+          if (result.network) {
+            setNetwork(result.network);
+          }
+        } else {
+          toast.error(result.error || 'Transaction not found on any network');
+          setError(result.error || 'Transaction not found');
+          setLoading(false);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setError(errorMessage);
+        toast.error(`Search failed: ${errorMessage}`);
+        setLoading(false);
+      }
       return;
     }
     
@@ -87,27 +215,61 @@ export function HexInputPanel() {
       return;
     }
 
-    setTxHex(localHex.trim());
+    // Full transaction hex - parse immediately
+    setTxHex(trimmedHex);
     setLoading(true);
     setError(null);
 
     try {
-      const result = await parseTransaction(localHex.trim(), network);
-      setParsedTx(result);
+      // Parse immediately (don't wait for network detection)
+      const parseResult = await parseTransaction(trimmedHex, network);
+      setParsedTx(parseResult);
+      setLoading(false);
       
-      if (result.success) {
+      if (parseResult.success) {
         toast.success('Transaction parsed successfully');
       } else {
-        toast.error(`Parsing failed: ${result.error}`);
+        toast.error(`Parsing failed: ${parseResult.error}`);
       }
+      
+      // Detect network in background (don't block UI)
+      setDetectingNetwork(true);
+      setNetworkDetected(false); // Reset detection state
+      (async () => {
+        try {
+          const hash = await computeTransactionHash(trimmedHex);
+          const result = await searchTransactionAcrossNetworks(hash);
+          
+          if (result.success && result.network) {
+            setNetwork(result.network);
+            setNetworkDetected(true);
+            // Optionally update hex if fetched version is different
+            if (result.hex && result.hex !== trimmedHex) {
+              setTxHex(result.hex);
+              setLocalHex(result.hex);
+              // Re-parse with detected network
+              const reparseResult = await parseTransaction(result.hex, result.network);
+              setParsedTx(reparseResult);
+            }
+          } else {
+            // Transaction not found on any network
+            setNetworkDetected(false);
+          }
+        } catch (error) {
+          // Network detection failed - transaction is already parsed
+          console.warn('Network detection failed:', error);
+          setNetworkDetected(false);
+        } finally {
+          setDetectingNetwork(false);
+        }
+      })();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setError(errorMessage);
       toast.error(`Parsing failed: ${errorMessage}`);
-    } finally {
       setLoading(false);
     }
-  }, [localHex, isValid, network, setTxHex, setLoading, setError, setParsedTx, parseTransaction]);
+  }, [localHex, isValid, network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks]);
 
 
   const handleCopyToClipboard = async () => {
@@ -138,12 +300,11 @@ export function HexInputPanel() {
     setLocalHex(hex);
     setIsValid(true);
     
-    // Update network if different
-    if (fetchedNetwork !== network) {
-      setNetwork(fetchedNetwork);
-    }
+    // Update network - this came from Blockfrost, so it's detected
+    setNetwork(fetchedNetwork);
+    setNetworkDetected(true);
     
-    // Set the hex and parse the transaction
+    // Set the hex and parse the transaction immediately
     setTxHex(hex);
     setLoading(true);
     setError(null);
@@ -151,6 +312,7 @@ export function HexInputPanel() {
     try {
       const result = await parseTransaction(hex, fetchedNetwork);
       setParsedTx(result);
+      setLoading(false);
       
       if (result.success) {
         toast.success('Transaction fetched and parsed successfully');
@@ -161,10 +323,9 @@ export function HexInputPanel() {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setError(errorMessage);
       toast.error(`Parsing failed: ${errorMessage}`);
-    } finally {
       setLoading(false);
     }
-  }, [network, setTxHex, setNetwork, setLoading, setError, setParsedTx, parseTransaction]);
+  }, [setTxHex, setNetwork, setNetworkDetected, setLoading, setError, setParsedTx, parseTransaction]);
 
   const sampleTransactions = SAMPLE_TRANSACTIONS;
 
@@ -174,7 +335,7 @@ export function HexInputPanel() {
         <div className="flex items-center justify-between">
           <CardTitle>Transaction Input</CardTitle>
           <div className="flex items-center gap-2">
-            <Select value={network} onValueChange={(value: any) => setNetwork(value)}>
+            <Select value={network} onValueChange={() => {}} disabled>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
@@ -191,7 +352,6 @@ export function HexInputPanel() {
         {/* Blockfrost Fetch Component - Compact inline version */}
         <BlockfrostFetch
           onTransactionFetched={handleBlockfrostFetch}
-          network={network}
         />
 
         <div className="space-y-2">
@@ -261,6 +421,7 @@ export function HexInputPanel() {
                     setLocalHex(sample.hex);
                     validateHex(sample.hex);
                     setNetwork(sample.network);
+                    setNetworkDetected(false); // Reset detection state when loading sample
                   }}
                 >
                   <div>
