@@ -6,7 +6,6 @@ import { useAppStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { HexEditor } from '@/components/hex-editor';
 import { Copy, Download, AlertCircle, CheckCircle2, ChevronDown } from 'lucide-react';
@@ -82,10 +81,15 @@ export function HexInputPanel() {
           // Update network if detected
           if (result.network) {
             setNetwork(result.network);
+            setNetworkDetected(true);
+          } else {
+            setNetworkDetected(false);
           }
         } else {
-          toast.error(result.error || 'Transaction not found on any network');
-          setError(result.error || 'Transaction not found');
+          const errorMsg = result.success === false ? result.error : 'Transaction not found on any network';
+          toast.error(errorMsg);
+          setError(errorMsg);
+          setNetworkDetected(false);
           setLoading(false);
         }
       } catch (error) {
@@ -195,10 +199,15 @@ export function HexInputPanel() {
           // Update network if detected
           if (result.network) {
             setNetwork(result.network);
+            setNetworkDetected(true);
+          } else {
+            setNetworkDetected(false);
           }
         } else {
-          toast.error(result.error || 'Transaction not found on any network');
-          setError(result.error || 'Transaction not found');
+          const errorMsg = result.success === false ? result.error : 'Transaction not found on any network';
+          toast.error(errorMsg);
+          setError(errorMsg);
+          setNetworkDetected(false);
           setLoading(false);
         }
       } catch (error) {
@@ -332,21 +341,7 @@ export function HexInputPanel() {
   return (
     <Card className="h-full">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Transaction Input</CardTitle>
-          <div className="flex items-center gap-2">
-            <Select value={network} onValueChange={() => {}} disabled>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="mainnet">Mainnet</SelectItem>
-                <SelectItem value="preprod">Preprod</SelectItem>
-                <SelectItem value="preview">Preview</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <CardTitle>Transaction Input</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Blockfrost Fetch Component - Compact inline version */}
