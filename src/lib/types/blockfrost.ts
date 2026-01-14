@@ -53,6 +53,7 @@ export interface FetchTransactionResult {
   hash: string;
   hex: string;
   metadata: BlockfrostTransaction;
+  network?: import('@/domain/tx').Network;
 }
 
 export interface FetchTransactionError {

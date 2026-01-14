@@ -2096,6 +2096,40 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
   }
 }
 
+// Compute transaction hash from hex without full parsing
+async function computeTransactionHash(hex: string): Promise<string> {
+  try {
+    await initializeParser();
+    
+    // Validate hex format
+    if (!hex || typeof hex !== 'string') {
+      throw new Error('Invalid hex: must be a non-empty string');
+    }
+    
+    // Remove whitespace and validate
+    const cleanHex = hex.trim().replace(/\s+/g, '');
+    if (cleanHex.length < 100) {
+      throw new Error('Transaction hex too short to be valid (minimum 100 characters)');
+    }
+    
+    if (!/^[0-9a-fA-F]+$/.test(cleanHex)) {
+      throw new Error('Invalid hex format - only hexadecimal characters allowed');
+    }
+    
+    // Compute hash using CSL
+    const fixedTransaction = CSL.FixedTransaction.from_hex(cleanHex);
+    const hash = fixedTransaction.transaction_hash().to_hex();
+    
+    // Clean up
+    fixedTransaction.free();
+    
+    return hash;
+  } catch (error) {
+    console.error('Hash computation error:', error);
+    throw error instanceof Error ? error : new Error('Failed to compute transaction hash');
+  }
+}
+
 // Handle messages from main thread
 self.onmessage = async (event) => {
   const { type, data } = event.data;
@@ -2105,6 +2139,20 @@ self.onmessage = async (event) => {
       case 'PARSE_TRANSACTION':
         const result = await parseTransaction(data.hex, data.network || 'mainnet');
         self.postMessage({ type: 'PARSE_RESULT', data: result });
+        break;
+      case 'COMPUTE_HASH':
+        try {
+          const hash = await computeTransactionHash(data.hex);
+          self.postMessage({ type: 'HASH_RESULT', data: { hash } });
+        } catch (error) {
+          self.postMessage({ 
+            type: 'ERROR', 
+            data: { 
+              error: error instanceof Error ? error.message : 'Failed to compute hash',
+              details: error instanceof Error ? error.stack : undefined
+            } 
+          });
+        }
         break;
       default:
         self.postMessage({ type: 'ERROR', data: { error: 'Unknown message type' } });

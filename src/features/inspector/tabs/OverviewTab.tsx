@@ -4,13 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda } from '@/lib/utils/ada';
 import { slotToLocalTime, formatValidityWindow, getTimeRemaining } from '@/lib/utils/slot-time';
-import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle, Tags, FileText } from 'lucide-react';
+import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle, Tags, FileText, Globe, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { collectTransactionLabels, type TransactionLabelCategory } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { generateTransactionDescription } from '@/lib/transaction-description';
+import { useAppStore } from '@/lib/store';
 
 // Helper component for validity status badge
 function ValidityStatus({ startSlot, endSlot }: { startSlot: number; endSlot: number }) {
@@ -56,7 +57,38 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ tx }: OverviewTabProps) {
+  const { network, isDetectingNetwork, networkDetected } = useAppStore();
   const transactionLabels = collectTransactionLabels(tx);
+  
+  const getNetworkDisplayName = (net: string) => {
+    switch (net) {
+      case 'mainnet':
+        return 'Mainnet';
+      case 'preview':
+        return 'Preview';
+      case 'preprod':
+        return 'Preprod';
+      default:
+        return net;
+    }
+  };
+  
+  const getNetworkBadgeVariant = (net: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (net) {
+      case 'mainnet':
+        return 'default';
+      case 'preview':
+        return 'secondary';
+      case 'preprod':
+        return 'outline';
+      default:
+        return 'secondary';
+    }
+  };
+  
+  const getNetworkType = (net: string): string => {
+    return net === 'mainnet' ? 'mainnet' : 'testnet';
+  };
 
   const formatValueSnippet = (value: string) => {
     if (!value) return '';
@@ -90,6 +122,46 @@ export function OverviewTab({ tx }: OverviewTabProps) {
 
   return (
     <div className="h-full overflow-auto p-4 space-y-4">
+      {/* Network Detection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            On-chain
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {isDetectingNetwork ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Searching for this transaction across all networks...</span>
+            </div>
+          ) : networkDetected ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Found on network</span>
+                <span className="text-sm">{getNetworkDisplayName(network)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Network type</span>
+                <span className="text-sm">{getNetworkType(network)}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Found on network</span>
+                <span className="text-sm text-muted-foreground">Not found on-chain</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Network type</span>
+                <span className="text-sm text-muted-foreground">Unknown</span>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Transaction Info */}
       <Card>
         <CardHeader>

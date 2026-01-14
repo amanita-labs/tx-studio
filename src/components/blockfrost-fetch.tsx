@@ -12,16 +12,22 @@ import { toast } from 'sonner';
 
 interface BlockfrostFetchProps {
   onTransactionFetched?: (hex: string, network: Network) => void;
-  network: Network;
+  network?: Network; // Optional: if provided, uses single-network fetch; if not, uses multi-network search
+  searchMode?: 'single' | 'multi'; // 'multi' = search all networks, 'single' = use network prop (defaults to 'multi')
 }
 
 export function BlockfrostFetch({
   onTransactionFetched,
   network,
+  searchMode = 'multi', // Default to multi-network search
 }: BlockfrostFetchProps) {
   const [hash, setHash] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
-  const { fetchTransaction, isLoading, error } = useBlockfrost();
+  const [searchingNetwork, setSearchingNetwork] = useState<Network | null>(null);
+  const { fetchTransaction, searchTransactionAcrossNetworks, isLoading, error } = useBlockfrost();
+  
+  // Determine which fetch method to use
+  const useSingleNetwork = searchMode === 'single' && network !== undefined;
 
   // Auto-fetch on paste if it's a valid transaction hash
   const handlePaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
@@ -59,22 +65,48 @@ export function BlockfrostFetch({
     }
 
     try {
-      const result = await fetchTransaction(hashValue, network);
+      let result: import('@/lib/types/blockfrost').FetchTransactionResponse;
+      let detectedNetwork: Network;
+
+      if (useSingleNetwork) {
+        // Single-network fetch
+        setSearchingNetwork(network);
+        result = await fetchTransaction(hashValue, network);
+        detectedNetwork = network;
+        setSearchingNetwork(null);
+      } else {
+        // Multi-network search
+        setSearchingNetwork('mainnet');
+        result = await searchTransactionAcrossNetworks(hashValue);
+        // Extract network from result (it's included in FetchTransactionResponse when success is true)
+        if (result.success) {
+          detectedNetwork = result.network || 'mainnet';
+        } else {
+          detectedNetwork = 'mainnet'; // Fallback, won't be used since result.success is false
+        }
+        setSearchingNetwork(null);
+      }
 
       if (result.success) {
-        // Call the callback with the fetched transaction hex
-        onTransactionFetched?.(result.hex, network);
+        // Call the callback with the fetched transaction hex and network
+        onTransactionFetched?.(result.hex, detectedNetwork);
         // Clear the hash input and errors after successful fetch
         setHash('');
         setLocalError(null);
-        toast.success('Transaction fetched successfully');
+        const networkName = useSingleNetwork ? network : detectedNetwork;
+        toast.success(useSingleNetwork 
+          ? `Transaction fetched from ${networkName}` 
+          : `Transaction found on ${networkName}`);
       } else {
-        const errorMsg = result.error || 'Failed to fetch transaction';
+        const errorMsg = result.error || (useSingleNetwork 
+          ? 'Failed to fetch transaction' 
+          : 'Failed to search transaction across networks');
         setLocalError(errorMsg);
         toast.error(errorMsg);
         // Keep the hash in the input so user can retry
       }
     } catch (err) {
+      setSearchingNetwork(null);
       const errorMsg = err instanceof Error ? err.message : 'An unexpected error occurred';
       setLocalError(errorMsg);
       toast.error(errorMsg);
@@ -107,7 +139,14 @@ export function BlockfrostFetch({
             disabled={isLoading}
           />
           {isLoading && (
-            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              {searchingNetwork && (
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  Searching {searchingNetwork}...
+                </span>
+              )}
+            </div>
           )}
         </div>
         <Button
