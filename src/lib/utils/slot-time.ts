@@ -3,14 +3,14 @@
 import type { Network } from '@/domain/tx';
 
 /**
- * Returns the Shelley epoch start (unix seconds) for a given network.
+ * Returns the slot-to-unix-time offset for a given network.
  */
-function getEpochStart(network: Network): number {
+function getSlotOffset(network: Network): number {
   switch (network) {
     case 'mainnet':
       return 1591566291;
     case 'preprod':
-      return 1654041600;
+      return 1655683200;
     case 'preview':
       return 1666656000;
   }
@@ -23,7 +23,7 @@ function getEpochStart(network: Network): number {
  * @returns Formatted date string in local timezone
  */
 export function slotToLocalTime(slot: number, network: Network = 'mainnet'): string {
-  const unixTimestamp = slot + getEpochStart(network);
+  const unixTimestamp = slot + getSlotOffset(network);
   const date = new Date(unixTimestamp * 1000);
 
   const yyyy = date.getFullYear();
@@ -42,7 +42,7 @@ export function slotToLocalTime(slot: number, network: Network = 'mainnet'): str
  * @returns Date object
  */
 export function slotToDate(slot: number, network: Network = 'mainnet'): Date {
-  const unixTimestamp = slot + getEpochStart(network);
+  const unixTimestamp = slot + getSlotOffset(network);
   return new Date(unixTimestamp * 1000);
 }
 
