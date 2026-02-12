@@ -3,14 +3,14 @@
 import type { Network } from '@/domain/tx';
 
 /**
- * Returns the Shelley epoch start (unix seconds) for a given network.
+ * Returns the slot-to-unix-time offset for a given network.
  */
-function getEpochStart(network: Network): number {
+function getSlotOffset(network: Network): number {
   switch (network) {
     case 'mainnet':
       return 1591566291;
     case 'preprod':
-      return 1654041600;
+      return 1655683200;
     case 'preview':
       return 1666656000;
   }
@@ -23,18 +23,16 @@ function getEpochStart(network: Network): number {
  * @returns Formatted date string in local timezone
  */
 export function slotToLocalTime(slot: number, network: Network = 'mainnet'): string {
-  const unixTimestamp = slot + getEpochStart(network);
+  const unixTimestamp = slot + getSlotOffset(network);
   const date = new Date(unixTimestamp * 1000);
 
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short'
-  });
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 }
 
 /**
@@ -44,7 +42,7 @@ export function slotToLocalTime(slot: number, network: Network = 'mainnet'): str
  * @returns Date object
  */
 export function slotToDate(slot: number, network: Network = 'mainnet'): Date {
-  const unixTimestamp = slot + getEpochStart(network);
+  const unixTimestamp = slot + getSlotOffset(network);
   return new Date(unixTimestamp * 1000);
 }
 
