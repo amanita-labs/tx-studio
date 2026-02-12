@@ -2,8 +2,22 @@
 /**
  * Compute transaction hash from hex-encoded transaction CBOR
  * Uses CSL worker to compute hash without full parsing
+ * Caches results to avoid recomputing the same hex
  */
+
+// Simple in-memory cache for hash computations (no expiration - valid for session)
+const hashCache = new Map<string, string>();
+
 export async function computeTransactionHash(hex: string): Promise<string> {
+  // Normalize hex (trim whitespace)
+  const normalizedHex = hex.trim().replace(/\s+/g, '');
+  
+  // Check cache first
+  const cachedHash = hashCache.get(normalizedHex);
+  if (cachedHash) {
+    return cachedHash;
+  }
+
   return new Promise((resolve, reject) => {
     // Create worker
     const worker = new Worker(new URL('../../workers/csl-worker.ts', import.meta.url), {
@@ -24,6 +38,8 @@ export async function computeTransactionHash(hex: string): Promise<string> {
       const { type, data } = event.data;
 
       if (type === 'HASH_RESULT') {
+        // Cache the computed hash
+        hashCache.set(normalizedHex, data.hash);
         resolve(data.hash);
       } else if (type === 'ERROR') {
         reject(new Error(data.error || 'Failed to compute transaction hash'));
