@@ -29,7 +29,7 @@ import {
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
-import { DomainTx } from '@/domain/tx';
+import { DomainTx, type Network } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
 import { formatLovelace, formatAda, formatAssetQuantity } from '@/lib/utils/ada';
 import { toast } from 'sonner';
@@ -37,6 +37,7 @@ import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useAppStore } from '@/lib/store';
 import * as bech32Buffer from 'bech32-buffer';
 
 // Helper function to create CIP-129 committee cold credential bech32 ID
@@ -63,8 +64,8 @@ function createCommitteeColdCredentialId(hash: string, type: 'Key' | 'Script'): 
 }
 
 // Helper component for time remaining
-function ValidityTimeRemaining({ slot }: { slot: number }) {
-  const timeInfo = getTimeRemaining(slot);
+function ValidityTimeRemaining({ slot, network }: { slot: number; network: Network }) {
+  const timeInfo = getTimeRemaining(slot, network);
   
   if (timeInfo.isExpired) {
     return (
@@ -749,6 +750,7 @@ interface ContentsTabProps {
 }
 
 export function ContentsTab({ tx }: ContentsTabProps) {
+  const { network } = useAppStore();
   const [contents, setContents] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -2610,30 +2612,30 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                     <span className="font-medium">TTL:</span>
                     <div className="font-mono">{contents.validity.ttl?.toLocaleString()}</div>
                     {contents.validity.ttl && (
-                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.ttl)}</div>
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.ttl, network)}</div>
                     )}
                   </div>
                   <div>
                     <span className="font-medium">Slot:</span>
                     <div className="font-mono">{contents.validity.slot?.toLocaleString()}</div>
                     {contents.validity.slot && (
-                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.slot)}</div>
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.slot, network)}</div>
                     )}
                   </div>
                   {contents.validity.validityStart && (
                     <div>
                       <span className="font-medium">Valid From:</span>
                       <div className="font-mono">{contents.validity.validityStart.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityStart)}</div>
-                      <ValidityTimeRemaining slot={contents.validity.validityStart} />
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityStart, network)}</div>
+                      <ValidityTimeRemaining slot={contents.validity.validityStart} network={network} />
                     </div>
                   )}
                   {contents.validity.validityEnd && (
                     <div>
                       <span className="font-medium">Valid Until:</span>
                       <div className="font-mono">{contents.validity.validityEnd.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityEnd)}</div>
-                      <ValidityTimeRemaining slot={contents.validity.validityEnd} />
+                      <div className="text-xs text-muted-foreground">{slotToLocalTime(contents.validity.validityEnd, network)}</div>
+                      <ValidityTimeRemaining slot={contents.validity.validityEnd} network={network} />
                     </div>
                   )}
                 </div>

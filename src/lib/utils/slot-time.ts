@@ -1,21 +1,31 @@
 // src/lib/utils/slot-time.ts
 
+import type { Network } from '@/domain/tx';
+
+/**
+ * Returns the Shelley epoch start (unix seconds) for a given network.
+ */
+function getEpochStart(network: Network): number {
+  switch (network) {
+    case 'mainnet':
+      return 1591566291;
+    case 'preprod':
+      return 1654041600;
+    case 'preview':
+      return 1666656000;
+  }
+}
+
 /**
  * Converts a Cardano slot number to a local timezone date string
  * @param slot - The slot number
- * @param network - The network type ('mainnet' or 'preview')
+ * @param network - The network type
  * @returns Formatted date string in local timezone
  */
-export function slotToLocalTime(slot: number, network: 'mainnet' | 'preview' = 'mainnet'): string {
-  // Slot to UNIX timestamp conversion
-  const slotToUnixTimestamp = (slotNumber: number, networkType: 'mainnet' | 'preview'): number => {
-    const epochStart = networkType === 'mainnet' ? 1591566291 : 1666656000;
-    return slotNumber + epochStart;
-  };
+export function slotToLocalTime(slot: number, network: Network = 'mainnet'): string {
+  const unixTimestamp = slot + getEpochStart(network);
+  const date = new Date(unixTimestamp * 1000);
 
-  const unixTimestamp = slotToUnixTimestamp(slot, network);
-  const date = new Date(unixTimestamp * 1000); // Convert to milliseconds
-  
   return date.toLocaleString(undefined, {
     year: 'numeric',
     month: '2-digit',
@@ -30,12 +40,11 @@ export function slotToLocalTime(slot: number, network: 'mainnet' | 'preview' = '
 /**
  * Converts a Cardano slot number to a Date object
  * @param slot - The slot number
- * @param network - The network type ('mainnet' or 'preview')
+ * @param network - The network type
  * @returns Date object
  */
-export function slotToDate(slot: number, network: 'mainnet' | 'preview' = 'mainnet'): Date {
-  const epochStart = network === 'mainnet' ? 1591566291 : 1666656000;
-  const unixTimestamp = slot + epochStart;
+export function slotToDate(slot: number, network: Network = 'mainnet'): Date {
+  const unixTimestamp = slot + getEpochStart(network);
   return new Date(unixTimestamp * 1000);
 }
 
@@ -45,7 +54,7 @@ export function slotToDate(slot: number, network: 'mainnet' | 'preview' = 'mainn
  * @param network - The network type ('mainnet' or 'preview')
  * @returns Formatted string with slot and local time
  */
-export function formatSlotWithTime(slot: number, network: 'mainnet' | 'preview' = 'mainnet'): string {
+export function formatSlotWithTime(slot: number, network: Network = 'mainnet'): string {
   const localTime = slotToLocalTime(slot, network);
   return `${slot.toLocaleString()} (${localTime})`;
 }
@@ -56,7 +65,7 @@ export function formatSlotWithTime(slot: number, network: 'mainnet' | 'preview' 
  * @param network - The network type ('mainnet' or 'preview')
  * @returns Object with time remaining info
  */
-export function getTimeRemaining(slot: number, network: 'mainnet' | 'preview' = 'mainnet'): {
+export function getTimeRemaining(slot: number, network: Network = 'mainnet'): {
   isExpired: boolean;
   timeRemaining: string;
   days: number;
@@ -115,9 +124,9 @@ export function getTimeRemaining(slot: number, network: 'mainnet' | 'preview' = 
  * @returns Formatted validity window info
  */
 export function formatValidityWindow(
-  startSlot: number, 
-  endSlot: number, 
-  network: 'mainnet' | 'preview' = 'mainnet'
+  startSlot: number,
+  endSlot: number,
+  network: Network = 'mainnet'
 ): {
   start: {
     slot: number;
