@@ -1,7 +1,7 @@
 // src/features/inspector/tabs/OverviewTab.tsx
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DomainTx } from '@/domain/tx';
+import { DomainTx, type Network } from '@/domain/tx';
 import { formatAda } from '@/lib/utils/ada';
 import { slotToLocalTime, formatValidityWindow, getTimeRemaining } from '@/lib/utils/slot-time';
 import { Copy, Hash, Calendar, Coins, Shield, AlertTriangle, Tags, FileText, Globe, Loader2 } from 'lucide-react';
@@ -14,8 +14,8 @@ import { generateTransactionDescription } from '@/lib/transaction-description';
 import { useAppStore } from '@/lib/store';
 
 // Helper component for validity status badge
-function ValidityStatus({ startSlot, endSlot }: { startSlot: number; endSlot: number }) {
-  const validityInfo = formatValidityWindow(startSlot, endSlot);
+function ValidityStatus({ startSlot, endSlot, network }: { startSlot: number; endSlot: number; network: Network }) {
+  const validityInfo = formatValidityWindow(startSlot, endSlot, network);
   
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -34,8 +34,8 @@ function ValidityStatus({ startSlot, endSlot }: { startSlot: number; endSlot: nu
 }
 
 // Helper component for time remaining
-function ValidityTimeRemaining({ slot }: { slot: number }) {
-  const timeInfo = getTimeRemaining(slot);
+function ValidityTimeRemaining({ slot, network }: { slot: number; network: Network }) {
+  const timeInfo = getTimeRemaining(slot, network);
   
   if (timeInfo.isExpired) {
     return (
@@ -225,7 +225,7 @@ export function OverviewTab({ tx }: OverviewTabProps) {
             <Calendar className="h-5 w-5" />
             Validity Window
             {tx.validity.start && tx.validity.end && (
-              <ValidityStatus startSlot={tx.validity.start} endSlot={tx.validity.end} />
+              <ValidityStatus startSlot={tx.validity.start} endSlot={tx.validity.end} network={network} />
             )}
           </CardTitle>
         </CardHeader>
@@ -239,7 +239,7 @@ export function OverviewTab({ tx }: OverviewTabProps) {
                   <span className="text-sm font-medium">Slot</span>
                   <div className="text-sm text-right">
                     <div className="font-mono">{tx.slot.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.slot)}</div>
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.slot, network)}</div>
                   </div>
                 </div>
               )}
@@ -249,7 +249,7 @@ export function OverviewTab({ tx }: OverviewTabProps) {
                   <span className="text-sm font-medium">TTL</span>
                   <div className="text-sm text-right">
                     <div className="font-mono">{tx.ttl.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.ttl)}</div>
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.ttl, network)}</div>
                   </div>
                 </div>
               )}
@@ -259,8 +259,8 @@ export function OverviewTab({ tx }: OverviewTabProps) {
                   <span className="text-sm font-medium">Valid From</span>
                   <div className="text-sm text-right">
                     <div className="font-mono">{tx.validity.start.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.start)}</div>
-                    <ValidityTimeRemaining slot={tx.validity.start} />
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.start, network)}</div>
+                    <ValidityTimeRemaining slot={tx.validity.start} network={network} />
                   </div>
                 </div>
               )}
@@ -270,8 +270,8 @@ export function OverviewTab({ tx }: OverviewTabProps) {
                   <span className="text-sm font-medium">Valid Until</span>
                   <div className="text-sm text-right">
                     <div className="font-mono">{tx.validity.end.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.end)}</div>
-                    <ValidityTimeRemaining slot={tx.validity.end} />
+                    <div className="text-xs text-muted-foreground">{slotToLocalTime(tx.validity.end, network)}</div>
+                    <ValidityTimeRemaining slot={tx.validity.end} network={network} />
                   </div>
                 </div>
               )}
