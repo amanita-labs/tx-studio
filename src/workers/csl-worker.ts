@@ -1964,7 +1964,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     };
     
     // Size validation
-    if (size > 16384) {
+    if (size > 10000) {
       warnings.push("Transaction size exceeds recommended limit");
       validation.warnings.push("Large transaction size may impact network performance");
     }
@@ -2010,12 +2010,6 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       return sum + output.ada;
     }, 0n);
     
-    // Check for potential dust outputs
-    outputs.forEach((output, index) => {
-      if (output.ada < 1000000n) { // Less than 1 ADA
-        validation.warnings.push(`Output ${index} may be dust (${output.ada} lovelace)`);
-      }
-    });
     
     // Script validation
     if (scripts.length > 0 && redeemers.length === 0) {
