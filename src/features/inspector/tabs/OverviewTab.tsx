@@ -11,6 +11,7 @@ import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { collectTransactionLabels, type TransactionLabelCategory } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { generateTransactionDescription } from '@/lib/transaction-description';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAppStore } from '@/lib/store';
 
 // Helper component for validity status badge
@@ -57,7 +58,7 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ tx }: OverviewTabProps) {
-  const { network, isDetectingNetwork, networkDetected } = useAppStore();
+  const { network, isDetectingNetwork, networkDetected, setNetwork } = useAppStore();
   const transactionLabels = collectTransactionLabels(tx);
   
   const getNetworkDisplayName = (net: string) => {
@@ -154,8 +155,17 @@ export function OverviewTab({ tx }: OverviewTabProps) {
                 <span className="text-sm text-muted-foreground">Not found on-chain</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Network type</span>
-                <span className="text-sm text-muted-foreground">Unknown</span>
+                <span className="text-sm font-medium">Assume network</span>
+                <Select value={network} onValueChange={(v) => setNetwork(v as Network)}>
+                  <SelectTrigger className="w-[140px] h-8 text-xs">
+                    <SelectValue placeholder="Select network" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mainnet">Mainnet</SelectItem>
+                    <SelectItem value="preprod">Preprod</SelectItem>
+                    <SelectItem value="preview">Preview</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </>
           )}
