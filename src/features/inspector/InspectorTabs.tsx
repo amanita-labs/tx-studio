@@ -6,7 +6,7 @@ import { DomainTx } from '@/domain/tx';
 import { OverviewTab } from './tabs/OverviewTab';
 import { IoValueTab } from './tabs/IoValueTab';
 import { MetadataTab } from './tabs/MetadataTab';
-import { CBORTab } from './tabs/CBORTab';
+import { RawTab } from './tabs/RawTab';
 // import { ValidationTab } from './tabs/ValidationTab'; // Hidden for now
 import { ScriptsTab } from './tabs/ScriptsTab';
 // import { ComparisonTab } from './tabs/ComparisonTab'; // Hidden for now
@@ -28,7 +28,7 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
           <TabsTrigger value="contents">Contents</TabsTrigger>
           <TabsTrigger value="metadata">Metadata</TabsTrigger>
           <TabsTrigger value="scripts">Scripts</TabsTrigger>
-          <TabsTrigger value="cbor">CBOR</TabsTrigger>
+          <TabsTrigger value="cbor">Raw</TabsTrigger>
           <TabsTrigger value="search">Search</TabsTrigger>
         </TabsList>
         
@@ -49,7 +49,7 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
             <ScriptsTab tx={tx} />
           </TabsContent>
           <TabsContent value="cbor" className="h-full">
-            <CBORTab txHex={txHex} />
+            <RawTab tx={tx} txHex={txHex} />
           </TabsContent>
           <TabsContent value="search" className="h-full">
             <SearchTab tx={tx} txHex={txHex} />
