@@ -46,7 +46,7 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
             <MetadataTab tx={tx} />
           </TabsContent>
           <TabsContent value="scripts" className="h-full">
-            <ScriptsTab tx={tx} />
+            <ScriptsTab tx={tx} txHex={txHex} />
           </TabsContent>
           <TabsContent value="cbor" className="h-full">
             <RawTab tx={tx} txHex={txHex} />

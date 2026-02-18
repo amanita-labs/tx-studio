@@ -16,7 +16,7 @@ export type DomainTx = {
     address: string;
     ada: bigint;
     assets: Array<{ policyId: string; assetName: string; quantity: bigint }>;
-    datum?: { inline?: string; hash?: string; ref?: boolean };
+    datum?: { inline?: boolean | string; hash?: string; ref?: boolean; type?: string; content?: unknown; size?: number };
     scriptRef?: { type: "PlutusV1"|"PlutusV2"|"PlutusV3"|"Native"; bytes: string };
   }>;
   mint?: Array<{ policyId: string; assetName: string; quantity: bigint }>;
