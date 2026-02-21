@@ -43,7 +43,7 @@ export function ExUnitsBudgetCard({
     : null;
 
   return (
-    <Card className="border-2 border-primary/20 bg-primary/5">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Cpu className="h-5 w-5" />

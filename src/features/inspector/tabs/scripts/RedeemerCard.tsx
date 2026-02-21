@@ -40,6 +40,30 @@ function getPurposeIcon(purpose: string) {
   }
 }
 
+function getPurposeColor(purpose: string) {
+  switch (purpose) {
+    case 'spend': return 'text-yellow-700 dark:text-yellow-400';
+    case 'mint': return 'text-green-700 dark:text-green-400';
+    case 'cert': return 'text-blue-700 dark:text-blue-400';
+    case 'reward': return 'text-purple-700 dark:text-purple-400';
+    case 'vote': return 'text-rose-700 dark:text-rose-400';
+    case 'propose': return 'text-orange-700 dark:text-orange-400';
+    default: return 'text-muted-foreground';
+  }
+}
+
+function getPurposeBorderColor(purpose: string) {
+  switch (purpose) {
+    case 'spend': return 'border-yellow-400/50 dark:border-yellow-500/30';
+    case 'mint': return 'border-green-400/50 dark:border-green-500/30';
+    case 'cert': return 'border-blue-400/50 dark:border-blue-500/30';
+    case 'reward': return 'border-purple-400/50 dark:border-purple-500/30';
+    case 'vote': return 'border-rose-400/50 dark:border-rose-500/30';
+    case 'propose': return 'border-orange-400/50 dark:border-orange-500/30';
+    default: return '';
+  }
+}
+
 function getDiffIcon(diff: number | null) {
   if (diff === null) return null;
   if (diff > 0) return <ArrowDown className="h-3 w-3 text-green-600" />;
@@ -95,28 +119,23 @@ export function RedeemerCard({ redeemer, index, evalResults, protocolParams, tx 
   };
 
   return (
-    <div className="border rounded-lg p-3 space-y-2">
+    <div className={cn("border rounded-lg p-3 space-y-2", getPurposeBorderColor(safePurpose))}>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Redeemer #{index + 1}</span>
+        <span className="text-sm font-medium">{safePurpose}:{safeIndex}</span>
         <div className="flex items-center gap-2">
           {perRedeemerCost !== null && (
             <span className="text-xs font-mono text-muted-foreground">
               ~{perRedeemerCost.toFixed(6)} ADA
             </span>
           )}
-          <div className="flex items-center gap-1">
+          <div className={cn("flex items-center gap-1", getPurposeColor(safePurpose))}>
             {getPurposeIcon(safePurpose)}
-            <span className="text-xs capitalize">{safePurpose}</span>
+            <span className="text-xs capitalize font-medium">{safePurpose}</span>
           </div>
         </div>
       </div>
 
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">Index</span>
-          <span className="text-xs">{safeIndex}</span>
-        </div>
-
         {/* ExUnits with side-by-side diff */}
         {safeExUnits && (
           <div className="space-y-1">

@@ -24,7 +24,7 @@ export type DomainTx = {
   withdrawals?: Array<{ stakeAddr: string; amount: bigint }>;
   governance?: GovernanceVM | null;       // Conway actions, drep votes, etc.
   metadata?: Array<{ label: string; json?: unknown; cbor?: string }>;
-  scripts?: Array<{ type: string; hash: string; bytesLen: number }>;
+  scripts?: Array<{ type: string; hash: string; bytesLen: number; bytes?: string; address?: string }>;
   redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }>;
   witnesses: { vkeyCount: number; nativeCount: number; plutusCount: number };
   vkeyWitnesses?: Array<{ vkey: string; signature: string; hash: string }>;

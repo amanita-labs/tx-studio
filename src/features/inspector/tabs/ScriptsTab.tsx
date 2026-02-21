@@ -5,7 +5,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Copy, FileCode, Code, Hash, Zap } from 'lucide-react';
+import { Copy, FileCode, Code, Hash, Zap, Database, CheckCircle2, Cpu } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
@@ -18,6 +18,7 @@ import { ExUnitsBudgetCard } from './scripts/ExUnitsBudgetCard';
 import { RedeemerCard } from './scripts/RedeemerCard';
 import { EvalErrorDisplay } from './scripts/EvalErrorDisplay';
 import { ReferenceScriptInfo } from './scripts/ReferenceScriptInfo';
+import { OutputDatumsInfo } from './scripts/OutputDatumsInfo';
 
 interface ScriptsTabProps {
   tx: DomainTx;
@@ -43,7 +44,8 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
 
   const cacheKey = `${txHex.slice(0, 16)}:${network}`;
 
-  const hasScripts = (tx.scripts && tx.scripts.length > 0) || (tx.redeemers && tx.redeemers.length > 0);
+  const hasDatums = tx.outputs.some(o => o.datum);
+  const hasScripts = (tx.scripts && tx.scripts.length > 0) || (tx.redeemers && tx.redeemers.length > 0) || hasDatums;
 
   const runEvaluation = useCallback(async () => {
     const [evalResponse] = await Promise.all([
@@ -83,6 +85,16 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
       toast.success(`${label} copied to clipboard`);
     } catch {
       toast.error('Failed to copy to clipboard');
+    }
+  };
+
+  const getPurposeIcon = (purpose: string) => {
+    switch (purpose) {
+      case 'spend': return <Zap className="h-3 w-3" />;
+      case 'mint': return <Hash className="h-3 w-3" />;
+      case 'cert': return <CheckCircle2 className="h-3 w-3" />;
+      case 'reward': return <Cpu className="h-3 w-3" />;
+      default: return <Hash className="h-3 w-3" />;
     }
   };
 
@@ -169,6 +181,11 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
             <Badge variant="outline">
               {tx.redeemers?.length || 0} redeemers
             </Badge>
+            {hasDatums && (
+              <Badge variant="outline">
+                {tx.outputs.filter(o => o.datum).length} datums
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center space-x-2">
@@ -186,73 +203,14 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
         <EvalErrorDisplay failure={evalResult} />
       )}
 
-      {/* Total Execution Units with Budget Bars */}
-      {tx.redeemers && tx.redeemers.length > 0 && (totalMem > 0 || totalSteps > 0) && (
-        <ExUnitsBudgetCard
-          totalMem={totalMem}
-          totalSteps={totalSteps}
-          protocolParams={protocolParams}
-          costInAda={costInAda}
-          isEvaluated={isEvaluatedTotal}
-        />
-      )}
-
-      {/* Script Data Hash and Total Collateral */}
-      {(tx.scriptDataHash || tx.totalCollateral) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {tx.scriptDataHash && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Hash className="h-5 w-5" />
-                  Script Data Hash
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 mr-2">
-                    {tx.scriptDataHash.slice(0, 32)}...
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {tx.totalCollateral && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5" />
-                  Total Collateral
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-mono">
-                  {Number(tx.totalCollateral).toLocaleString()} lovelace
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {(Number(tx.totalCollateral) / 1000000).toFixed(6)} ADA
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
       {/* Scripts */}
       {tx.scripts && tx.scripts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileCode className="h-5 w-5" />
-              Scripts ({tx.scripts.length})
+              Scripts
+              <Badge variant="outline">{tx.scripts.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -262,11 +220,45 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
                 const safeHash = String(script?.hash || '');
                 const safeSize = script?.bytesLen && !isNaN(Number(script.bytesLen)) ? Number(script.bytesLen) : null;
                 const scriptLabel = getKnownScriptLabel(safeHash);
+                const datumOutputs = script.address
+                  ? tx.outputs.filter(o => o.datum && o.address === script.address)
+                  : [];
+                const hasDatumOutput = datumOutputs.length > 0;
+                const matchedRedeemers = tx.redeemers?.filter(r => r.scriptHash === safeHash) ?? [];
 
                 return (
-                  <div key={index} className="border rounded-lg p-3 space-y-2">
+                  <div key={index} className={`border rounded-lg p-3 space-y-2 ${hasDatumOutput ? 'border-purple-400/50 bg-purple-50/30 dark:border-purple-500/30 dark:bg-purple-950/20' : ''}`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Script #{index + 1}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <code className="text-xs font-mono font-medium bg-muted px-1.5 py-0.5 rounded">
+                            {safeHash.slice(0, 12)}...
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 w-5 p-0"
+                            onClick={() => {
+                              navigator.clipboard.writeText(safeHash);
+                              toast.success('Script hash copied');
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {hasDatumOutput && (
+                          <Badge variant="outline" className="text-purple-700 border-purple-300 dark:text-purple-300 dark:border-purple-600 gap-1">
+                            <Database className="h-3 w-3" />
+                            {datumOutputs.length} datum {datumOutputs.length === 1 ? 'output' : 'outputs'}
+                          </Badge>
+                        )}
+                        {matchedRedeemers.map((r, i) => (
+                          <Badge key={i} variant="outline" className="gap-1">
+                            {getPurposeIcon(r.purpose)}
+                            {r.purpose}[{r.index}]
+                          </Badge>
+                        ))}
+                      </div>
                       <Badge className={getScriptTypeColor(safeType)}>
                         {getScriptTypeIcon(safeType)}
                         <span className="ml-1">{safeType}</span>
@@ -277,33 +269,53 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
                       {scriptLabel && (
                         <KnownLabelHighlight category="script" label={scriptLabel} />
                       )}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-muted-foreground">Hash</span>
-                        <div className="flex items-center gap-1">
-                          <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[120px]">
-                            {safeHash.slice(0, 12)}...
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              navigator.clipboard.writeText(safeHash);
-                              toast.success('Script hash copied');
-                            }}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                          <BlockExplorerLink
-                            type="script"
-                            params={{ scriptHash: safeHash }}
-                          />
+
+                      {script.address && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">Address</span>
+                          <div className="flex items-center gap-1">
+                            <code className="text-xs font-medium bg-muted px-2 py-1 rounded truncate max-w-[240px]">
+                              {script.address.slice(0, 32)}...
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(script.address!);
+                                toast.success('Script address copied');
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <BlockExplorerLink
+                              type="address"
+                              params={{ address: script.address }}
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {safeSize && (
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">Size</span>
                           <span className="text-xs">{safeSize} bytes</span>
+                        </div>
+                      )}
+
+                      {script.bytes && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">CBOR</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              navigator.clipboard.writeText(script.bytes!);
+                              toast.success('Script CBOR copied');
+                            }}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            <span className="text-xs">Copy CBOR</span>
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -315,21 +327,19 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
         </Card>
       )}
 
-      {/* Reference Scripts */}
-      <ReferenceScriptInfo tx={tx} />
-
       {/* Redeemers */}
       {tx.redeemers && tx.redeemers.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
-              Redeemers ({tx.redeemers.length})
+              Redeemers
+              <Badge variant="outline">{tx.redeemers.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {tx.redeemers.map((redeemer, index) => (
+              {[...tx.redeemers].sort((a, b) => a.purpose.localeCompare(b.purpose) || a.index - b.index).map((redeemer, index) => (
                 <RedeemerCard
                   key={index}
                   redeemer={redeemer}
@@ -343,6 +353,63 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Total Execution Units with Budget Bars */}
+      {tx.redeemers && tx.redeemers.length > 0 && (totalMem > 0 || totalSteps > 0) && (
+        <ExUnitsBudgetCard
+          totalMem={totalMem}
+          totalSteps={totalSteps}
+          protocolParams={protocolParams}
+          costInAda={costInAda}
+          isEvaluated={isEvaluatedTotal}
+        />
+      )}
+
+      {/* Reference Scripts */}
+      <ReferenceScriptInfo tx={tx} />
+
+      {/* Output Datums */}
+      <OutputDatumsInfo tx={tx} />
+
+      {/* Script Metadata */}
+      {(tx.scriptDataHash || tx.totalCollateral) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Hash className="h-5 w-5" />
+              Script Metadata
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {tx.scriptDataHash && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">Script Data Hash</span>
+                <div className="flex items-center gap-1">
+                  <code className="text-xs bg-muted px-2 py-1 rounded">
+                    {tx.scriptDataHash.slice(0, 16)}...
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(tx.scriptDataHash!, 'Script data hash')}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            {tx.totalCollateral && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Total Collateral</span>
+                <span className="text-sm font-mono">
+                  {(Number(tx.totalCollateral) / 1000000).toFixed(6)} ADA
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
     </div>
   );
 }
