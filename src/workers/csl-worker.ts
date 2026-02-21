@@ -1584,10 +1584,13 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     if (witnessRedeemers) {
       for (let i = 0; i < witnessRedeemers.len(); i++) {
         const redeemer = witnessRedeemers.get(i);
-        const purpose = redeemer.tag().kind() === 0 ? "spend" :
-                       redeemer.tag().kind() === 1 ? "mint" :
-                       redeemer.tag().kind() === 2 ? "cert" :
-                       redeemer.tag().kind() === 3 ? "reward" : "unknown";
+        const tagKind = redeemer.tag().kind();
+        const purpose = tagKind === 0 ? "spend" :
+                       tagKind === 1 ? "mint" :
+                       tagKind === 2 ? "cert" :
+                       tagKind === 3 ? "reward" :
+                       tagKind === 4 ? "vote" :
+                       tagKind === 5 ? "propose" : "unknown";
         
         // Parse redeemer data from PlutusData to JSON format
         let parsedData = undefined;

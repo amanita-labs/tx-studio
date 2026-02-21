@@ -12,6 +12,7 @@ import { ScriptsTab } from './tabs/ScriptsTab';
 // import { ComparisonTab } from './tabs/ComparisonTab'; // Hidden for now
 import { SearchTab } from './tabs/SearchTab';
 import { ContentsTab } from './tabs/ContentsTab';
+import { useAppStore } from '@/lib/store';
 
 interface InspectorTabsProps {
   tx: DomainTx;
@@ -19,6 +20,8 @@ interface InspectorTabsProps {
 }
 
 export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
+  const isOnChain = useAppStore(s => s.isOnChain);
+
   return (
     <div className="h-full">
       <Tabs defaultValue="overview" className="h-full flex flex-col">
@@ -46,7 +49,7 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
             <MetadataTab tx={tx} />
           </TabsContent>
           <TabsContent value="scripts" className="h-full">
-            <ScriptsTab tx={tx} txHex={txHex} />
+            <ScriptsTab tx={tx} txHex={txHex} isOnChain={isOnChain} />
           </TabsContent>
           <TabsContent value="cbor" className="h-full">
             <RawTab tx={tx} txHex={txHex} />

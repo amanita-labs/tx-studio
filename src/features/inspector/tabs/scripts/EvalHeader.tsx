@@ -3,16 +3,17 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Play, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Play, RefreshCw, CheckCircle2, XCircle, Info } from 'lucide-react';
 import { EvalResponse } from '@/lib/types/script-eval';
 
 interface EvalHeaderProps {
   evalResult: EvalResponse | null;
   isEvaluating: boolean;
   onEvaluate: () => void;
+  isOnChain?: boolean;
 }
 
-export function EvalHeader({ evalResult, isEvaluating, onEvaluate }: EvalHeaderProps) {
+export function EvalHeader({ evalResult, isEvaluating, onEvaluate, isOnChain }: EvalHeaderProps) {
   const getStatusBadge = () => {
     if (isEvaluating) {
       return (
@@ -38,7 +39,21 @@ export function EvalHeader({ evalResult, isEvaluating, onEvaluate }: EvalHeaderP
         </Badge>
       );
     }
+    if (isOnChain) {
+      return (
+        <Badge variant="outline" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+          <Info className="h-3 w-3 mr-1" />
+          On-chain — eval skipped
+        </Badge>
+      );
+    }
     return null;
+  };
+
+  const getButtonLabel = () => {
+    if (evalResult) return 'Re-evaluate';
+    if (isOnChain) return 'Evaluate Anyway';
+    return 'Evaluate';
   };
 
   return (
@@ -57,7 +72,7 @@ export function EvalHeader({ evalResult, isEvaluating, onEvaluate }: EvalHeaderP
         ) : (
           <Play className="h-4 w-4 mr-2" />
         )}
-        {evalResult ? 'Re-evaluate' : 'Evaluate'}
+        {getButtonLabel()}
       </Button>
     </div>
   );

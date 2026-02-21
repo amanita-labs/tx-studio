@@ -3,11 +3,10 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Copy, Zap, Hash, CheckCircle2, Cpu, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { Copy, Zap, Hash, CheckCircle2, Cpu, ArrowUp, ArrowDown, Minus, Vote, ScrollText } from 'lucide-react';
 import { toast } from 'sonner';
 import { DomainTx } from '@/domain/tx';
-import { EvalResult, ProtocolParamsSubset, DatumInfo } from '@/lib/types/script-eval';
-import { DatumDisplay } from './DatumDisplay';
+import { EvalResult, ProtocolParamsSubset } from '@/lib/types/script-eval';
 import { cn } from '@/lib/utils';
 
 interface RedeemerCardProps {
@@ -23,6 +22,8 @@ function normalizeRedeemerPurpose(purpose: string): string {
   switch (purpose) {
     case 'cert': return 'certificate';
     case 'reward': return 'withdrawal';
+    case 'propose': return 'propose';
+    case 'vote': return 'vote';
     default: return purpose;
   }
 }
@@ -33,6 +34,8 @@ function getPurposeIcon(purpose: string) {
     case 'mint': return <Hash className="h-4 w-4" />;
     case 'cert': return <CheckCircle2 className="h-4 w-4" />;
     case 'reward': return <Cpu className="h-4 w-4" />;
+    case 'vote': return <Vote className="h-4 w-4" />;
+    case 'propose': return <ScrollText className="h-4 w-4" />;
     default: return <Hash className="h-4 w-4" />;
   }
 }
@@ -80,30 +83,6 @@ export function RedeemerCard({ redeemer, index, evalResults, protocolParams, tx 
     perRedeemerCost =
       matchedEval.budget.memory * protocolParams.priceMem +
       matchedEval.budget.cpu * protocolParams.priceStep;
-  }
-
-  // Find datum for spend redeemers
-  // For spend purpose, the redeemer index refers to the sorted input index.
-  // Datums live on outputs (the UTXOs being spent). We scan tx.outputs for any
-  // that carry datum info, since the inputs' resolved data doesn't include datums.
-  let datum: DatumInfo | null = null;
-  if (safePurpose === 'spend') {
-    for (const output of tx.outputs) {
-      if (output.datum) {
-        if (output.datum.inline) {
-          datum = {
-            type: 'inline',
-            value: output.datum.hash || '(inline)',
-            decodedType: output.datum.type,
-            decodedContent: output.datum.content,
-          };
-          break;
-        } else if (output.datum.hash) {
-          datum = { type: 'hash', value: output.datum.hash };
-          break;
-        }
-      }
-    }
   }
 
   const tryParseJSON = (str: string): { isJSON: boolean; parsed?: unknown } => {
@@ -247,8 +226,6 @@ export function RedeemerCard({ redeemer, index, evalResults, protocolParams, tx 
           </div>
         )}
 
-        {/* Datum for spend redeemers */}
-        {datum && <DatumDisplay datum={datum} />}
       </div>
     </div>
   );

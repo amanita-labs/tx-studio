@@ -16,6 +16,7 @@ interface UseScriptEvalReturn {
   protocolParams: ProtocolParamsSubset | null;
   isLoadingParams: boolean;
   costInAda: number | null;
+  setResult: (result: EvalResponse) => void;
 }
 
 export function useScriptEval(): UseScriptEvalReturn {
@@ -129,5 +130,6 @@ export function useScriptEval(): UseScriptEvalReturn {
     protocolParams,
     isLoadingParams,
     costInAda,
+    setResult: setEvalResult,
   };
 }

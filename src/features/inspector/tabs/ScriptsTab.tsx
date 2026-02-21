@@ -22,10 +22,13 @@ import { ReferenceScriptInfo } from './scripts/ReferenceScriptInfo';
 interface ScriptsTabProps {
   tx: DomainTx;
   txHex: string;
+  isOnChain: boolean;
 }
 
-export function ScriptsTab({ tx, txHex }: ScriptsTabProps) {
+export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
   const network = useAppStore(s => s.network);
+  const getEvalCache = useAppStore(s => s.getEvalCache);
+  const setEvalCache = useAppStore(s => s.setEvalCache);
   const {
     evaluate,
     fetchProtocolParams,
@@ -33,25 +36,42 @@ export function ScriptsTab({ tx, txHex }: ScriptsTabProps) {
     isEvaluating,
     protocolParams,
     costInAda,
+    setResult,
   } = useScriptEval();
 
-  const hasAutoEvaluated = useRef(false);
+  const lastEvalKey = useRef<string | null>(null);
+
+  const cacheKey = `${txHex.slice(0, 16)}:${network}`;
+
+  const hasScripts = (tx.scripts && tx.scripts.length > 0) || (tx.redeemers && tx.redeemers.length > 0);
 
   const runEvaluation = useCallback(async () => {
     const [evalResponse] = await Promise.all([
       evaluate(txHex, network),
       fetchProtocolParams(network),
     ]);
-    return evalResponse;
-  }, [evaluate, fetchProtocolParams, txHex, network]);
-
-  // Auto-evaluate on mount
-  useEffect(() => {
-    if (!hasAutoEvaluated.current && txHex) {
-      hasAutoEvaluated.current = true;
-      runEvaluation();
+    if (evalResponse) {
+      setEvalCache(cacheKey, evalResponse);
     }
-  }, [runEvaluation, txHex]);
+    return evalResponse;
+  }, [evaluate, fetchProtocolParams, txHex, network, setEvalCache, cacheKey]);
+
+  // Auto-evaluate on mount or when tx changes
+  useEffect(() => {
+    if (!txHex || !hasScripts || isOnChain) return;
+    if (lastEvalKey.current === cacheKey) return;
+    lastEvalKey.current = cacheKey;
+
+    // Check cache first
+    const cached = getEvalCache(cacheKey);
+    if (cached) {
+      setResult(cached);
+      fetchProtocolParams(network);
+      return;
+    }
+
+    runEvaluation();
+  }, [runEvaluation, txHex, hasScripts, isOnChain, getEvalCache, cacheKey, setResult, fetchProtocolParams, network]);
 
   const handleManualEvaluate = () => {
     runEvaluation();
@@ -80,41 +100,10 @@ export function ScriptsTab({ tx, txHex }: ScriptsTabProps) {
       case 'native': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'plutus-v1': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
       case 'plutus-v2': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'plutus-v3': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
   };
-
-  const copyScripts = async () => {
-    try {
-      const safeScripts = (tx.scripts || []).map(script => ({
-        type: String(script.type || ''),
-        hash: String(script.hash || ''),
-        bytesLen: isNaN(Number(script.bytesLen)) ? 0 : Number(script.bytesLen)
-      }));
-
-      const safeRedeemers = (tx.redeemers || []).map(redeemer => ({
-        purpose: String(redeemer.purpose || ''),
-        index: isNaN(Number(redeemer.index)) ? 0 : Number(redeemer.index),
-        exUnits: redeemer.exUnits ? {
-          mem: isNaN(Number(redeemer.exUnits.mem)) ? 0 : Number(redeemer.exUnits.mem),
-          steps: isNaN(Number(redeemer.exUnits.steps)) ? 0 : Number(redeemer.exUnits.steps)
-        } : undefined
-      }));
-
-      const scriptsData = {
-        scripts: safeScripts,
-        redeemers: safeRedeemers,
-        timestamp: new Date().toISOString()
-      };
-
-      await navigator.clipboard.writeText(JSON.stringify(scriptsData, null, 2));
-      toast.success('Scripts data copied to clipboard');
-    } catch {
-      toast.error('Failed to copy scripts data');
-    }
-  };
-
-  const hasScripts = (tx.scripts && tx.scripts.length > 0) || (tx.redeemers && tx.redeemers.length > 0);
 
   // Calculate total execution units — use evaluated results if available, otherwise declared
   let totalMem = 0;
@@ -152,6 +141,7 @@ export function ScriptsTab({ tx, txHex }: ScriptsTabProps) {
               evalResult={evalResult}
               isEvaluating={isEvaluating}
               onEvaluate={handleManualEvaluate}
+              isOnChain={isOnChain}
             />
             {evalResult && !evalResult.success && (
               <div className="w-full max-w-lg">
@@ -186,11 +176,8 @@ export function ScriptsTab({ tx, txHex }: ScriptsTabProps) {
             evalResult={evalResult}
             isEvaluating={isEvaluating}
             onEvaluate={handleManualEvaluate}
+            isOnChain={isOnChain}
           />
-          <Button variant="outline" size="sm" onClick={copyScripts}>
-            <Copy className="h-4 w-4 mr-2" />
-            Copy Data
-          </Button>
         </div>
       </div>
 
