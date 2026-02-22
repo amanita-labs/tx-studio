@@ -2,7 +2,7 @@
 import { Network } from '@/domain/tx';
 import { fetchTransactionByHash, checkTransactionExists } from './client';
 import { BlockfrostTransaction } from '@/lib/types/blockfrost';
-import { blockfrostCache, CACHE_TTL_SUCCESS, CACHE_TTL_NOT_FOUND } from './cache';
+import { blockfrostCache, networkDetectionCache, CACHE_TTL_SUCCESS, CACHE_TTL_NOT_FOUND, CACHE_TTL_NETWORK_DETECTION } from './cache';
 
 export interface MultiNetworkSearchResult {
   success: true;
@@ -117,6 +117,13 @@ export async function detectNetworkFromInputs(
   }
 
   const txId = inputTxIds[0];
+
+  // Check cache first
+  const cached = networkDetectionCache.get(txId);
+  if (cached) {
+    return cached;
+  }
+
   const networks: Network[] = ['mainnet', 'preview', 'preprod'];
   const searchedNetworks: Network[] = [];
   const errors: Array<{ network: Network; error: string }> = [];
@@ -127,7 +134,9 @@ export async function detectNetworkFromInputs(
     try {
       const exists = await checkTransactionExists(network, txId);
       if (exists) {
-        return { success: true, network };
+        const result: NetworkDetectionResult = { success: true, network };
+        networkDetectionCache.set(txId, result, CACHE_TTL_NETWORK_DETECTION);
+        return result;
       }
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -149,11 +158,13 @@ export async function detectNetworkFromInputs(
   }
 
   const errorMessages = errors.map(e => `${e.network}: ${e.error}`).join('; ');
-  return {
+  const failResult: NetworkDetectionError = {
     success: false,
     error: errors.length
       ? `Input tx not found. Errors: ${errorMessages}`
       : 'Input transaction not found on any network',
     searchedNetworks,
   };
+  networkDetectionCache.set(txId, failResult, CACHE_TTL_NOT_FOUND);
+  return failResult;
 }
