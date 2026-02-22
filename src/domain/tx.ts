@@ -16,7 +16,7 @@ export type DomainTx = {
     address: string;
     ada: bigint;
     assets: Array<{ policyId: string; assetName: string; quantity: bigint }>;
-    datum?: { inline?: string; hash?: string; ref?: boolean };
+    datum?: { inline?: boolean | string; hash?: string; ref?: boolean; type?: string; content?: unknown; size?: number };
     scriptRef?: { type: "PlutusV1"|"PlutusV2"|"PlutusV3"|"Native"; bytes: string };
   }>;
   mint?: Array<{ policyId: string; assetName: string; quantity: bigint }>;
@@ -24,7 +24,7 @@ export type DomainTx = {
   withdrawals?: Array<{ stakeAddr: string; amount: bigint }>;
   governance?: GovernanceVM | null;       // Conway actions, drep votes, etc.
   metadata?: Array<{ label: string; json?: unknown; cbor?: string }>;
-  scripts?: Array<{ type: string; hash: string; bytesLen: number }>;
+  scripts?: Array<{ type: string; hash: string; bytesLen: number; bytes?: string; address?: string }>;
   redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }>;
   witnesses: { vkeyCount: number; nativeCount: number; plutusCount: number };
   vkeyWitnesses?: Array<{ vkey: string; signature: string; hash: string }>;

@@ -27,7 +27,8 @@ export function TxInspector() {
     setLoading,
     setNetwork,
     setNetworkDetected,
-    setError 
+    setIsOnChain,
+    setError
   } = useAppStore();
   const { searchTransactionAcrossNetworks } = useBlockfrost();
   const { parseTransaction } = useCSLWorker();
@@ -59,7 +60,8 @@ export function TxInspector() {
               setTxHex(result.hex);
               setNetwork(result.network);
               setNetworkDetected(true);
-              
+              setIsOnChain(true);
+
               // Parse the transaction
               const parseResult = await parseTransaction(result.hex, result.network);
               setParsedTx(parseResult);
@@ -86,7 +88,7 @@ export function TxInspector() {
     if (!hashToLoad && hasLoadedFromUrl.current) {
       hasLoadedFromUrl.current = null;
     }
-  }, [pathname, searchParams, txHex, setTxHex, setParsedTx, setLoading, setNetwork, setNetworkDetected, setError, searchTransactionAcrossNetworks, parseTransaction]);
+  }, [pathname, searchParams, txHex, setTxHex, setParsedTx, setLoading, setNetwork, setNetworkDetected, setIsOnChain, setError, searchTransactionAcrossNetworks, parseTransaction]);
 
   return (
     <div className="container mx-auto p-4">

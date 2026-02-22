@@ -756,12 +756,14 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     
     // Parse mint
     let mint = undefined;
+    const sortedMintPolicyIds: string[] = [];
     const mintData = body.mint();
     if (mintData) {
       mint = [];
       const keys = mintData.keys();
       for (let i = 0; i < keys.len(); i++) {
         const policyId = keys.get(i).to_hex();
+        sortedMintPolicyIds.push(policyId);
         const mintsAssets = mintData.get(keys.get(i));
         if (mintsAssets) {
           // MintsAssets is a collection of MintAssets
@@ -1546,35 +1548,58 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     
     // Parse scripts and redeemers
     const scripts = [];
-    const redeemers = [];
+    const redeemers: Array<{ purpose: string; index: number; exUnits: { mem: number; steps: number }; data?: string; scriptHash?: string }> = [];
     
     // Native scripts
     const nativeScripts = witnessSet.native_scripts();
     if (nativeScripts) {
       for (let i = 0; i < nativeScripts.len(); i++) {
         const script = nativeScripts.get(i);
+        const hash = script.hash().to_hex();
+        let address: string | undefined;
+        try {
+          const scriptHash = CSL.ScriptHash.from_bytes(Buffer.from(hash, 'hex'));
+          const credential = CSL.Credential.from_scripthash(scriptHash);
+          const enterpriseAddr = CSL.EnterpriseAddress.new(networkId, credential);
+          address = enterpriseAddr.to_address().to_bech32();
+        } catch (e) {
+          console.warn('Failed to derive enterprise address for native script:', e);
+        }
         scripts.push({
           type: "Native",
-          hash: script.hash().to_hex(),
-          bytesLen: script.to_bytes().length
+          hash,
+          bytesLen: script.to_bytes().length,
+          bytes: script.to_hex(),
+          address
         });
       }
     }
-    
+
     // Plutus scripts
     const plutusScripts = witnessSet.plutus_scripts();
     if (plutusScripts) {
       for (let i = 0; i < plutusScripts.len(); i++) {
         const script = plutusScripts.get(i);
         const version = script.language_version();
-        const type = version.kind() === 0 ? "PlutusV1" : 
-                    version.kind() === 1 ? "PlutusV2" : 
+        const type = version.kind() === 0 ? "PlutusV1" :
+                    version.kind() === 1 ? "PlutusV2" :
                     version.kind() === 2 ? "PlutusV3" : "PlutusV1";
-        
+        const hash = script.hash().to_hex();
+        let address: string | undefined;
+        try {
+          const scriptHash = CSL.ScriptHash.from_bytes(Buffer.from(hash, 'hex'));
+          const credential = CSL.Credential.from_scripthash(scriptHash);
+          const enterpriseAddr = CSL.EnterpriseAddress.new(networkId, credential);
+          address = enterpriseAddr.to_address().to_bech32();
+        } catch (e) {
+          console.warn('Failed to derive enterprise address for plutus script:', e);
+        }
         scripts.push({
           type,
-          hash: script.hash().to_hex(),
-          bytesLen: script.to_bytes().length
+          hash,
+          bytesLen: script.to_bytes().length,
+          bytes: script.to_hex(),
+          address
         });
       }
     }
@@ -1584,10 +1609,13 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     if (witnessRedeemers) {
       for (let i = 0; i < witnessRedeemers.len(); i++) {
         const redeemer = witnessRedeemers.get(i);
-        const purpose = redeemer.tag().kind() === 0 ? "spend" :
-                       redeemer.tag().kind() === 1 ? "mint" :
-                       redeemer.tag().kind() === 2 ? "cert" :
-                       redeemer.tag().kind() === 3 ? "reward" : "unknown";
+        const tagKind = redeemer.tag().kind();
+        const purpose = tagKind === 0 ? "spend" :
+                       tagKind === 1 ? "mint" :
+                       tagKind === 2 ? "cert" :
+                       tagKind === 3 ? "reward" :
+                       tagKind === 4 ? "vote" :
+                       tagKind === 5 ? "propose" : "unknown";
         
         // Parse redeemer data from PlutusData to JSON format
         let parsedData = undefined;
@@ -1668,7 +1696,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         
         redeemers.push({
           purpose,
-          index: redeemer.index(),
+          index: Number(redeemer.index().to_str()),
           exUnits: {
             mem,
             steps
@@ -1678,7 +1706,93 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         });
       }
     }
-    
+
+    // Resolve scriptHash on redeemers where possible
+    // Mint: policy ID at sorted index IS the script hash
+    for (const r of redeemers) {
+      if (r.purpose === 'mint' && r.index < sortedMintPolicyIds.length) {
+        r.scriptHash = sortedMintPolicyIds[r.index];
+      }
+    }
+
+    // Cert: extract script hash from already-parsed certificate credentials
+    if (certs) {
+      for (const r of redeemers) {
+        if (r.purpose === 'cert' && r.index < certs.length) {
+          const certDetails = certs[r.index].details;
+          const cred = (certDetails.stakeCredential ?? certDetails.drepCredential ?? certDetails.coldCredential ?? certDetails.hotCredential) as CredentialInfo | undefined;
+          if (cred && (cred.type === 'Script' || cred.type === 'ScriptHash') && cred.hash) {
+            r.scriptHash = cred.hash;
+          }
+        }
+      }
+    }
+
+    // Reward: extract script hash from withdrawal address credential
+    if (bodyWithdrawals) {
+      const wdKeys = bodyWithdrawals.keys();
+      for (const r of redeemers) {
+        if (r.purpose === 'reward' && r.index < wdKeys.len()) {
+          try {
+            const rewardAddr = CSL.RewardAddress.from_address(wdKeys.get(r.index).to_address());
+            if (rewardAddr) {
+              const cred = rewardAddr.payment_cred();
+              const sh = cred.to_scripthash();
+              if (sh) r.scriptHash = sh.to_hex();
+            }
+          } catch (e) { console.warn('Failed to resolve reward redeemer script hash:', e); }
+        }
+      }
+    }
+
+    // Vote: resolve scriptHash by matching voter credential hashes against witness scripts
+    if (governance) {
+      const witnessScriptHashSet = new Set(scripts.map(s => s.hash));
+      const voterHashes = new Set<string>();
+
+      for (const dv of governance.drepVotes) {
+        if (dv.drepHash) voterHashes.add(dv.drepHash);
+      }
+      for (const cv of governance.committeeVotes) {
+        if (cv.memberCredential?.hash) voterHashes.add(cv.memberCredential.hash);
+      }
+
+      // Voter hashes that match a witness script hash are script-based voters
+      const scriptVoterHashes = [...voterHashes].filter(h => witnessScriptHashSet.has(h));
+
+      if (scriptVoterHashes.length === 1) {
+        for (const r of redeemers) {
+          if (r.purpose === 'vote' && !r.scriptHash) {
+            r.scriptHash = scriptVoterHashes[0];
+          }
+        }
+      }
+    }
+
+    // General fallback for remaining unresolved redeemers (spend, vote, propose)
+    const plutusScriptHashes = [...new Set(
+      scripts.filter(s => s.type !== 'Native').map(s => s.hash)
+    )];
+    const unresolvedRedeemers = redeemers.filter(r => !r.scriptHash);
+
+    if (unresolvedRedeemers.length > 0) {
+      if (plutusScriptHashes.length === 1) {
+        // Single Plutus script: all redeemers must use it
+        for (const r of unresolvedRedeemers) {
+          r.scriptHash = plutusScriptHashes[0];
+        }
+      } else if (plutusScriptHashes.length > 1) {
+        // Multiple scripts: try process of elimination
+        // Find script hashes not yet claimed by any resolved redeemer
+        const claimedHashes = new Set(redeemers.filter(r => r.scriptHash).map(r => r.scriptHash!));
+        const unclaimedHashes = plutusScriptHashes.filter(h => !claimedHashes.has(h));
+
+        if (unresolvedRedeemers.length === 1 && unclaimedHashes.length === 1) {
+          unresolvedRedeemers[0].scriptHash = unclaimedHashes[0];
+        }
+      }
+    }
+
     // Count witnesses and extract signer details
     const vkeyCount = witnessSet.vkeys()?.len() || 0;
     const nativeCount = witnessSet.native_scripts()?.len() || 0;
