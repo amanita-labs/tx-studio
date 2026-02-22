@@ -9,9 +9,10 @@ import { useBlockfrost } from '@/hooks/use-blockfrost';
 import { Search, Loader2, AlertCircle } from 'lucide-react';
 import { isValidTransactionHash } from '@/lib/blockfrost/config';
 import { toast } from 'sonner';
+import type { BlockfrostTransaction } from '@/lib/types/blockfrost';
 
 interface BlockfrostFetchProps {
-  onTransactionFetched?: (hex: string, network: Network) => void;
+  onTransactionFetched?: (hex: string, network: Network, metadata: BlockfrostTransaction) => void;
   network?: Network; // Optional: if provided, uses single-network fetch; if not, uses multi-network search
   searchMode?: 'single' | 'multi'; // 'multi' = search all networks, 'single' = use network prop (defaults to 'multi')
 }
@@ -88,8 +89,8 @@ export function BlockfrostFetch({
       }
 
       if (result.success) {
-        // Call the callback with the fetched transaction hex and network
-        onTransactionFetched?.(result.hex, detectedNetwork);
+        // Call the callback with the fetched transaction hex, network, and metadata
+        onTransactionFetched?.(result.hex, detectedNetwork, result.metadata);
         // Clear the hash input and errors after successful fetch
         setHash('');
         setLocalError(null);

@@ -6,7 +6,7 @@ import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface BlockExplorerLinkProps {
-  type: 'address' | 'transaction' | 'stakePool' | 'stakeKey' | 'drep' | 'committee' | 'proposal' | 'epoch' | 'slot' | 'script' | 'asset' | 'policy';
+  type: 'address' | 'transaction' | 'stakePool' | 'stakeKey' | 'drep' | 'committee' | 'proposal' | 'epoch' | 'slot' | 'script' | 'asset' | 'policy' | 'block';
   params: Record<string, string>;
   className?: string;
 }

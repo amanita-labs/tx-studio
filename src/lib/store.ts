@@ -5,6 +5,14 @@ import { DomainTx, Network, TxParseResult } from '@/domain/tx';
 import { BlockExplorerId } from '@/lib/types/block-explorer';
 import { EvalResponse } from '@/lib/types/script-eval';
 
+export interface OnChainMeta {
+  block: string;       // block hash
+  blockHeight: number;
+  blockTime: number;   // unix timestamp (seconds)
+  slot: number;
+  index: number;       // tx position within block
+}
+
 interface AppState {
   // Transaction data
   txHex: string;
@@ -18,6 +26,7 @@ interface AppState {
   networkDetected: boolean; // true if network was successfully detected, false if detection failed or not attempted
   error: string | null;
   isOnChain: boolean;
+  onChainMeta: OnChainMeta | null;
 
   // Eval cache (not persisted)
   evalCache: Record<string, EvalResponse>;
@@ -38,6 +47,7 @@ interface AppState {
   setNetworkDetected: (detected: boolean) => void;
   setError: (error: string | null) => void;
   setIsOnChain: (isOnChain: boolean) => void;
+  setOnChainMeta: (meta: OnChainMeta | null) => void;
   setEvalCache: (key: string, result: EvalResponse) => void;
   getEvalCache: (key: string) => EvalResponse | null;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
@@ -58,6 +68,7 @@ export const useAppStore = create<AppState>()(
       networkDetected: false,
       error: null,
       isOnChain: false,
+      onChainMeta: null,
       evalCache: {},
       theme: 'system',
       blockExplorer: 'cardanoscan',
@@ -72,6 +83,7 @@ export const useAppStore = create<AppState>()(
       setNetworkDetected: (detected: boolean) => set({ networkDetected: detected }),
       setError: (error: string | null) => set({ error }),
       setIsOnChain: (isOnChain: boolean) => set({ isOnChain }),
+      setOnChainMeta: (meta: OnChainMeta | null) => set({ onChainMeta: meta }),
       setEvalCache: (key: string, result: EvalResponse) => set((state) => ({
         evalCache: { ...state.evalCache, [key]: result },
       })),
@@ -85,6 +97,7 @@ export const useAppStore = create<AppState>()(
         isDetectingNetwork: false,
         networkDetected: false,
         isOnChain: false,
+        onChainMeta: null,
         activeTab: 'overview'
       }),
     }),
