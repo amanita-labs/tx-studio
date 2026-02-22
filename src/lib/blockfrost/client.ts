@@ -36,6 +36,28 @@ function getBlockfrostProjectIdEnvVarName(network: Network): string {
 }
 
 /**
+ * Check if a transaction exists on a given network (metadata only, no CBOR)
+ * Returns true if found, false on 404, throws on other errors
+ */
+export async function checkTransactionExists(
+  network: Network,
+  hash: string
+): Promise<boolean> {
+  const api = createBlockfrostClient(network);
+
+  try {
+    await api.txs(hash);
+    return true;
+  } catch (error: any) {
+    if (error?.status_code === 404) {
+      return false;
+    }
+    // Throw on all other errors (429, 403, etc.) so the caller can decide
+    throw error;
+  }
+}
+
+/**
  * Fetch transaction by hash from Blockfrost
  * Returns both transaction metadata and CBOR hex
  */

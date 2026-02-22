@@ -28,6 +28,7 @@ export interface BlockExplorer {
     script: string;
     asset: string;
     policy: string;
+    block: string;
   };
 }
 
@@ -55,6 +56,7 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       script: '/script/{scriptHash}',
       asset: '/token/{assetId}',
       policy: '/tokenPolicy/{policyId}',
+      block: '/block/{blockHeight}',
     },
   },
   cexplorer: {
@@ -80,6 +82,7 @@ export const BLOCK_EXPLORERS: Record<BlockExplorerId, BlockExplorer> = {
       script: '/script/{scriptHash}',
       asset: '/asset/{assetId}',
       policy: '/policy/{policyId}',
+      block: '/block/{blockHash}',
     },
   },
 };

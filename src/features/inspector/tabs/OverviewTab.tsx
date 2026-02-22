@@ -58,7 +58,7 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ tx }: OverviewTabProps) {
-  const { network, isDetectingNetwork, networkDetected, setNetwork } = useAppStore();
+  const { network, isDetectingNetwork, networkDetected, isOnChain, onChainMeta, setNetwork } = useAppStore();
   const transactionLabels = collectTransactionLabels(tx);
   
   const getNetworkDisplayName = (net: string) => {
@@ -119,6 +119,17 @@ export function OverviewTab({ tx }: OverviewTabProps) {
     }
   };
 
+  const formatUnixTime = (ts: number) => {
+    const d = new Date(ts * 1000);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  };
+
   const description = generateTransactionDescription(tx);
 
   return (
@@ -128,32 +139,88 @@ export function OverviewTab({ tx }: OverviewTabProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
-            On-chain
+            Network
+            {!isDetectingNetwork && networkDetected && isOnChain && (
+              <>
+                <Badge variant="default" className="text-xs bg-green-600">On-chain</Badge>
+                <BlockExplorerLink
+                  type="transaction"
+                  params={{ txHash: tx.id }}
+                />
+              </>
+            )}
+            {!isDetectingNetwork && networkDetected && !isOnChain && (
+              <Badge variant="secondary" className="text-xs bg-amber-500/15 text-amber-500 border-amber-500/20">Inferred</Badge>
+            )}
+            {!isDetectingNetwork && !networkDetected && (
+              <Badge variant="outline" className="text-xs">Undetected</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {isDetectingNetwork ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Searching for this transaction across all networks...</span>
+              <span>Detecting network...</span>
             </div>
-          ) : networkDetected ? (
+          ) : networkDetected && isOnChain ? (
             <>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Found on network</span>
+                <span className="text-sm font-medium">Network</span>
                 <span className="text-sm">{getNetworkDisplayName(network)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Network type</span>
                 <span className="text-sm">{getNetworkType(network)}</span>
               </div>
+              {onChainMeta && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Block time</span>
+                    <span className="text-sm font-mono">{formatUnixTime(onChainMeta.blockTime)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Slot</span>
+                    <span className="text-sm font-mono">{onChainMeta.slot.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Block hash</span>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs bg-muted px-2 py-1 rounded">
+                        {onChainMeta.block.slice(0, 8)}...{onChainMeta.block.slice(-8)}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(onChainMeta.block, 'Block hash')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <BlockExplorerLink
+                        type="block"
+                        params={{ blockHash: onChainMeta.block, blockHeight: String(onChainMeta.blockHeight) }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          ) : networkDetected && !isOnChain ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Network</span>
+                <span className="text-sm">{getNetworkDisplayName(network)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Network type</span>
+                <span className="text-sm">{getNetworkType(network)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Network inferred from input references. Transaction not yet submitted.
+              </p>
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Found on network</span>
-                <span className="text-sm text-muted-foreground">Not found on-chain</span>
-              </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Assume network</span>
                 <Select value={network} onValueChange={(v) => setNetwork(v as Network)}>
@@ -167,6 +234,9 @@ export function OverviewTab({ tx }: OverviewTabProps) {
                   </SelectContent>
                 </Select>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Could not detect network. Addresses are encoded using the selected network.
+              </p>
             </>
           )}
         </CardContent>

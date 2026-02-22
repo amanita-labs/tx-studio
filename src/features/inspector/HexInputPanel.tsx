@@ -18,14 +18,15 @@ import { computeTransactionHash } from '@/lib/utils/tx-hash';
 import { toast } from 'sonner';
 import { BlockfrostFetch } from '@/components/blockfrost-fetch';
 import { Network } from '@/domain/tx';
+import type { BlockfrostTransaction } from '@/lib/types/blockfrost';
 
 export function HexInputPanel() {
-  const { txHex, parsedTx, network, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setError, clearTx } = useAppStore();
+  const { txHex, parsedTx, network, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, clearTx } = useAppStore();
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
   const [isSampleOpen, setIsSampleOpen] = useState(false);
   const { parseTransaction } = useCSLWorker();
-  const { searchTransactionAcrossNetworks } = useBlockfrost();
+  const { searchTransactionAcrossNetworks, detectNetworkFromInputs } = useBlockfrost();
 
   const validateHex = useCallback((hex: string) => {
     if (!hex) {
@@ -82,14 +83,26 @@ export function HexInputPanel() {
           if (result.network) {
             setNetwork(result.network);
             setNetworkDetected(true);
+            setIsOnChain(true);
+            setOnChainMeta({
+              block: result.metadata.block,
+              blockHeight: result.metadata.block_height,
+              blockTime: result.metadata.block_time,
+              slot: result.metadata.slot,
+              index: result.metadata.index,
+            });
           } else {
             setNetworkDetected(false);
+            setIsOnChain(false);
+            setOnChainMeta(null);
           }
         } else {
           const errorMsg = result.success === false ? result.error : 'Transaction not found on any network';
           toast.error(errorMsg);
           setError(errorMsg);
           setNetworkDetected(false);
+          setIsOnChain(false);
+          setOnChainMeta(null);
           setLoading(false);
         }
       } catch (error) {
@@ -124,14 +137,24 @@ export function HexInputPanel() {
         // Detect network in background (don't block UI)
         setDetectingNetwork(true);
         setNetworkDetected(false); // Reset detection state
+        setIsOnChain(false);       // Reset on-chain state
+        setOnChainMeta(null);
         (async () => {
           try {
             const hash = await computeTransactionHash(pastedValue);
             const result = await searchTransactionAcrossNetworks(hash);
-            
+
             if (result.success && result.network) {
               setNetwork(result.network);
               setNetworkDetected(true);
+              setIsOnChain(true);
+              setOnChainMeta({
+                block: result.metadata.block,
+                blockHeight: result.metadata.block_height,
+                blockTime: result.metadata.block_time,
+                slot: result.metadata.slot,
+                index: result.metadata.index,
+              });
               // Optionally update hex if fetched version is different
               if (result.hex && result.hex !== pastedValue) {
                 setTxHex(result.hex);
@@ -141,8 +164,29 @@ export function HexInputPanel() {
                 setParsedTx(reparseResult);
               }
             } else {
-              // Transaction not found on any network
-              setNetworkDetected(false);
+              // Fallback: detect network from first input's txId
+              const currentParsedTx = useAppStore.getState().parsedTx;
+              const firstInputTxId = currentParsedTx?.success
+                ? currentParsedTx.tx.inputs[0]?.txId
+                : undefined;
+
+              if (firstInputTxId) {
+                const detection = await detectNetworkFromInputs([firstInputTxId]);
+                if (detection.success) {
+                  const prevNetwork = useAppStore.getState().network;
+                  setNetwork(detection.network);
+                  setNetworkDetected(true);
+                  // Re-parse with detected network if it differs from what we initially parsed with
+                  if (detection.network !== prevNetwork) {
+                    const reparseResult = await parseTransaction(pastedValue, detection.network);
+                    setParsedTx(reparseResult);
+                  }
+                } else {
+                  setNetworkDetected(false);
+                }
+              } else {
+                setNetworkDetected(false);
+              }
             }
           } catch (error) {
             // Network detection failed - transaction is already parsed
@@ -159,7 +203,7 @@ export function HexInputPanel() {
         setLoading(false);
       }
     }
-  }, [network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks]);
+  }, [network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks, detectNetworkFromInputs]);
 
   const handleDissect = useCallback(async () => {
     if (!localHex.trim()) {
@@ -200,14 +244,26 @@ export function HexInputPanel() {
           if (result.network) {
             setNetwork(result.network);
             setNetworkDetected(true);
+            setIsOnChain(true);
+            setOnChainMeta({
+              block: result.metadata.block,
+              blockHeight: result.metadata.block_height,
+              blockTime: result.metadata.block_time,
+              slot: result.metadata.slot,
+              index: result.metadata.index,
+            });
           } else {
             setNetworkDetected(false);
+            setIsOnChain(false);
+            setOnChainMeta(null);
           }
         } else {
           const errorMsg = result.success === false ? result.error : 'Transaction not found on any network';
           toast.error(errorMsg);
           setError(errorMsg);
           setNetworkDetected(false);
+          setIsOnChain(false);
+          setOnChainMeta(null);
           setLoading(false);
         }
       } catch (error) {
@@ -244,14 +300,24 @@ export function HexInputPanel() {
       // Detect network in background (don't block UI)
       setDetectingNetwork(true);
       setNetworkDetected(false); // Reset detection state
+      setIsOnChain(false);       // Reset on-chain state
+      setOnChainMeta(null);
       (async () => {
         try {
           const hash = await computeTransactionHash(trimmedHex);
           const result = await searchTransactionAcrossNetworks(hash);
-          
+
           if (result.success && result.network) {
             setNetwork(result.network);
             setNetworkDetected(true);
+            setIsOnChain(true);
+            setOnChainMeta({
+              block: result.metadata.block,
+              blockHeight: result.metadata.block_height,
+              blockTime: result.metadata.block_time,
+              slot: result.metadata.slot,
+              index: result.metadata.index,
+            });
             // Optionally update hex if fetched version is different
             if (result.hex && result.hex !== trimmedHex) {
               setTxHex(result.hex);
@@ -261,8 +327,29 @@ export function HexInputPanel() {
               setParsedTx(reparseResult);
             }
           } else {
-            // Transaction not found on any network
-            setNetworkDetected(false);
+            // Fallback: detect network from first input's txId
+            const currentParsedTx = useAppStore.getState().parsedTx;
+            const firstInputTxId = currentParsedTx?.success
+              ? currentParsedTx.tx.inputs[0]?.txId
+              : undefined;
+
+            if (firstInputTxId) {
+              const detection = await detectNetworkFromInputs([firstInputTxId]);
+              if (detection.success) {
+                const prevNetwork = useAppStore.getState().network;
+                setNetwork(detection.network);
+                setNetworkDetected(true);
+                // Re-parse with detected network if it differs from what we initially parsed with
+                if (detection.network !== prevNetwork) {
+                  const reparseResult = await parseTransaction(trimmedHex, detection.network);
+                  setParsedTx(reparseResult);
+                }
+              } else {
+                setNetworkDetected(false);
+              }
+            } else {
+              setNetworkDetected(false);
+            }
           }
         } catch (error) {
           // Network detection failed - transaction is already parsed
@@ -278,7 +365,7 @@ export function HexInputPanel() {
       toast.error(`Parsing failed: ${errorMessage}`);
       setLoading(false);
     }
-  }, [localHex, isValid, network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks]);
+  }, [localHex, isValid, network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks, detectNetworkFromInputs]);
 
 
   const handleCopyToClipboard = async () => {
@@ -319,15 +406,23 @@ export function HexInputPanel() {
     }
   };
 
-  const handleBlockfrostFetch = useCallback(async (hex: string, fetchedNetwork: Network) => {
+  const handleBlockfrostFetch = useCallback(async (hex: string, fetchedNetwork: Network, metadata: BlockfrostTransaction) => {
     // Set the fetched hex
     setLocalHex(hex);
     setIsValid(true);
-    
+
     // Update network - this came from Blockfrost, so it's detected
     setNetwork(fetchedNetwork);
     setNetworkDetected(true);
-    
+    setIsOnChain(true);
+    setOnChainMeta({
+      block: metadata.block,
+      blockHeight: metadata.block_height,
+      blockTime: metadata.block_time,
+      slot: metadata.slot,
+      index: metadata.index,
+    });
+
     // Set the hex and parse the transaction immediately
     setTxHex(hex);
     setLoading(true);
@@ -337,7 +432,7 @@ export function HexInputPanel() {
       const result = await parseTransaction(hex, fetchedNetwork);
       setParsedTx(result);
       setLoading(false);
-      
+
       if (result.success) {
         toast.success('Transaction fetched and parsed successfully');
       } else {
@@ -349,7 +444,7 @@ export function HexInputPanel() {
       toast.error(`Parsing failed: ${errorMessage}`);
       setLoading(false);
     }
-  }, [setTxHex, setNetwork, setNetworkDetected, setLoading, setError, setParsedTx, parseTransaction]);
+  }, [setTxHex, setNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setLoading, setError, setParsedTx, parseTransaction]);
 
   const sampleTransactions = SAMPLE_TRANSACTIONS;
 
