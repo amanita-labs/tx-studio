@@ -5,7 +5,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Copy, FileCode, Code, Hash, Zap, Database, CheckCircle2, Cpu } from 'lucide-react';
+import { Copy, FileCode, Code, Hash, Zap, CheckCircle2, Cpu, Vote, ScrollText, ChevronDown } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DomainTx } from '@/domain/tx';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
@@ -94,7 +95,21 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
       case 'mint': return <Hash className="h-3 w-3" />;
       case 'cert': return <CheckCircle2 className="h-3 w-3" />;
       case 'reward': return <Cpu className="h-3 w-3" />;
+      case 'vote': return <Vote className="h-3 w-3" />;
+      case 'propose': return <ScrollText className="h-3 w-3" />;
       default: return <Hash className="h-3 w-3" />;
+    }
+  };
+
+  const getPurposeColor = (purpose: string) => {
+    switch (purpose) {
+      case 'spend': return 'text-yellow-700 border-yellow-400/50 dark:text-yellow-400 dark:border-yellow-500/30';
+      case 'mint': return 'text-green-700 border-green-400/50 dark:text-green-400 dark:border-green-500/30';
+      case 'cert': return 'text-blue-700 border-blue-400/50 dark:text-blue-400 dark:border-blue-500/30';
+      case 'reward': return 'text-purple-700 border-purple-400/50 dark:text-purple-400 dark:border-purple-500/30';
+      case 'vote': return 'text-rose-700 border-rose-400/50 dark:text-rose-400 dark:border-rose-500/30';
+      case 'propose': return 'text-orange-700 border-orange-400/50 dark:text-orange-400 dark:border-orange-500/30';
+      default: return '';
     }
   };
 
@@ -220,14 +235,10 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
                 const safeHash = String(script?.hash || '');
                 const safeSize = script?.bytesLen && !isNaN(Number(script.bytesLen)) ? Number(script.bytesLen) : null;
                 const scriptLabel = getKnownScriptLabel(safeHash);
-                const datumOutputs = script.address
-                  ? tx.outputs.filter(o => o.datum && o.address === script.address)
-                  : [];
-                const hasDatumOutput = datumOutputs.length > 0;
                 const matchedRedeemers = tx.redeemers?.filter(r => r.scriptHash === safeHash) ?? [];
 
                 return (
-                  <div key={index} className={`border rounded-lg p-3 space-y-2 ${hasDatumOutput ? 'border-purple-400/50 bg-purple-50/30 dark:border-purple-500/30 dark:bg-purple-950/20' : ''}`}>
+                  <div key={index} className="border rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1">
@@ -246,16 +257,15 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
-                        {hasDatumOutput && (
-                          <Badge variant="outline" className="text-purple-700 border-purple-300 dark:text-purple-300 dark:border-purple-600 gap-1">
-                            <Database className="h-3 w-3" />
-                            {datumOutputs.length} datum {datumOutputs.length === 1 ? 'output' : 'outputs'}
-                          </Badge>
-                        )}
-                        {matchedRedeemers.map((r, i) => (
-                          <Badge key={i} variant="outline" className="gap-1">
-                            {getPurposeIcon(r.purpose)}
-                            {r.purpose}[{r.index}]
+                        {Object.entries(
+                          matchedRedeemers.reduce<Record<string, number>>((acc, r) => {
+                            acc[r.purpose] = (acc[r.purpose] || 0) + 1;
+                            return acc;
+                          }, {})
+                        ).map(([purpose, count]) => (
+                          <Badge key={purpose} variant="outline" className={`gap-1 ${getPurposeColor(purpose)}`}>
+                            {getPurposeIcon(purpose)}
+                            {purpose} ({count})
                           </Badge>
                         ))}
                       </div>
@@ -270,7 +280,7 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
                         <KnownLabelHighlight category="script" label={scriptLabel} />
                       )}
 
-                      {script.address && (
+                      {script.address && matchedRedeemers.some(r => r.purpose === 'spend') && (
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs text-muted-foreground">Address</span>
                           <div className="flex items-center gap-1">
@@ -329,29 +339,36 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
 
       {/* Redeemers */}
       {tx.redeemers && tx.redeemers.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
-              Redeemers
-              <Badge variant="outline">{tx.redeemers.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[...tx.redeemers].sort((a, b) => a.purpose.localeCompare(b.purpose) || a.index - b.index).map((redeemer, index) => (
-                <RedeemerCard
-                  key={index}
-                  redeemer={redeemer}
-                  index={index}
-                  evalResults={evalResults}
-                  protocolParams={protocolParams}
-                  tx={tx}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <Collapsible defaultOpen>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer select-none">
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Redeemers
+                  <Badge variant="outline">{tx.redeemers.length}</Badge>
+                  <ChevronDown className="h-4 w-4 ml-auto text-muted-foreground transition-transform [[data-state=closed]_&]:rotate-[-90deg]" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent>
+                <div className="space-y-3">
+                  {[...tx.redeemers].sort((a, b) => a.purpose.localeCompare(b.purpose) || a.index - b.index).map((redeemer, index) => (
+                    <RedeemerCard
+                      key={index}
+                      redeemer={redeemer}
+                      index={index}
+                      evalResults={evalResults}
+                      protocolParams={protocolParams}
+                      tx={tx}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
       )}
 
       {/* Total Execution Units with Budget Bars */}

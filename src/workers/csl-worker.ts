@@ -1745,6 +1745,54 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       }
     }
 
+    // Vote: resolve scriptHash by matching voter credential hashes against witness scripts
+    if (governance) {
+      const witnessScriptHashSet = new Set(scripts.map(s => s.hash));
+      const voterHashes = new Set<string>();
+
+      for (const dv of governance.drepVotes) {
+        if (dv.drepHash) voterHashes.add(dv.drepHash);
+      }
+      for (const cv of governance.committeeVotes) {
+        if (cv.memberCredential?.hash) voterHashes.add(cv.memberCredential.hash);
+      }
+
+      // Voter hashes that match a witness script hash are script-based voters
+      const scriptVoterHashes = [...voterHashes].filter(h => witnessScriptHashSet.has(h));
+
+      if (scriptVoterHashes.length === 1) {
+        for (const r of redeemers) {
+          if (r.purpose === 'vote' && !r.scriptHash) {
+            r.scriptHash = scriptVoterHashes[0];
+          }
+        }
+      }
+    }
+
+    // General fallback for remaining unresolved redeemers (spend, vote, propose)
+    const plutusScriptHashes = [...new Set(
+      scripts.filter(s => s.type !== 'Native').map(s => s.hash)
+    )];
+    const unresolvedRedeemers = redeemers.filter(r => !r.scriptHash);
+
+    if (unresolvedRedeemers.length > 0) {
+      if (plutusScriptHashes.length === 1) {
+        // Single Plutus script: all redeemers must use it
+        for (const r of unresolvedRedeemers) {
+          r.scriptHash = plutusScriptHashes[0];
+        }
+      } else if (plutusScriptHashes.length > 1) {
+        // Multiple scripts: try process of elimination
+        // Find script hashes not yet claimed by any resolved redeemer
+        const claimedHashes = new Set(redeemers.filter(r => r.scriptHash).map(r => r.scriptHash!));
+        const unclaimedHashes = plutusScriptHashes.filter(h => !claimedHashes.has(h));
+
+        if (unresolvedRedeemers.length === 1 && unclaimedHashes.length === 1) {
+          unresolvedRedeemers[0].scriptHash = unclaimedHashes[0];
+        }
+      }
+    }
+
     // Count witnesses and extract signer details
     const vkeyCount = witnessSet.vkeys()?.len() || 0;
     const nativeCount = witnessSet.native_scripts()?.len() || 0;
