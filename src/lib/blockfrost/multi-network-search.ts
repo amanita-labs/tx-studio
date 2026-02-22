@@ -2,6 +2,7 @@
 import { Network } from '@/domain/tx';
 import { fetchTransactionByHash, checkTransactionExists } from './client';
 import { BlockfrostTransaction } from '@/lib/types/blockfrost';
+import { blockfrostCache, networkDetectionCache, CACHE_TTL_SUCCESS, CACHE_TTL_NOT_FOUND, CACHE_TTL_NETWORK_DETECTION } from './cache';
 
 export interface MultiNetworkSearchResult {
   success: true;
@@ -26,10 +27,19 @@ export type NetworkDetectionResponse = NetworkDetectionResult | NetworkDetection
  * Search for a transaction across all networks sequentially
  * Order: mainnet → preview → preprod
  * Stops on first successful result
+ * Uses caching to reduce API requests
  */
 export async function searchTransactionAcrossNetworks(
   hash: string
 ): Promise<MultiNetworkSearchResponse> {
+  const normalizedHash = hash.toLowerCase().trim();
+
+  // Check cache first
+  const cachedResult = blockfrostCache.get(normalizedHash);
+  if (cachedResult) {
+    return cachedResult;
+  }
+
   const networks: Network[] = ['mainnet', 'preview', 'preprod'];
   const searchedNetworks: Network[] = [];
   const errors: Array<{ network: Network; error: string }> = [];
@@ -40,13 +50,18 @@ export async function searchTransactionAcrossNetworks(
     try {
       const result = await fetchTransactionByHash(network, hash);
       
-      // Success! Return immediately
-      return {
+      // Success! Cache and return immediately
+      const successResult: MultiNetworkSearchResult = {
         success: true,
         network,
         hex: result.hex,
         metadata: result.transaction,
       };
+      
+      // Cache successful result with long TTL
+      blockfrostCache.set(normalizedHash, successResult, CACHE_TTL_SUCCESS);
+      
+      return successResult;
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const statusCode = error?.status_code;
@@ -77,11 +92,16 @@ export async function searchTransactionAcrossNetworks(
 
   // Transaction not found on any network
   const errorMessages = errors.map(e => `${e.network}: ${e.error}`).join('; ');
-  return {
+  const notFoundResult: MultiNetworkSearchError = {
     success: false,
     error: `Transaction not found on mainnet, preview, or preprod networks. Errors: ${errorMessages}`,
     searchedNetworks,
   };
+  
+  // Cache negative result with short TTL (transaction might be submitted later)
+  blockfrostCache.set(normalizedHash, notFoundResult, CACHE_TTL_NOT_FOUND);
+  
+  return notFoundResult;
 }
 
 /**
@@ -97,6 +117,13 @@ export async function detectNetworkFromInputs(
   }
 
   const txId = inputTxIds[0];
+
+  // Check cache first
+  const cached = networkDetectionCache.get(txId);
+  if (cached) {
+    return cached;
+  }
+
   const networks: Network[] = ['mainnet', 'preview', 'preprod'];
   const searchedNetworks: Network[] = [];
   const errors: Array<{ network: Network; error: string }> = [];
@@ -107,7 +134,9 @@ export async function detectNetworkFromInputs(
     try {
       const exists = await checkTransactionExists(network, txId);
       if (exists) {
-        return { success: true, network };
+        const result: NetworkDetectionResult = { success: true, network };
+        networkDetectionCache.set(txId, result, CACHE_TTL_NETWORK_DETECTION);
+        return result;
       }
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -129,11 +158,13 @@ export async function detectNetworkFromInputs(
   }
 
   const errorMessages = errors.map(e => `${e.network}: ${e.error}`).join('; ');
-  return {
+  const failResult: NetworkDetectionError = {
     success: false,
     error: errors.length
       ? `Input tx not found. Errors: ${errorMessages}`
       : 'Input transaction not found on any network',
     searchedNetworks,
   };
+  networkDetectionCache.set(txId, failResult, CACHE_TTL_NOT_FOUND);
+  return failResult;
 }

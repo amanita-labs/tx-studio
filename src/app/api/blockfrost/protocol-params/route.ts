@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Network } from '@/domain/tx';
 import { createBlockfrostClient } from '@/lib/blockfrost/client';
-import { ProtocolParamsResponse } from '@/lib/types/script-eval';
+import { ProtocolParamsResponse, ProtocolParamsSubset } from '@/lib/types/script-eval';
+import { protocolParamsCache, CACHE_TTL_PROTOCOL_PARAMS } from '@/lib/blockfrost/cache';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,22 +22,30 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Check cache first
+    const cachedParams = protocolParamsCache.get(network);
+    if (cachedParams) {
+      return NextResponse.json<ProtocolParamsResponse>({
+        success: true,
+        params: cachedParams,
+      });
+    }
+
     const api = createBlockfrostClient(network);
     const params = await api.epochsLatestParameters();
 
-    const priceMem = typeof params.price_mem === 'number' ? params.price_mem : 0;
-    const priceStep = typeof params.price_step === 'number' ? params.price_step : 0;
-    const maxTxExMem = params.max_tx_ex_mem ? parseInt(params.max_tx_ex_mem, 10) : 0;
-    const maxTxExSteps = params.max_tx_ex_steps ? parseInt(params.max_tx_ex_steps, 10) : 0;
+    const parsedParams: ProtocolParamsSubset = {
+      priceMem: typeof params.price_mem === 'number' ? params.price_mem : 0,
+      priceStep: typeof params.price_step === 'number' ? params.price_step : 0,
+      maxTxExMem: params.max_tx_ex_mem ? parseInt(params.max_tx_ex_mem, 10) : 0,
+      maxTxExSteps: params.max_tx_ex_steps ? parseInt(params.max_tx_ex_steps, 10) : 0,
+    };
+
+    protocolParamsCache.set(network, parsedParams, CACHE_TTL_PROTOCOL_PARAMS);
 
     return NextResponse.json<ProtocolParamsResponse>({
       success: true,
-      params: {
-        priceMem,
-        priceStep,
-        maxTxExMem,
-        maxTxExSteps,
-      },
+      params: parsedParams,
     });
   } catch (error: any) {
     console.error('Error fetching protocol parameters:', error);

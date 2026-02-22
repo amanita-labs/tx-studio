@@ -3,6 +3,7 @@ import { BlockFrostAPI } from '@blockfrost/blockfrost-js';
 import { Network } from '@/domain/tx';
 import { getBlockfrostProjectId } from './config';
 import { BlockfrostTransaction } from '@/lib/types/blockfrost';
+import { transactionCache, CACHE_TTL_SUCCESS } from './cache';
 
 /**
  * Create a Blockfrost API client for the specified network
@@ -65,19 +66,23 @@ export async function fetchTransactionByHash(
   network: Network,
   hash: string
 ): Promise<{ transaction: BlockfrostTransaction; hex: string }> {
-  // Fetch transaction metadata first to validate it exists
+  const cacheKey = `${network}:${hash}`;
+  const cached = transactionCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const api = createBlockfrostClient(network);
-  
+
   try {
     const transaction = await api.txs(hash);
-    
+
     // Then fetch the CBOR hex
     const hex = await fetchTransactionHex(network, hash);
 
-    return {
-      transaction,
-      hex,
-    };
+    const result = { transaction, hex };
+    transactionCache.set(cacheKey, result, CACHE_TTL_SUCCESS);
+    return result;
   } catch (error: any) {
     // Handle Blockfrost SDK errors
     if (error?.status_code === 404) {
