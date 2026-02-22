@@ -2,10 +2,12 @@
 import { useState, useCallback } from 'react';
 import { Network } from '@/domain/tx';
 import { FetchTransactionResponse } from '@/lib/types/blockfrost';
+import { NetworkDetectionResponse } from '@/lib/blockfrost/multi-network-search';
 
 interface UseBlockfrostReturn {
   fetchTransaction: (hash: string, network: Network) => Promise<FetchTransactionResponse>;
   searchTransactionAcrossNetworks: (hash: string) => Promise<FetchTransactionResponse>;
+  detectNetworkFromInputs: (inputTxIds: string[]) => Promise<NetworkDetectionResponse>;
   isLoading: boolean;
   error: string | null;
 }
@@ -159,9 +161,37 @@ export function useBlockfrost(): UseBlockfrostReturn {
     []
   );
 
+  const detectNetworkFromInputs = useCallback(
+    async (inputTxIds: string[]): Promise<NetworkDetectionResponse> => {
+      try {
+        const response = await fetch('/api/blockfrost/detect-network', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputTxIds }),
+        });
+
+        const data: NetworkDetectionResponse = await response.json();
+        return data;
+      } catch (err) {
+        let errorMessage = 'An unexpected error occurred';
+
+        if (err instanceof TypeError && err.message.includes('fetch')) {
+          errorMessage = 'Network error. API routes are not available in static export mode.';
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+
+        console.error('Network detection from inputs error:', err);
+        return { success: false, error: errorMessage, searchedNetworks: [] };
+      }
+    },
+    []
+  );
+
   return {
     fetchTransaction,
     searchTransactionAcrossNetworks,
+    detectNetworkFromInputs,
     isLoading,
     error,
   };
