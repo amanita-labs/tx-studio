@@ -2,6 +2,7 @@
 import type { MultiNetworkSearchResponse, NetworkDetectionResponse } from './multi-network-search';
 import type { BlockfrostTransaction } from '@/lib/types/blockfrost';
 import type { ProtocolParamsSubset } from '@/lib/types/script-eval';
+import type { AllProtocolParams } from '@/lib/types/protocol-params';
 
 interface CacheEntry<T> {
   result: T;
@@ -98,6 +99,7 @@ export const multiNetworkSearchCache = new BlockfrostCache<MultiNetworkSearchRes
 export const networkDetectionCache = new BlockfrostCache<NetworkDetectionResponse>();
 export const transactionCache = new BlockfrostCache<{ transaction: BlockfrostTransaction; hex: string }>();
 export const protocolParamsCache = new BlockfrostCache<ProtocolParamsSubset>();
+export const allProtocolParamsCache = new BlockfrostCache<AllProtocolParams>();
 
 // Backward compat alias — used by multi-network-search.ts
 export const blockfrostCache = multiNetworkSearchCache;

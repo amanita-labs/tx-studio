@@ -39,6 +39,17 @@ import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
 import { useTokenRegistry } from '@/hooks/use-token-registry';
+import { useCurrentProtocolParams } from '@/hooks/use-current-protocol-params';
+import type { AllProtocolParams } from '@/lib/types/protocol-params';
+import {
+  lookupCurrentValue,
+  parseProposedRaw,
+  computeDeltaPct,
+  isExecUnitParam,
+  isSkippedParam,
+  type CurrentValueResult,
+  type CurrentExecUnitsResult,
+} from '@/lib/protocol-param-mapping';
 import { buildTokenSubject } from '@/lib/token-registry';
 import { computeAssetFingerprint, decodeAssetName } from '@/lib/utils/asset-fingerprint';
 import * as bech32Buffer from 'bech32-buffer';
@@ -86,18 +97,22 @@ function ValidityTimeRemaining({ slot, network }: { slot: number; network: Netwo
 }
 
 // Component for individual governance action item
-function GovernanceActionItem({ 
-  action, 
-  index, 
+function GovernanceActionItem({
+  action,
+  index,
   copyToClipboard,
   protocolParamNames,
-  formatProtocolParamValue
-}: { 
-  action: any; 
-  index: number; 
+  formatProtocolParamValue,
+  currentProtocolParams,
+  isLoadingCurrentParams
+}: {
+  action: any;
+  index: number;
   copyToClipboard: (text: string, label: string) => Promise<void>;
   protocolParamNames: Record<number, string>;
   formatProtocolParamValue: (key: number, value: any) => string;
+  currentProtocolParams?: AllProtocolParams | null;
+  isLoadingCurrentParams?: boolean;
 }) {
   const [isRawDataOpen, setIsRawDataOpen] = useState(false);
   
@@ -428,17 +443,78 @@ function GovernanceActionItem({
                       .replace(/^./, str => str.toUpperCase())
                       .trim();
                   };
-                  
+
+                  // Helper to render a delta badge
+                  const renderDelta = (deltaPct: number | null) => {
+                    if (deltaPct === null) return null;
+                    if (deltaPct === 0) {
+                      return (
+                        <span className="font-mono text-[10px] text-muted-foreground ml-1.5 italic">
+                          (no change)
+                        </span>
+                      );
+                    }
+                    const sign = deltaPct > 0 ? '+' : '';
+                    const color = deltaPct > 0
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400';
+                    return (
+                      <span className={`font-mono text-[10px] ${color} ml-1.5`}>
+                        ({sign}{deltaPct.toFixed(1)}%)
+                      </span>
+                    );
+                  };
+
+                  // Helper to render a "current → proposed" line for a single scalar value
+                  const renderScalarWithCurrent = (
+                    paramName: string,
+                    proposedFormatted: string,
+                    current: CurrentValueResult | null,
+                  ) => {
+                    const proposedRaw = current ? parseProposedRaw(paramName, proposedFormatted) : null;
+                    const deltaPct = current && proposedRaw !== null
+                      ? computeDeltaPct(current.raw, proposedRaw)
+                      : null;
+
+                    if (current) {
+                      return (
+                        <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
+                          <span className="text-muted-foreground">{current.formatted}</span>
+                          <span className="text-muted-foreground mx-1">&rarr;</span>
+                          <span className="font-semibold">{proposedFormatted}</span>
+                          {renderDelta(deltaPct)}
+                        </span>
+                      );
+                    }
+
+                    return <span className="font-mono font-semibold">{proposedFormatted}</span>;
+                  };
+
+                  // Look up current values if available
+                  const hasCurrentParams = !!currentProtocolParams && !isLoadingCurrentParams;
+
                   return (
                     <div key={key} className="col-span-2">
                       <div className="font-medium mb-2">{displayLabel}:</div>
+                      {isLoadingCurrentParams && (
+                        <div className="text-[11px] text-muted-foreground mb-2 pl-4 italic">
+                          Loading current values...
+                        </div>
+                      )}
                       <div className="space-y-3 pl-4 border-l-2 border-muted">
                         {Object.entries(value as Record<string, any>).map(([paramName, paramValue]) => {
                           const readableName = formatParamName(paramName);
-                          
+                          const currentLookup = hasCurrentParams
+                            ? lookupCurrentValue(paramName, currentProtocolParams!)
+                            : null;
+
                           // Handle execution units (objects with mem and steps)
                           if (paramValue && typeof paramValue === 'object' && !Array.isArray(paramValue)) {
                             if (paramValue.mem !== undefined || paramValue.steps !== undefined) {
+                              const execCurrent = (hasCurrentParams && isExecUnitParam(paramName))
+                                ? currentLookup as CurrentExecUnitsResult | null
+                                : null;
+
                               return (
                                 <div key={paramName} className="space-y-1.5">
                                   <div className="font-medium text-xs">{readableName}:</div>
@@ -446,13 +522,47 @@ function GovernanceActionItem({
                                     {paramValue.mem !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Memory:</span>
-                                        <span className="font-mono font-semibold">{Number(paramValue.mem).toLocaleString()}</span>
+                                        {(() => {
+                                          const proposedStr = Number(paramValue.mem).toLocaleString();
+                                          const cur = execCurrent?.mem ?? null;
+                                          const proposedRaw = Number(paramValue.mem);
+                                          const deltaPct = cur ? computeDeltaPct(cur.raw, proposedRaw) : null;
+
+                                          if (cur) {
+                                            return (
+                                              <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
+                                                <span className="text-muted-foreground">{cur.formatted}</span>
+                                                <span className="text-muted-foreground mx-1">&rarr;</span>
+                                                <span className="font-semibold">{proposedStr}</span>
+                                                {renderDelta(deltaPct)}
+                                              </span>
+                                            );
+                                          }
+                                          return <span className="font-mono font-semibold">{proposedStr}</span>;
+                                        })()}
                                       </div>
                                     )}
                                     {paramValue.steps !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Steps:</span>
-                                        <span className="font-mono font-semibold">{Number(paramValue.steps).toLocaleString()}</span>
+                                        {(() => {
+                                          const proposedStr = Number(paramValue.steps).toLocaleString();
+                                          const cur = execCurrent?.steps ?? null;
+                                          const proposedRaw = Number(paramValue.steps);
+                                          const deltaPct = cur ? computeDeltaPct(cur.raw, proposedRaw) : null;
+
+                                          if (cur) {
+                                            return (
+                                              <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
+                                                <span className="text-muted-foreground">{cur.formatted}</span>
+                                                <span className="text-muted-foreground mx-1">&rarr;</span>
+                                                <span className="font-semibold">{proposedStr}</span>
+                                                {renderDelta(deltaPct)}
+                                              </span>
+                                            );
+                                          }
+                                          return <span className="font-mono font-semibold">{proposedStr}</span>;
+                                        })()}
                                       </div>
                                     )}
                                   </div>
@@ -460,11 +570,16 @@ function GovernanceActionItem({
                               );
                             }
                           }
-                          // Handle regular parameter values
+
+                          // Regular parameter values
+                          const scalarCurrent = (!isExecUnitParam(paramName) && currentLookup && 'raw' in currentLookup)
+                            ? currentLookup as CurrentValueResult
+                            : null;
+
                           return (
-                            <div key={paramName} className="flex items-center justify-between text-xs">
-                              <span className="font-medium">{readableName}:</span>
-                              <span className="font-mono font-semibold">{String(paramValue)}</span>
+                            <div key={paramName} className="flex items-center justify-between text-xs gap-2">
+                              <span className="font-medium shrink-0">{readableName}:</span>
+                              {renderScalarWithCurrent(paramName, String(paramValue), scalarCurrent)}
                             </div>
                           );
                         })}
@@ -757,6 +872,13 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const { getMetadata } = useTokenRegistry(tx);
   const [contents, setContents] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Detect whether any governance action is a ParameterChange proposal
+  const hasParameterChangeAction = !!(
+    tx.governance?.proposals?.some((p: any) => p.type === 'ParameterChange')
+  );
+  const { currentParams: currentProtocolParams, isLoading: isLoadingCurrentParams } =
+    useCurrentProtocolParams(network, hasParameterChangeAction);
 
   useEffect(() => {
     analyzeContents();
@@ -2222,13 +2344,15 @@ export function ContentsTab({ tx }: ContentsTabProps) {
               </Card>
             ) : (
               contents.governance.items.map((action: any, index: number) => (
-                <GovernanceActionItem 
-                  key={index} 
-                  action={action} 
-                  index={index} 
+                <GovernanceActionItem
+                  key={index}
+                  action={action}
+                  index={index}
                   copyToClipboard={copyToClipboard}
                   protocolParamNames={PROTOCOL_PARAM_NAMES}
                   formatProtocolParamValue={formatProtocolParamValue}
+                  currentProtocolParams={currentProtocolParams}
+                  isLoadingCurrentParams={isLoadingCurrentParams}
                 />
               ))
             )}
