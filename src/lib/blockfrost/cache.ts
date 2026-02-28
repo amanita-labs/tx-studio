@@ -89,7 +89,7 @@ class BlockfrostCache<T> {
 
 // TTL constants
 export const CACHE_TTL_SUCCESS = 60 * 60 * 1000; // 1 hour for successful lookups
-export const CACHE_TTL_NOT_FOUND = 5 * 60 * 1000; // 5 minutes for 404 results
+export const CACHE_TTL_NOT_FOUND = 60 * 1000; // 1 minute for 404 results
 export const CACHE_TTL_NETWORK_DETECTION = 60 * 60 * 1000; // 1 hour for network detection
 export const CACHE_TTL_PROTOCOL_PARAMS = 4 * 60 * 60 * 1000; // 4 hours for protocol params
 

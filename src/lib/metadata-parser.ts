@@ -1,6 +1,7 @@
 // src/lib/metadata-parser.ts
 import { DomainTx } from '@/domain/tx';
 import { decode } from 'cbor-x';
+import { ensureCip10Registry, getCip10Entry } from './cip10-registry';
 
 export interface ParsedMetadata {
   label: number;
@@ -8,6 +9,7 @@ export interface ParsedMetadata {
   data: any;
   size: number;
   description: string;
+  cip10Description?: string;
   category: 'nft' | 'token' | 'governance' | 'custom' | 'unknown';
   warnings: string[];
   formattedData?: any;
@@ -42,6 +44,8 @@ export class MetadataParser {
   }
 
   async analyze(tx: DomainTx): Promise<MetadataAnalysis> {
+    await ensureCip10Registry();
+
     const parsedMetadata: ParsedMetadata[] = [];
     const warnings: string[] = [];
     const categories: Record<string, number> = {};
@@ -75,7 +79,7 @@ export class MetadataParser {
   }
 
   private async parseMetadataEntry(metadata: any): Promise<ParsedMetadata> {
-    const label = metadata.label;
+    const label = Number(metadata.label);
     const warnings: string[] = [];
     let data: any;
     let type: 'json' | 'cbor' | 'unknown' = 'unknown';
@@ -124,6 +128,7 @@ export class MetadataParser {
     }
 
     const size = this.calculateMetadataSize(metadata);
+    const cip10Description = getCip10Entry(label);
 
     return {
       label,
@@ -131,6 +136,7 @@ export class MetadataParser {
       data,
       size,
       description,
+      cip10Description,
       category,
       warnings,
       structure,
@@ -181,12 +187,14 @@ export class MetadataParser {
         description = 'Governance Metadata (CIP-1694)';
         break;
       
-      default:
+      default: {
         category = 'custom';
         description = `Custom Metadata (Label ${label})`;
         if (label < 100) {
           warnings.push('Using reserved metadata label (0-99)');
         }
+        break;
+      }
     }
 
     // Size warnings
@@ -218,9 +226,11 @@ export class MetadataParser {
         category = 'governance';
         description = 'Governance Metadata (CIP-1694) - CBOR Format';
         break;
-      default:
+      default: {
         category = 'custom';
         description = `Custom Metadata (Label ${label}) - CBOR Format`;
+        break;
+      }
     }
 
     // CBOR size analysis
