@@ -19,5 +19,15 @@ export function formatLovelace(lovelace: bigint): string {
 }
 
 export function formatAssetQuantity(quantity: bigint, decimals: number = 0): string {
-  return quantity.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (decimals <= 0) {
+    return quantity.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  const isNegative = quantity < BigInt(0);
+  const abs = isNegative ? -quantity : quantity;
+  const str = abs.toString().padStart(decimals + 1, '0');
+  const intPart = str.slice(0, str.length - decimals);
+  const fracPart = str.slice(str.length - decimals);
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${isNegative ? '-' : ''}${formattedInt}.${fracPart}`;
 }

@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { getKnownAddressLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
+import { useTokenRegistry } from '@/hooks/use-token-registry';
+import { AssetDisplay } from '@/components/asset-display';
 
 interface IoValueTabProps {
   tx: DomainTx;
@@ -22,6 +24,8 @@ function truncateAddress(address: string, startLength: number = 15, endLength: n
 }
 
 export function IoValueTab({ tx }: IoValueTabProps) {
+  const { getMetadata } = useTokenRegistry(tx);
+
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -122,14 +126,11 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                                 <span className="text-xs text-muted-foreground">Assets</span>
                                 <div className="space-y-1">
                                   {input.resolved.value.assets.map((asset, assetIndex) => (
-                                    <div key={assetIndex} className="flex items-center justify-between text-xs">
-                                      <span className="truncate">
-                                        {asset.policyId.slice(0, 8)}...{asset.assetName}
-                                      </span>
-                                      <span className="font-mono">
-                                        {formatAssetQuantity(asset.quantity)}
-                                      </span>
-                                    </div>
+                                    <AssetDisplay
+                                      key={assetIndex}
+                                      asset={asset}
+                                      metadata={getMetadata(asset.policyId, asset.assetName)}
+                                    />
                                   ))}
                                 </div>
                               </div>
@@ -233,14 +234,11 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                                 <span className="text-xs text-muted-foreground">Assets</span>
                                 <div className="space-y-1">
                                   {input.resolved.value.assets.map((asset, assetIndex) => (
-                                    <div key={assetIndex} className="flex items-center justify-between text-xs">
-                                      <span className="truncate">
-                                        {asset.policyId.slice(0, 8)}...{asset.assetName}
-                                      </span>
-                                      <span className="font-mono">
-                                        {formatAssetQuantity(asset.quantity)}
-                                      </span>
-                                    </div>
+                                    <AssetDisplay
+                                      key={assetIndex}
+                                      asset={asset}
+                                      metadata={getMetadata(asset.policyId, asset.assetName)}
+                                    />
                                   ))}
                                 </div>
                               </div>
@@ -318,14 +316,11 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                           <span className="text-xs text-muted-foreground">Assets</span>
                           <div className="space-y-1">
                             {output.assets.map((asset, assetIndex) => (
-                              <div key={assetIndex} className="flex items-center justify-between text-xs">
-                                <span className="truncate">
-                                  {asset.policyId.slice(0, 8)}...{asset.assetName}
-                                </span>
-                                <span className="font-mono">
-                                  {formatAssetQuantity(asset.quantity)}
-                                </span>
-                              </div>
+                              <AssetDisplay
+                                key={assetIndex}
+                                asset={asset}
+                                metadata={getMetadata(asset.policyId, asset.assetName)}
+                              />
                             ))}
                           </div>
                         </div>
@@ -367,15 +362,31 @@ export function IoValueTab({ tx }: IoValueTabProps) {
               {tx.mint.map((mint, index) => {
                 const assetId = `${mint.policyId}${mint.assetName}`;
                 const assetNameDisplay = mint.assetName || '(empty - policy native token)';
+                const mintMeta = getMetadata(mint.policyId, mint.assetName);
+                const mintDecimals = mintMeta?.decimals ?? 0;
                 return (
                   <div key={index} className="border rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Minting Action {index + 1}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Minting Action {index + 1}</span>
+                        {mintMeta && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            {mintMeta.logo && (
+                              <img
+                                src={`data:image/png;base64,${mintMeta.logo}`}
+                                alt={mintMeta.name}
+                                className="h-4 w-4 rounded-sm"
+                              />
+                            )}
+                            {mintMeta.ticker ?? mintMeta.name}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-sm font-mono">
-                        {mint.quantity > BigInt(0) ? '+' : ''}{formatAssetQuantity(mint.quantity)}
+                        {mint.quantity > BigInt(0) ? '+' : ''}{formatAssetQuantity(mint.quantity, mintDecimals)}
                       </span>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <div className="space-y-1">
                         <span className="text-xs text-muted-foreground">Asset Name:</span>
@@ -553,14 +564,11 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                     <span className="text-sm font-medium">Assets</span>
                     <div className="space-y-1">
                       {tx.collateralReturn.assets.map((asset, index) => (
-                        <div key={index} className="flex items-center justify-between">
-                          <code className="text-xs bg-muted px-2 py-1 rounded">
-                            {asset.policyId.slice(0, 8)}...{asset.assetName}
-                          </code>
-                          <span className="text-xs font-mono">
-                            {formatAssetQuantity(asset.quantity)}
-                          </span>
-                        </div>
+                        <AssetDisplay
+                          key={index}
+                          asset={asset}
+                          metadata={getMetadata(asset.policyId, asset.assetName)}
+                        />
                       ))}
                     </div>
                   </div>

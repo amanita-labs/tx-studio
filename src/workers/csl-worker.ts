@@ -667,9 +667,10 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
             const assetNames = assetsMap.keys();
             
             for (let k = 0; k < assetNames.len(); k++) {
-              const assetName = assetNames.get(k).to_hex();
-              const quantity = BigInt(assetsMap.get(assetNames.get(k))?.to_str() || '0');
-              
+              const assetNameObj = assetNames.get(k);
+              const assetName = Buffer.from(assetNameObj.name()).toString('hex');
+              const quantity = BigInt(assetsMap.get(assetNameObj)?.to_str() || '0');
+
               assets.push({
                 policyId,
                 assetName,
@@ -773,9 +774,10 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
               const assetNames = mintAssets.keys();
               
               for (let k = 0; k < assetNames.len(); k++) {
-                const assetName = assetNames.get(k).to_hex();
-                const quantity = BigInt(mintAssets.get(assetNames.get(k))?.to_str() || '0');
-                
+                const assetNameObj = assetNames.get(k);
+                const assetName = Buffer.from(assetNameObj.name()).toString('hex');
+                const quantity = BigInt(mintAssets.get(assetNameObj)?.to_str() || '0');
+
                 mint.push({
                   policyId,
                   assetName,
@@ -1515,11 +1517,11 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
           const assetNames = assetsMap.keys();
           
           for (let j = 0; j < assetNames.len(); j++) {
-            const assetName = assetNames.get(j);
-            const quantity = assetsMap.get(assetName);
+            const assetNameObj = assetNames.get(j);
+            const quantity = assetsMap.get(assetNameObj);
             assets.push({
               policyId,
-              assetName: assetName.to_hex(),
+              assetName: Buffer.from(assetNameObj.name()).toString('hex'),
               quantity: BigInt(quantity.to_str())
             });
           }
