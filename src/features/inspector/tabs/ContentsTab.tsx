@@ -317,17 +317,48 @@ function GovernanceActionItem({
             })()}
             
             <div className="grid grid-cols-2 gap-4 text-sm">
+              {/* Warn when previous governance action ID is missing for types that require it */}
+              {(() => {
+                const typesRequiringPrevAction = new Set([
+                  'ParameterChange',
+                  'HardForkInitiation',
+                  'NoConfidence',
+                  'NewConstitution',
+                  'UpdateCommittee',
+                ]);
+                const actionType = action.data?.type;
+                if (actionType && typesRequiringPrevAction.has(actionType) && !action.details?.parentActionId) {
+                  return (
+                    <div className="col-span-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>No previous governance action referenced.</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {/* Warn when a NewConstitution action omits the guardrails script hash */}
+              {action.data?.type === 'NewConstitution' && !action.details?.scriptHash && (
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>No guardrails script referenced.</span>
+                  </div>
+                </div>
+              )}
               {Object.entries(action.details).map(([key, value]) => {
                 // Skip governanceActionId as it's shown prominently above
                 if (key === 'governanceActionId') {
                   return null;
                 }
-                
+
                 // Skip type fields (we'll display them as badges next to their values)
                 if (key.endsWith('Type')) {
                   return null;
                 }
-                
+
                 // Handle anchor status warning (similar to certificates)
                 if (key === 'anchorStatus') {
                   if (!value) {
@@ -465,29 +496,25 @@ function GovernanceActionItem({
                     );
                   };
 
-                  // Helper to render a "current → proposed" line for a single scalar value
-                  const renderScalarWithCurrent = (
-                    paramName: string,
+                  // Render "current → proposed (delta%)" or just "proposed" when no current value
+                  const renderValueWithCurrent = (
                     proposedFormatted: string,
                     current: CurrentValueResult | null,
+                    proposedRaw?: number | null,
                   ) => {
-                    const proposedRaw = current ? parseProposedRaw(paramName, proposedFormatted) : null;
-                    const deltaPct = current && proposedRaw !== null
-                      ? computeDeltaPct(current.raw, proposedRaw)
-                      : null;
-
-                    if (current) {
-                      return (
-                        <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
-                          <span className="text-muted-foreground">{current.formatted}</span>
-                          <span className="text-muted-foreground mx-1">&rarr;</span>
-                          <span className="font-semibold">{proposedFormatted}</span>
-                          {renderDelta(deltaPct)}
-                        </span>
-                      );
+                    if (!current) {
+                      return <span className="font-mono font-semibold">{proposedFormatted}</span>;
                     }
-
-                    return <span className="font-mono font-semibold">{proposedFormatted}</span>;
+                    const raw = proposedRaw ?? null;
+                    const deltaPct = raw !== null ? computeDeltaPct(current.raw, raw) : null;
+                    return (
+                      <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
+                        <span className="text-muted-foreground">{current.formatted}</span>
+                        <span className="text-muted-foreground mx-1">&rarr;</span>
+                        <span className="font-semibold">{proposedFormatted}</span>
+                        {renderDelta(deltaPct)}
+                      </span>
+                    );
                   };
 
                   // Look up current values if available
@@ -522,47 +549,21 @@ function GovernanceActionItem({
                                     {paramValue.mem !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Memory:</span>
-                                        {(() => {
-                                          const proposedStr = Number(paramValue.mem).toLocaleString();
-                                          const cur = execCurrent?.mem ?? null;
-                                          const proposedRaw = Number(paramValue.mem);
-                                          const deltaPct = cur ? computeDeltaPct(cur.raw, proposedRaw) : null;
-
-                                          if (cur) {
-                                            return (
-                                              <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
-                                                <span className="text-muted-foreground">{cur.formatted}</span>
-                                                <span className="text-muted-foreground mx-1">&rarr;</span>
-                                                <span className="font-semibold">{proposedStr}</span>
-                                                {renderDelta(deltaPct)}
-                                              </span>
-                                            );
-                                          }
-                                          return <span className="font-mono font-semibold">{proposedStr}</span>;
-                                        })()}
+                                        {renderValueWithCurrent(
+                                          Number(paramValue.mem).toLocaleString(),
+                                          execCurrent?.mem ?? null,
+                                          Number(paramValue.mem),
+                                        )}
                                       </div>
                                     )}
                                     {paramValue.steps !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Steps:</span>
-                                        {(() => {
-                                          const proposedStr = Number(paramValue.steps).toLocaleString();
-                                          const cur = execCurrent?.steps ?? null;
-                                          const proposedRaw = Number(paramValue.steps);
-                                          const deltaPct = cur ? computeDeltaPct(cur.raw, proposedRaw) : null;
-
-                                          if (cur) {
-                                            return (
-                                              <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
-                                                <span className="text-muted-foreground">{cur.formatted}</span>
-                                                <span className="text-muted-foreground mx-1">&rarr;</span>
-                                                <span className="font-semibold">{proposedStr}</span>
-                                                {renderDelta(deltaPct)}
-                                              </span>
-                                            );
-                                          }
-                                          return <span className="font-mono font-semibold">{proposedStr}</span>;
-                                        })()}
+                                        {renderValueWithCurrent(
+                                          Number(paramValue.steps).toLocaleString(),
+                                          execCurrent?.steps ?? null,
+                                          Number(paramValue.steps),
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -579,7 +580,11 @@ function GovernanceActionItem({
                           return (
                             <div key={paramName} className="flex items-center justify-between text-xs gap-2">
                               <span className="font-medium shrink-0">{readableName}:</span>
-                              {renderScalarWithCurrent(paramName, String(paramValue), scalarCurrent)}
+                              {renderValueWithCurrent(
+                                String(paramValue),
+                                scalarCurrent,
+                                scalarCurrent ? parseProposedRaw(paramName, paramValue) : null,
+                              )}
                             </div>
                           );
                         })}
