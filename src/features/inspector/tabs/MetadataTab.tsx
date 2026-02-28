@@ -182,7 +182,16 @@ function MetadataCard({ metadata, parsed, onCopy }: MetadataCardProps) {
           )}
         </CardTitle>
         {parsed && (
-          <p className="text-sm text-muted-foreground">{parsed.description}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-muted-foreground">
+              {parsed.cip10Description ?? parsed.description}
+            </p>
+            {parsed.cip10Description && (
+              <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800">
+                CIP-10
+              </Badge>
+            )}
+          </div>
         )}
       </CardHeader>
       <CardContent className="space-y-4">
@@ -203,18 +212,16 @@ function MetadataCard({ metadata, parsed, onCopy }: MetadataCardProps) {
             title="JSON Data"
             label={metadata.label}
             category={parsed?.category}
-            description={parsed?.description}
             onCopy={onCopy}
           />
         ) : null}
-        
+
         {parsed?.decodedCbor ? (
           <JsonViewer
             data={parsed.decodedCbor}
             title="CBOR Data (Decoded to JSON)"
             label={metadata.label}
             category={parsed?.category}
-            description={`${parsed?.description} - Decoded from CBOR`}
             onCopy={onCopy}
           />
         ) : null}
