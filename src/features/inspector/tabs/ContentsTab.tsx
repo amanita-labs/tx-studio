@@ -38,6 +38,9 @@ import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
+import { useTokenRegistry } from '@/hooks/use-token-registry';
+import { buildTokenSubject } from '@/lib/token-registry';
+import { computeAssetFingerprint, decodeAssetName } from '@/lib/utils/asset-fingerprint';
 import * as bech32Buffer from 'bech32-buffer';
 
 // Helper function to create CIP-129 committee cold credential bech32 ID
@@ -751,6 +754,7 @@ interface ContentsTabProps {
 
 export function ContentsTab({ tx }: ContentsTabProps) {
   const { network } = useAppStore();
+  const { getMetadata } = useTokenRegistry(tx);
   const [contents, setContents] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -760,19 +764,19 @@ export function ContentsTab({ tx }: ContentsTabProps) {
 
   const analyzeContents = async () => {
     setIsLoading(true);
-    
+
     try {
       // Analyze transaction contents
       const analysis = {
         certificates: analyzeCertificates(tx),
         withdrawals: analyzeWithdrawals(tx),
         governance: analyzeGovernance(tx),
-        minting: analyzeMinting(tx),
+        tokens: analyzeTokens(tx),
         collateral: analyzeCollateral(tx),
         validity: analyzeValidity(tx),
         witnesses: analyzeWitnesses(tx)
       };
-      
+
       setContents(analysis);
     } catch (error) {
       console.error('Content analysis failed:', error);
@@ -1841,26 +1845,55 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     };
   };
 
-  const analyzeMinting = (tx: DomainTx) => {
-    if (!tx.mint || tx.mint.length === 0) {
-      return { count: 0, items: [], summary: 'No minting found' };
+  const analyzeTokens = (tx: DomainTx) => {
+    const tokenMap = new Map<string, {
+      policyId: string;
+      assetName: string;
+      inputQuantity: bigint;
+      outputQuantity: bigint;
+      mintQuantity: bigint;
+    }>();
+
+    const getOrCreate = (policyId: string, assetName: string) => {
+      const key = buildTokenSubject(policyId, assetName);
+      let entry = tokenMap.get(key);
+      if (!entry) {
+        entry = { policyId, assetName, inputQuantity: 0n, outputQuantity: 0n, mintQuantity: 0n };
+        tokenMap.set(key, entry);
+      }
+      return entry;
+    };
+
+    // Check if any non-collateral input has resolved value
+    let hasResolvedInputs = false;
+    for (const input of tx.inputs) {
+      if (input.isCollateral) continue;
+      if (input.resolved?.value?.assets) {
+        hasResolvedInputs = true;
+        for (const a of input.resolved.value.assets) {
+          getOrCreate(a.policyId, a.assetName).inputQuantity += a.quantity;
+        }
+      }
     }
 
-    const items = tx.mint.map((mint, index) => ({
-      index,
-      policyId: mint.policyId,
-      assetName: mint.assetName,
-      quantity: mint.quantity,
-      description: `${mint.quantity > 0n ? 'Mint' : 'Burn'} ${Math.abs(Number(mint.quantity))} of ${mint.assetName}`
-    }));
+    for (const output of tx.outputs) {
+      for (const a of output.assets) {
+        getOrCreate(a.policyId, a.assetName).outputQuantity += a.quantity;
+      }
+    }
 
-    const totalMinted = items.reduce((sum, item) => sum + Number(item.quantity), 0);
+    if (tx.mint) {
+      for (const m of tx.mint) {
+        getOrCreate(m.policyId, m.assetName).mintQuantity += m.quantity;
+      }
+    }
+
+    const items = Array.from(tokenMap.values());
 
     return {
       count: items.length,
       items,
-      totalMinted,
-      summary: `${items.length} minting action(s) found`
+      hasResolvedInputs,
     };
   };
 
@@ -1978,15 +2011,15 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         
         <Card>
           <CardContent className="p-4 text-center">
-            <Hash className="h-8 w-8 mx-auto mb-2 text-orange-600" />
-            <div className="text-2xl font-bold">{contents.minting.count}</div>
-            <div className="text-sm text-muted-foreground">Minting</div>
+            <Coins className="h-8 w-8 mx-auto mb-2 text-orange-600" />
+            <div className="text-2xl font-bold">{contents.tokens.count}</div>
+            <div className="text-sm text-muted-foreground">Tokens</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4 text-center">
-            <Coins className="h-8 w-8 mx-auto mb-2 text-green-600" />
+            <Banknote className="h-8 w-8 mx-auto mb-2 text-green-600" />
             <div className="text-2xl font-bold">{contents.withdrawals.count}</div>
             <div className="text-sm text-muted-foreground">Withdrawals</div>
           </CardContent>
@@ -2006,7 +2039,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="certificates">Certificates</TabsTrigger>
           <TabsTrigger value="governance">Governance</TabsTrigger>
-          <TabsTrigger value="minting">Minting</TabsTrigger>
+          <TabsTrigger value="tokens">Tokens</TabsTrigger>
           <TabsTrigger value="signers">Signers</TabsTrigger>
           <TabsTrigger value="other">Other</TabsTrigger>
         </TabsList>
@@ -2202,99 +2235,121 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           </div>
         </TabsContent>
         
-        <TabsContent value="minting" className="flex-1 overflow-auto">
+        <TabsContent value="tokens" className="flex-1 overflow-auto">
           <div className="space-y-4 p-4">
-            {contents.minting.count === 0 ? (
+            {contents.tokens.count === 0 ? (
               <Card>
                 <CardContent className="flex items-center justify-center h-32">
                   <div className="text-center">
-                    <Hash className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No minting actions found</p>
+                    <Coins className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No native tokens in this transaction</p>
                   </div>
                 </CardContent>
               </Card>
             ) : (
-              contents.minting.items.map((mint: any, index: number) => {
-                const assetId = `${mint.policyId}${mint.assetName}`;
-                const assetNameDisplay = mint.assetName || '(empty - policy native token)';
+              contents.tokens.items.map((token: any, index: number) => {
+                const meta = getMetadata(token.policyId, token.assetName);
+                const decimals = meta?.decimals ?? 0;
+                const assetId = buildTokenSubject(token.policyId, token.assetName);
+                const fingerprint = computeAssetFingerprint(token.policyId, token.assetName);
+
+                // Display name: ticker, then full name, then hex fallback
+                const ticker = meta?.ticker;
+                const fullName = meta?.name;
+                const assetNameDisplay = token.assetName
+                  ? decodeAssetName(token.assetName) || '(empty)'
+                  : '(empty)';
+                const displayName = ticker || fullName || assetNameDisplay;
+                const subtitle = ticker && fullName && fullName !== ticker ? fullName : null;
+
                 return (
                   <Card key={index}>
                     <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium">Minting Action {mint.index + 1}</h4>
-                          <p className="text-sm text-muted-foreground">{mint.description}</p>
+                      {/* Token identity */}
+                      <div className="flex items-center gap-3 mb-4">
+                        {meta?.logo ? (
+                          <img
+                            src={`data:image/png;base64,${meta.logo}`}
+                            alt=""
+                            className="h-8 w-8 rounded-full"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                            <Coins className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{displayName}</div>
+                          {subtitle && (
+                            <div className="text-xs text-muted-foreground truncate">{subtitle}</div>
+                          )}
                         </div>
-                        <Badge variant={Number(mint.quantity) > 0 ? "default" : "destructive"}>
-                          {Number(mint.quantity) > 0 ? '+' : ''}{formatAssetQuantity(BigInt(mint.quantity))}
-                        </Badge>
                       </div>
-                      <div className="mt-4 space-y-3">
+
+                      {meta?.description && (
+                        <p className="text-xs text-muted-foreground mb-4 leading-snug">
+                          {meta.description}
+                        </p>
+                      )}
+
+                      {/* Flow rows */}
+                      <div className="space-y-2 mb-4">
+                        {contents.tokens.hasResolvedInputs ? (
+                          token.inputQuantity !== 0n && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Inputs</span>
+                              <span className="font-mono">{formatAssetQuantity(token.inputQuantity, decimals)}</span>
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Inputs</span>
+                            <span className="text-muted-foreground italic text-xs">unavailable</span>
+                          </div>
+                        )}
+                        {token.outputQuantity !== 0n && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Outputs</span>
+                            <span className="font-mono">{formatAssetQuantity(token.outputQuantity, decimals)}</span>
+                          </div>
+                        )}
+                        {token.mintQuantity !== 0n && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Minted</span>
+                            <Badge variant={token.mintQuantity > 0n ? "default" : "destructive"} className="font-mono">
+                              {token.mintQuantity > 0n ? '+' : ''}{formatAssetQuantity(token.mintQuantity, decimals)}
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Identifiers */}
+                      <div className="space-y-3 pt-3 border-t">
                         <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Asset Name:</span>
+                          <span className="text-xs text-muted-foreground">Fingerprint:</span>
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
-                              {assetNameDisplay}
+                              {fingerprint}
                             </code>
-                            {mint.assetName && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-2 flex-shrink-0"
-                                onClick={() => copyToClipboard(mint.assetName, 'Asset Name')}
-                              >
-                                <Copy className="h-3 w-3" />
-                              </Button>
-                            )}
+                            <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0"
+                              onClick={() => copyToClipboard(fingerprint, 'Fingerprint')}>
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <BlockExplorerLink type="asset" params={{ assetId, policyId: token.policyId, assetName: token.assetName }} />
                           </div>
                         </div>
-                        
+
                         <div className="space-y-1">
                           <span className="text-xs text-muted-foreground">Policy ID:</span>
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
-                              {mint.policyId}
+                              {token.policyId}
                             </code>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 flex-shrink-0"
-                              onClick={() => copyToClipboard(mint.policyId, 'Policy ID')}
-                            >
+                            <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0"
+                              onClick={() => copyToClipboard(token.policyId, 'Policy ID')}>
                               <Copy className="h-3 w-3" />
                             </Button>
-                            <BlockExplorerLink 
-                              type="policy" 
-                              params={{ policyId: mint.policyId }}
-                            />
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-1 pt-1 border-t">
-                          <span className="text-xs text-muted-foreground">Quantity:</span>
-                          <div className="text-xs font-mono">
-                            {formatAssetQuantity(BigInt(mint.quantity))}
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-1 pt-1 border-t">
-                          <span className="text-xs text-muted-foreground">Asset ID:</span>
-                          <div className="flex items-center gap-2">
-                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
-                              {assetId}
-                            </code>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 flex-shrink-0"
-                              onClick={() => copyToClipboard(assetId, 'Asset ID')}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                            <BlockExplorerLink 
-                              type="asset" 
-                              params={{ assetId, policyId: mint.policyId, assetName: mint.assetName }}
-                            />
+                            <BlockExplorerLink type="policy" params={{ policyId: token.policyId }} />
                           </div>
                         </div>
                       </div>
