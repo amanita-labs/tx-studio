@@ -7,13 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Award, 
-  Vote, 
-  FileText, 
-  Coins, 
-  Users, 
-  Shield, 
+import {
+  Award,
+  Vote,
+  FileText,
+  Coins,
+  Users,
+  Shield,
   Clock,
   Hash,
   Copy,
@@ -27,7 +27,8 @@ import {
   XCircle,
   ScrollText,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import { DomainTx, type Network } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
@@ -39,9 +40,22 @@ import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
 import { useTokenRegistry } from '@/hooks/use-token-registry';
+import { useCurrentProtocolParams } from '@/hooks/use-current-protocol-params';
+import type { AllProtocolParams } from '@/lib/types/protocol-params';
+import {
+  lookupCurrentValue,
+  parseProposedRaw,
+  computeDeltaPct,
+  isExecUnitParam,
+  isSkippedParam,
+  type CurrentValueResult,
+  type CurrentExecUnitsResult,
+} from '@/lib/protocol-param-mapping';
 import { buildTokenSubject } from '@/lib/token-registry';
 import { computeAssetFingerprint, decodeAssetName } from '@/lib/utils/asset-fingerprint';
 import * as bech32Buffer from 'bech32-buffer';
+import { useAnchorVerification, type AnchorVerificationResult } from '@/hooks/use-anchor-verification';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 // Helper function to create CIP-129 committee cold credential bech32 ID
 function createCommitteeColdCredentialId(hash: string, type: 'Key' | 'Script'): string | null {
@@ -85,19 +99,87 @@ function ValidityTimeRemaining({ slot, network }: { slot: number; network: Netwo
   );
 }
 
+// Inline anchor-hash verification icon
+function AnchorHashVerification({
+  url,
+  expectedHash,
+  getVerification,
+}: {
+  url: string;
+  expectedHash: string;
+  getVerification: (url: string) => AnchorVerificationResult;
+}) {
+  const result = getVerification(url);
+
+  if (result.status === 'pending' || result.status === 'loading') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>Verifying anchor hash...</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (result.status === 'error') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>Verification failed: {result.error}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // status === 'fetched'
+  const matches = result.computedHash === expectedHash;
+
+  if (matches) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>Anchor hash verified</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <div>Hash mismatch</div>
+        <div className="font-mono text-[10px] mt-1">Expected: {expectedHash}</div>
+        <div className="font-mono text-[10px]">Computed: {result.computedHash}</div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 // Component for individual governance action item
-function GovernanceActionItem({ 
-  action, 
-  index, 
+function GovernanceActionItem({
+  action,
+  index,
   copyToClipboard,
   protocolParamNames,
-  formatProtocolParamValue
-}: { 
-  action: any; 
-  index: number; 
+  formatProtocolParamValue,
+  currentProtocolParams,
+  isLoadingCurrentParams,
+  getVerification
+}: {
+  action: any;
+  index: number;
   copyToClipboard: (text: string, label: string) => Promise<void>;
   protocolParamNames: Record<number, string>;
   formatProtocolParamValue: (key: number, value: any) => string;
+  currentProtocolParams?: AllProtocolParams | null;
+  isLoadingCurrentParams?: boolean;
+  getVerification: (url: string) => AnchorVerificationResult;
 }) {
   const [isRawDataOpen, setIsRawDataOpen] = useState(false);
   
@@ -294,6 +376,13 @@ function GovernanceActionItem({
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
+                        {anchorUrl && (
+                          <AnchorHashVerification
+                            url={String(anchorUrl)}
+                            expectedHash={String(anchorHash)}
+                            getVerification={getVerification}
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -302,17 +391,48 @@ function GovernanceActionItem({
             })()}
             
             <div className="grid grid-cols-2 gap-4 text-sm">
+              {/* Warn when previous governance action ID is missing for types that require it */}
+              {(() => {
+                const typesRequiringPrevAction = new Set([
+                  'ParameterChange',
+                  'HardForkInitiation',
+                  'NoConfidence',
+                  'NewConstitution',
+                  'UpdateCommittee',
+                ]);
+                const actionType = action.data?.type;
+                if (actionType && typesRequiringPrevAction.has(actionType) && !action.details?.parentActionId) {
+                  return (
+                    <div className="col-span-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>No previous governance action referenced.</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {/* Warn when a NewConstitution action omits the guardrails script hash */}
+              {action.data?.type === 'NewConstitution' && !action.details?.scriptHash && (
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>No guardrails script referenced.</span>
+                  </div>
+                </div>
+              )}
               {Object.entries(action.details).map(([key, value]) => {
                 // Skip governanceActionId as it's shown prominently above
                 if (key === 'governanceActionId') {
                   return null;
                 }
-                
+
                 // Skip type fields (we'll display them as badges next to their values)
                 if (key.endsWith('Type')) {
                   return null;
                 }
-                
+
                 // Handle anchor status warning (similar to certificates)
                 if (key === 'anchorStatus') {
                   if (!value) {
@@ -411,6 +531,34 @@ function GovernanceActionItem({
                   );
                 }
                 
+                // Handle constitutionHash — show with verification icon
+                if (key === 'constitutionHash') {
+                  const constitutionUrl = action.details?.constitutionUrl;
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-1">{displayLabel}:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{String(value)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(String(value), 'Constitution Hash')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        {constitutionUrl && (
+                          <AnchorHashVerification
+                            url={String(constitutionUrl)}
+                            expectedHash={String(value)}
+                            getVerification={getVerification}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 // Format action value
                 const actionValue = String(value);
                 const actionColors: Record<string, string> = {
@@ -418,7 +566,7 @@ function GovernanceActionItem({
                   'VoteNo': 'text-red-600 font-semibold',
                   'Abstain': 'text-yellow-600 font-semibold'
                 };
-                
+
                 // Handle parameter changes object
                 if (key === 'parameterChanges' && typeof value === 'object') {
                   // Helper to convert camelCase to readable format
@@ -428,17 +576,74 @@ function GovernanceActionItem({
                       .replace(/^./, str => str.toUpperCase())
                       .trim();
                   };
-                  
+
+                  // Helper to render a delta badge
+                  const renderDelta = (deltaPct: number | null) => {
+                    if (deltaPct === null) return null;
+                    if (deltaPct === 0) {
+                      return (
+                        <span className="font-mono text-[10px] text-muted-foreground ml-1.5 italic">
+                          (no change)
+                        </span>
+                      );
+                    }
+                    const sign = deltaPct > 0 ? '+' : '';
+                    const color = deltaPct > 0
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400';
+                    return (
+                      <span className={`font-mono text-[10px] ${color} ml-1.5`}>
+                        ({sign}{deltaPct.toFixed(1)}%)
+                      </span>
+                    );
+                  };
+
+                  // Render "current → proposed (delta%)" or just "proposed" when no current value
+                  const renderValueWithCurrent = (
+                    proposedFormatted: string,
+                    current: CurrentValueResult | null,
+                    proposedRaw?: number | null,
+                  ) => {
+                    if (!current) {
+                      return <span className="font-mono font-semibold">{proposedFormatted}</span>;
+                    }
+                    const raw = proposedRaw ?? null;
+                    const deltaPct = raw !== null ? computeDeltaPct(current.raw, raw) : null;
+                    return (
+                      <span className="font-mono text-right flex items-center gap-0 flex-wrap justify-end">
+                        <span className="text-muted-foreground">{current.formatted}</span>
+                        <span className="text-muted-foreground mx-1">&rarr;</span>
+                        <span className="font-semibold">{proposedFormatted}</span>
+                        {renderDelta(deltaPct)}
+                      </span>
+                    );
+                  };
+
+                  // Look up current values if available
+                  const hasCurrentParams = !!currentProtocolParams && !isLoadingCurrentParams;
+
                   return (
                     <div key={key} className="col-span-2">
                       <div className="font-medium mb-2">{displayLabel}:</div>
+                      {isLoadingCurrentParams && (
+                        <div className="text-[11px] text-muted-foreground mb-2 pl-4 italic">
+                          Loading current values...
+                        </div>
+                      )}
                       <div className="space-y-3 pl-4 border-l-2 border-muted">
                         {Object.entries(value as Record<string, any>).map(([paramName, paramValue]) => {
                           const readableName = formatParamName(paramName);
-                          
+                          const currentLookup = hasCurrentParams
+                            ? lookupCurrentValue(paramName, currentProtocolParams!)
+                            : null;
+
                           // Handle execution units (objects with mem and steps)
                           if (paramValue && typeof paramValue === 'object' && !Array.isArray(paramValue)) {
                             if (paramValue.mem !== undefined || paramValue.steps !== undefined) {
+                              const execCurrent = (hasCurrentParams && isExecUnitParam(paramName))
+                                ? currentLookup as CurrentExecUnitsResult | null
+                                : null;
+
                               return (
                                 <div key={paramName} className="space-y-1.5">
                                   <div className="font-medium text-xs">{readableName}:</div>
@@ -446,13 +651,21 @@ function GovernanceActionItem({
                                     {paramValue.mem !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Memory:</span>
-                                        <span className="font-mono font-semibold">{Number(paramValue.mem).toLocaleString()}</span>
+                                        {renderValueWithCurrent(
+                                          Number(paramValue.mem).toLocaleString(),
+                                          execCurrent?.mem ?? null,
+                                          Number(paramValue.mem),
+                                        )}
                                       </div>
                                     )}
                                     {paramValue.steps !== undefined && (
                                       <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Steps:</span>
-                                        <span className="font-mono font-semibold">{Number(paramValue.steps).toLocaleString()}</span>
+                                        {renderValueWithCurrent(
+                                          Number(paramValue.steps).toLocaleString(),
+                                          execCurrent?.steps ?? null,
+                                          Number(paramValue.steps),
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -460,11 +673,20 @@ function GovernanceActionItem({
                               );
                             }
                           }
-                          // Handle regular parameter values
+
+                          // Regular parameter values
+                          const scalarCurrent = (!isExecUnitParam(paramName) && currentLookup && 'raw' in currentLookup)
+                            ? currentLookup as CurrentValueResult
+                            : null;
+
                           return (
-                            <div key={paramName} className="flex items-center justify-between text-xs">
-                              <span className="font-medium">{readableName}:</span>
-                              <span className="font-mono font-semibold">{String(paramValue)}</span>
+                            <div key={paramName} className="flex items-center justify-between text-xs gap-2">
+                              <span className="font-medium shrink-0">{readableName}:</span>
+                              {renderValueWithCurrent(
+                                String(paramValue),
+                                scalarCurrent,
+                                scalarCurrent ? parseProposedRaw(paramName, paramValue) : null,
+                              )}
                             </div>
                           );
                         })}
@@ -757,6 +979,14 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const { getMetadata } = useTokenRegistry(tx);
   const [contents, setContents] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Detect whether any governance action is a ParameterChange proposal
+  const hasParameterChangeAction = !!(
+    tx.governance?.proposals?.some((p: any) => p.type === 'ParameterChange')
+  );
+  const { currentParams: currentProtocolParams, isLoading: isLoadingCurrentParams } =
+    useCurrentProtocolParams(network, hasParameterChangeAction);
+  const { getVerification } = useAnchorVerification(tx);
 
   useEffect(() => {
     analyzeContents();
@@ -2102,6 +2332,34 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             return null;
                           }
                           
+                          // Handle anchorHash — show with verification icon
+                          if (key === 'anchorHash') {
+                            const certAnchorUrl = cert.details.anchorUrl;
+                            return (
+                              <div key={key}>
+                                <div className="font-medium">Anchor Hash:</div>
+                                <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                                  <span>{String(value)}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2"
+                                    onClick={() => copyToClipboard(String(value), 'Anchor Hash')}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                  {certAnchorUrl && (
+                                    <AnchorHashVerification
+                                      url={String(certAnchorUrl)}
+                                      expectedHash={String(value)}
+                                      getVerification={getVerification}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
                           const isPoolId = key === 'poolId' && value !== 'N/A';
                           const isStakeKey = key === 'stakeKey' && value !== 'N/A' && String(value).startsWith('stake1');
                           const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
@@ -2110,11 +2368,11 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                           const isHotCredential = key === 'hotCredential' && value !== 'N/A' && String(value).startsWith('cc_hot1');
                           const isColdCredential = key === 'coldCredential' && value !== 'N/A' && String(value).startsWith('cc_cold1');
                           const isCommitteeMember = key === 'committeeMember' && value !== 'N/A' && (String(value).startsWith('cc_hot1') || String(value).startsWith('cc_cold1'));
-                          
+
                           // Get the type badge for this field
                           const typeKey = `${key}Type`;
                           const typeValue = cert.details[typeKey];
-                          
+
                           // Custom label formatting for specific fields
                           const customLabels: Record<string, string> = {
                             'drepId': 'DRep ID',
@@ -2131,7 +2389,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             'anchorHash': 'Anchor Hash',
                             'anchorBytes': 'Anchor Bytes'
                           };
-                          
+
                           const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
                           
                           return (
@@ -2222,13 +2480,16 @@ export function ContentsTab({ tx }: ContentsTabProps) {
               </Card>
             ) : (
               contents.governance.items.map((action: any, index: number) => (
-                <GovernanceActionItem 
-                  key={index} 
-                  action={action} 
-                  index={index} 
+                <GovernanceActionItem
+                  key={index}
+                  action={action}
+                  index={index}
                   copyToClipboard={copyToClipboard}
                   protocolParamNames={PROTOCOL_PARAM_NAMES}
                   formatProtocolParamValue={formatProtocolParamValue}
+                  currentProtocolParams={currentProtocolParams}
+                  isLoadingCurrentParams={isLoadingCurrentParams}
+                  getVerification={getVerification}
                 />
               ))
             )}
