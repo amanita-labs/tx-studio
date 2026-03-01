@@ -7,13 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Award, 
-  Vote, 
-  FileText, 
-  Coins, 
-  Users, 
-  Shield, 
+import {
+  Award,
+  Vote,
+  FileText,
+  Coins,
+  Users,
+  Shield,
   Clock,
   Hash,
   Copy,
@@ -27,7 +27,8 @@ import {
   XCircle,
   ScrollText,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import { DomainTx, type Network } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
@@ -53,6 +54,8 @@ import {
 import { buildTokenSubject } from '@/lib/token-registry';
 import { computeAssetFingerprint, decodeAssetName } from '@/lib/utils/asset-fingerprint';
 import * as bech32Buffer from 'bech32-buffer';
+import { useAnchorVerification, type AnchorVerificationResult } from '@/hooks/use-anchor-verification';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 // Helper function to create CIP-129 committee cold credential bech32 ID
 function createCommitteeColdCredentialId(hash: string, type: 'Key' | 'Script'): string | null {
@@ -96,6 +99,68 @@ function ValidityTimeRemaining({ slot, network }: { slot: number; network: Netwo
   );
 }
 
+// Inline anchor-hash verification icon
+function AnchorHashVerification({
+  url,
+  expectedHash,
+  getVerification,
+}: {
+  url: string;
+  expectedHash: string;
+  getVerification: (url: string) => AnchorVerificationResult;
+}) {
+  const result = getVerification(url);
+
+  if (result.status === 'pending' || result.status === 'loading') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>Verifying anchor hash...</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (result.status === 'error') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>Verification failed: {result.error}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // status === 'fetched'
+  const matches = result.computedHash === expectedHash;
+
+  if (matches) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+        </TooltipTrigger>
+        <TooltipContent>Anchor hash verified</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <div>Hash mismatch</div>
+        <div className="font-mono text-[10px] mt-1">Expected: {expectedHash}</div>
+        <div className="font-mono text-[10px]">Computed: {result.computedHash}</div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 // Component for individual governance action item
 function GovernanceActionItem({
   action,
@@ -104,7 +169,8 @@ function GovernanceActionItem({
   protocolParamNames,
   formatProtocolParamValue,
   currentProtocolParams,
-  isLoadingCurrentParams
+  isLoadingCurrentParams,
+  getVerification
 }: {
   action: any;
   index: number;
@@ -113,6 +179,7 @@ function GovernanceActionItem({
   formatProtocolParamValue: (key: number, value: any) => string;
   currentProtocolParams?: AllProtocolParams | null;
   isLoadingCurrentParams?: boolean;
+  getVerification: (url: string) => AnchorVerificationResult;
 }) {
   const [isRawDataOpen, setIsRawDataOpen] = useState(false);
   
@@ -309,6 +376,13 @@ function GovernanceActionItem({
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
+                        {anchorUrl && (
+                          <AnchorHashVerification
+                            url={String(anchorUrl)}
+                            expectedHash={String(anchorHash)}
+                            getVerification={getVerification}
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -457,6 +531,34 @@ function GovernanceActionItem({
                   );
                 }
                 
+                // Handle constitutionHash — show with verification icon
+                if (key === 'constitutionHash') {
+                  const constitutionUrl = action.details?.constitutionUrl;
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-1">{displayLabel}:</div>
+                      <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                        <span>{String(value)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => copyToClipboard(String(value), 'Constitution Hash')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        {constitutionUrl && (
+                          <AnchorHashVerification
+                            url={String(constitutionUrl)}
+                            expectedHash={String(value)}
+                            getVerification={getVerification}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 // Format action value
                 const actionValue = String(value);
                 const actionColors: Record<string, string> = {
@@ -464,7 +566,7 @@ function GovernanceActionItem({
                   'VoteNo': 'text-red-600 font-semibold',
                   'Abstain': 'text-yellow-600 font-semibold'
                 };
-                
+
                 // Handle parameter changes object
                 if (key === 'parameterChanges' && typeof value === 'object') {
                   // Helper to convert camelCase to readable format
@@ -884,6 +986,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   );
   const { currentParams: currentProtocolParams, isLoading: isLoadingCurrentParams } =
     useCurrentProtocolParams(network, hasParameterChangeAction);
+  const { getVerification } = useAnchorVerification(tx);
 
   useEffect(() => {
     analyzeContents();
@@ -2229,6 +2332,34 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             return null;
                           }
                           
+                          // Handle anchorHash — show with verification icon
+                          if (key === 'anchorHash') {
+                            const certAnchorUrl = cert.details.anchorUrl;
+                            return (
+                              <div key={key}>
+                                <div className="font-medium">Anchor Hash:</div>
+                                <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                                  <span>{String(value)}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2"
+                                    onClick={() => copyToClipboard(String(value), 'Anchor Hash')}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                  {certAnchorUrl && (
+                                    <AnchorHashVerification
+                                      url={String(certAnchorUrl)}
+                                      expectedHash={String(value)}
+                                      getVerification={getVerification}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
                           const isPoolId = key === 'poolId' && value !== 'N/A';
                           const isStakeKey = key === 'stakeKey' && value !== 'N/A' && String(value).startsWith('stake1');
                           const isDrepId = key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
@@ -2237,11 +2368,11 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                           const isHotCredential = key === 'hotCredential' && value !== 'N/A' && String(value).startsWith('cc_hot1');
                           const isColdCredential = key === 'coldCredential' && value !== 'N/A' && String(value).startsWith('cc_cold1');
                           const isCommitteeMember = key === 'committeeMember' && value !== 'N/A' && (String(value).startsWith('cc_hot1') || String(value).startsWith('cc_cold1'));
-                          
+
                           // Get the type badge for this field
                           const typeKey = `${key}Type`;
                           const typeValue = cert.details[typeKey];
-                          
+
                           // Custom label formatting for specific fields
                           const customLabels: Record<string, string> = {
                             'drepId': 'DRep ID',
@@ -2258,7 +2389,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                             'anchorHash': 'Anchor Hash',
                             'anchorBytes': 'Anchor Bytes'
                           };
-                          
+
                           const displayLabel = customLabels[key] || key.replace(/([A-Z])/g, ' $1').trim();
                           
                           return (
@@ -2358,6 +2489,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                   formatProtocolParamValue={formatProtocolParamValue}
                   currentProtocolParams={currentProtocolParams}
                   isLoadingCurrentParams={isLoadingCurrentParams}
+                  getVerification={getVerification}
                 />
               ))
             )}
