@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda, formatAssetQuantity } from '@/lib/utils/ada';
-import { Copy, ArrowRight, Coins, Shield } from 'lucide-react';
+import { Copy, ArrowRight, Coins, Shield, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
@@ -14,6 +14,11 @@ import { AssetDisplay } from '@/components/asset-display';
 
 interface IoValueTabProps {
   tx: DomainTx;
+}
+
+function parseCoinValue(value: unknown): bigint {
+  if (!value || value === '0') return 0n;
+  try { return BigInt(String(value)); } catch { return 0n; }
 }
 
 function truncateAddress(address: string, startLength: number = 15, endLength: number = 4): string {
@@ -580,6 +585,140 @@ export function IoValueTab({ tx }: IoValueTabProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Implicit Outputs */}
+      {(() => {
+        const implicitOutputItems: Array<{ label: string; amount: bigint }> = [];
+
+        implicitOutputItems.push({ label: 'Fee', amount: tx.feeLovelace });
+
+        if (tx.treasuryDonation && tx.treasuryDonation > 0n) {
+          implicitOutputItems.push({ label: 'Treasury Donation', amount: tx.treasuryDonation });
+        }
+
+        if (tx.certs) {
+          for (const cert of tx.certs) {
+            if (cert.type === 'StakeRegistration') {
+              const deposit = parseCoinValue(cert.details.deposit);
+              if (deposit > 0n) {
+                implicitOutputItems.push({ label: 'Stake Registration Deposit', amount: deposit });
+              }
+            }
+            if (cert.type === 'DRepRegistration') {
+              const deposit = parseCoinValue(cert.details.deposit);
+              if (deposit > 0n) {
+                implicitOutputItems.push({ label: 'DRep Registration Deposit', amount: deposit });
+              }
+            }
+            if (cert.type === 'Proposal') {
+              const deposit = parseCoinValue(cert.details.deposit);
+              if (deposit > 0n) {
+                implicitOutputItems.push({ label: 'Proposal Deposit', amount: deposit });
+              }
+            }
+          }
+        }
+
+        if (tx.governance?.proposals) {
+          for (const proposal of tx.governance.proposals) {
+            const deposit = parseCoinValue(proposal.details.deposit);
+            if (deposit > 0n) {
+              implicitOutputItems.push({ label: `Governance Action Deposit (${proposal.type})`, amount: deposit });
+            }
+          }
+        }
+
+        const implicitOutputTotal = implicitOutputItems.reduce((sum, item) => sum + item.amount, 0n);
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowDownRight className="h-5 w-5" />
+                Implicit Outputs ({implicitOutputItems.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {implicitOutputItems.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">{item.label}</span>
+                    <span className="text-sm font-mono">{formatAda(item.amount)} ada</span>
+                  </div>
+                ))}
+                {implicitOutputItems.length > 1 && (
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <span className="text-sm font-medium">Total</span>
+                    <span className="text-sm font-mono font-medium">{formatAda(implicitOutputTotal)} ada</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Implicit Inputs */}
+      {(() => {
+        const implicitInputItems: Array<{ label: string; amount: bigint }> = [];
+
+        if (tx.withdrawals) {
+          for (const w of tx.withdrawals) {
+            implicitInputItems.push({
+              label: `Withdrawal (${truncateAddress(w.stakeAddr)})`,
+              amount: w.amount,
+            });
+          }
+        }
+
+        if (tx.certs) {
+          for (const cert of tx.certs) {
+            if (cert.type === 'StakeDeregistration') {
+              const refund = parseCoinValue(cert.details.refund);
+              if (refund > 0n) {
+                implicitInputItems.push({ label: 'Stake Deregistration Refund', amount: refund });
+              }
+            }
+            if (cert.type === 'DRepDeregistration') {
+              const refund = parseCoinValue(cert.details.refund);
+              if (refund > 0n) {
+                implicitInputItems.push({ label: 'DRep Deregistration Refund', amount: refund });
+              }
+            }
+          }
+        }
+
+        if (implicitInputItems.length === 0) return null;
+
+        const implicitInputTotal = implicitInputItems.reduce((sum, item) => sum + item.amount, 0n);
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowUpRight className="h-5 w-5" />
+                Implicit Inputs ({implicitInputItems.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {implicitInputItems.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">{item.label}</span>
+                    <span className="text-sm font-mono">{formatAda(item.amount)} ada</span>
+                  </div>
+                ))}
+                {implicitInputItems.length > 1 && (
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <span className="text-sm font-medium">Total</span>
+                    <span className="text-sm font-mono font-medium">{formatAda(implicitInputTotal)} ada</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }

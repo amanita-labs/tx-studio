@@ -11,7 +11,10 @@ export function adaToLovelace(ada: number): bigint {
 
 export function formatAda(lovelace: bigint, decimals: number = 6): string {
   const ada = lovelaceToAda(lovelace);
-  return ada.toFixed(decimals);
+  const fixed = ada.toFixed(decimals);
+  const [whole, frac] = fixed.split('.');
+  const wholeWithCommas = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return frac !== undefined ? `${wholeWithCommas}.${frac}` : wholeWithCommas;
 }
 
 export function formatLovelace(lovelace: bigint): string {
