@@ -3,6 +3,7 @@ export type DomainTx = {
   id: string;
   sizeBytes: number;
   feeLovelace: bigint;
+  treasuryDonation?: bigint;
   ttl?: number | null;
   slot?: number | null;
   validity: { start?: number | null; end?: number | null };

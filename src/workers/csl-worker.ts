@@ -602,7 +602,16 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     
     // Parse fee
     const fee = BigInt(body.fee().to_str());
-    
+
+    // Parse treasury donation (Conway era, tx body field 19)
+    let treasuryDonation: bigint | undefined;
+    try {
+      const donationBignum = (body as any).donation?.();
+      if (donationBignum) {
+        treasuryDonation = BigInt(donationBignum.to_str());
+      }
+    } catch { /* donation() not available in this CSL version */ }
+
     // Parse TTL
     const ttlBignum = body.ttl_bignum();
     const ttl = ttlBignum ? Number(ttlBignum.to_str()) : null;
@@ -1233,24 +1242,26 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                 }
                 
                 // Extract proposal_procedure fields: deposit, reward_account, anchor
+                // These are saved separately because action-type branches reassign `details`
+                const procedureFields: Record<string, unknown> = {};
                 if (proposal.deposit !== undefined) {
-                  details.deposit = proposal.deposit;
+                  procedureFields.deposit = proposal.deposit;
                 }
                 // Use the reward account extracted directly from CSL Address object (converted to selected network)
                 if (rewardAccounts[index]) {
-                  details.rewardAccount = rewardAccounts[index];
+                  procedureFields.rewardAccount = rewardAccounts[index];
                 } else if (proposal.reward_account) {
                   // Fallback: use helper function if direct extraction failed
                   const rewardAccount = extractRewardAccount(proposal.reward_account, networkId);
                   if (rewardAccount) {
-                    details.rewardAccount = rewardAccount;
+                    procedureFields.rewardAccount = rewardAccount;
                   }
                 }
                 const anchor = parseAnchorDetails(proposal.anchor);
                 if (anchor) {
-                  details.anchor = anchor;
+                  procedureFields.anchor = anchor;
                 } else if (proposal.anchor === null || proposal.anchor === undefined) {
-                  details.anchorMissing = true;
+                  procedureFields.anchorMissing = true;
                 }
                 
                 // Helper function to extract parent governance action ID
@@ -1378,6 +1389,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                     id: proposalId,
                     type: proposalType,
                     details: {
+                      ...procedureFields,
                       ...details,
                       raw: proposal
                     }
@@ -2158,6 +2170,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         id,
         sizeBytes: size,
         feeLovelace: fee,
+        treasuryDonation,
         ttl,
         slot: ttl ? ttl - 1000 : null, // Estimate slot
         validity: { start: validityStart, end: ttl },
