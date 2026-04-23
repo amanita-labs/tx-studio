@@ -220,9 +220,9 @@ function GovernanceActionItem({
             {(() => {
               // Helper function to format ADA with commas and proper decimals
               const formatAdaDisplay = (adaValue: string | number): string => {
-                const numValue = typeof adaValue === 'string' ? parseFloat(adaValue) : adaValue;
+                const numValue = typeof adaValue === 'string' ? parseFloat(adaValue.replace(/,/g, '')) : adaValue;
                 if (isNaN(numValue)) return String(adaValue);
-                
+
                 // If it's a whole number, don't show decimals
                 if (numValue % 1 === 0) {
                   return Math.floor(numValue).toLocaleString('en-US');
@@ -233,7 +233,7 @@ function GovernanceActionItem({
                   minimumFractionDigits: 0
                 });
               };
-              
+
               // Extract fields from details or raw data
               // Prefer formatted value from details, otherwise format raw value
               let deposit: string | undefined;
@@ -838,7 +838,7 @@ function GovernanceActionItem({
                 if (key === 'withdrawals' && typeof value === 'object') {
                   // Helper function to format ADA with commas and proper decimals
                   const formatAdaDisplay = (adaValue: string | number): string => {
-                    const numValue = typeof adaValue === 'string' ? parseFloat(adaValue) : adaValue;
+                    const numValue = typeof adaValue === 'string' ? parseFloat(adaValue.replace(/,/g, '')) : adaValue;
                     if (isNaN(numValue)) return String(adaValue);
                     
                     // If it's a whole number, don't show decimals
