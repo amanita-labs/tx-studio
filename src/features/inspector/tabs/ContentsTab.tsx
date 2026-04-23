@@ -1585,25 +1585,12 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatTreasuryWithdrawalsProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
-    const rawData = proposalDetails.raw || {};
-    
-    // Extract withdrawals - handle both object format (stake address -> lovelace) and array format
+
+    // Extract withdrawals from proposalDetails.withdrawals, which the worker has
+    // already normalized to the selected network. Reading from raw would reintroduce
+    // unnormalized keys and show duplicate Destination rows.
     const withdrawals: Record<string, string> = {};
-    
-    // First try raw data structure (object format: stake address -> lovelace amount)
-    const rawWithdrawals = rawData.governance_action?.TreasuryWithdrawalsAction?.withdrawals;
-    if (rawWithdrawals && typeof rawWithdrawals === 'object' && !Array.isArray(rawWithdrawals)) {
-      Object.entries(rawWithdrawals).forEach(([account, amount]) => {
-        try {
-          const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(String(amount));
-          withdrawals[account] = formatAda(bigintAmount);
-        } catch {
-          withdrawals[account] = String(amount);
-        }
-      });
-    }
-    
-    // Also check proposalDetails.withdrawals (could be object or array)
+
     if (proposalDetails.withdrawals) {
       if (Array.isArray(proposalDetails.withdrawals)) {
         // Array format

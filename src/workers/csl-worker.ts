@@ -1343,8 +1343,21 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                   } else if (action.TreasuryWithdrawals || action.TreasuryWithdrawalsAction) {
                     proposalType = 'TreasuryWithdrawals';
                     const treasury = action.TreasuryWithdrawals || action.TreasuryWithdrawalsAction;
+
+                    // Normalize each destination reward address to the selected network,
+                    // same as we do for `reward_account` above. Raw CSL output preserves
+                    // the embedded network byte which may not match the tx network.
+                    const normalizedWithdrawals: Record<string, string> = {};
+                    const rawWithdrawals = treasury.withdrawals;
+                    if (rawWithdrawals && typeof rawWithdrawals === 'object' && !Array.isArray(rawWithdrawals)) {
+                      for (const [account, amount] of Object.entries(rawWithdrawals)) {
+                        const normalizedAccount = convertStakeAddressToNetwork(account, networkId) ?? account;
+                        normalizedWithdrawals[normalizedAccount] = String(amount);
+                      }
+                    }
+
                     details = {
-                      withdrawals: treasury.withdrawals || [],
+                      withdrawals: normalizedWithdrawals,
                       epoch: treasury.epoch || null,
                       parentActionId: extractParentActionId(treasury.prev_gov_action_id || treasury.parent_action_id || treasury.gov_action_id)
                     };
