@@ -99,6 +99,16 @@ export type GovernanceVM = {
 
 export type Network = "mainnet" | "preprod" | "preview";
 
+export type StakeCredential = {
+  kind: "key" | "script";
+  hash: string;
+};
+
+export type RewardAccountRef = {
+  credential: StakeCredential;
+  intrinsicNetwork: Network;
+};
+
 export type TxParseResult = {
   success: true;
   tx: DomainTx;
