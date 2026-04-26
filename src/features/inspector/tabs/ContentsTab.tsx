@@ -30,9 +30,10 @@ import {
   ChevronRight,
   Loader2
 } from 'lucide-react';
-import { DomainTx, type Network } from '@/domain/tx';
+import { DomainTx, type Network, type RewardAccountRef } from '@/domain/tx';
 import { slotToLocalTime, getTimeRemaining } from '@/lib/utils/slot-time';
 import { formatLovelace, formatAda, formatAssetQuantity } from '@/lib/utils/ada';
+import { encodeStakeAddress } from '@/lib/utils/stake-address';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
@@ -161,10 +162,66 @@ function AnchorHashVerification({
   );
 }
 
+function isRewardAccountRef(value: unknown): value is RewardAccountRef {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as { credential?: unknown; intrinsicNetwork?: unknown };
+  if (!v.credential || typeof v.credential !== 'object') return false;
+  const c = v.credential as { kind?: unknown; hash?: unknown };
+  return (c.kind === 'key' || c.kind === 'script') && typeof c.hash === 'string';
+}
+
+type DisplayRewardAccount = {
+  bech32: string;
+  intrinsicNetwork: Network | null;
+  mismatch: boolean;
+};
+
+function resolveRewardAccount(
+  value: unknown,
+  network: Network
+): DisplayRewardAccount | null {
+  if (!value) return null;
+  if (isRewardAccountRef(value)) {
+    try {
+      const bech32 = encodeStakeAddress(value.credential, network);
+      return {
+        bech32,
+        intrinsicNetwork: value.intrinsicNetwork,
+        mismatch: value.intrinsicNetwork !== network,
+      };
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === 'string' && value.length > 0) {
+    return { bech32: value, intrinsicNetwork: null, mismatch: false };
+  }
+  return null;
+}
+
+function NetworkMismatchBadge({
+  intrinsicNetwork,
+  txNetwork,
+}: {
+  intrinsicNetwork: Network;
+  txNetwork: Network;
+}) {
+  return (
+    <div className="col-span-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2 mt-1">
+      <AlertTriangle className="h-3 w-3 shrink-0" />
+      <span>
+        Address is encoded for <strong>{intrinsicNetwork}</strong>, but this
+        transaction is on <strong>{txNetwork}</strong>.
+      </span>
+    </div>
+  );
+}
+
 // Component for individual governance action item
 function GovernanceActionItem({
   action,
   index,
+  network,
   copyToClipboard,
   protocolParamNames,
   formatProtocolParamValue,
@@ -174,6 +231,7 @@ function GovernanceActionItem({
 }: {
   action: any;
   index: number;
+  network: Network;
   copyToClipboard: (text: string, label: string) => Promise<void>;
   protocolParamNames: Record<number, string>;
   formatProtocolParamValue: (key: number, value: any) => string;
@@ -253,7 +311,8 @@ function GovernanceActionItem({
                   }
                 }
               }
-              const rewardAccount = action.details?.rewardAccount || action.data?.details?.rewardAccount || action.data?.raw?.reward_account;
+              const rewardAccountRaw = action.details?.rewardAccount ?? action.data?.details?.rewardAccount ?? action.data?.raw?.reward_account;
+              const rewardAccount = resolveRewardAccount(rewardAccountRaw, network);
               const anchorUrl = action.details?.anchorUrl || action.data?.details?.anchor?.url || action.data?.raw?.anchor?.anchor_url;
               const anchorHash = action.details?.anchorHash || action.data?.details?.anchor?.hash || action.data?.raw?.anchor?.anchor_data_hash;
               
@@ -310,20 +369,26 @@ function GovernanceActionItem({
                     <div className="col-span-2">
                       <div className="font-medium mb-1">Deposit Return Address:</div>
                       <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
-                        <span>{String(rewardAccount)}</span>
+                        <span>{rewardAccount.bech32}</span>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-6 px-2"
-                          onClick={() => copyToClipboard(String(rewardAccount), 'Deposit Return Address')}
+                          onClick={() => copyToClipboard(rewardAccount.bech32, 'Deposit Return Address')}
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
-                        <BlockExplorerLink 
-                          type="stakeKey" 
-                          params={{ stakeKey: String(rewardAccount) }}
+                        <BlockExplorerLink
+                          type="stakeKey"
+                          params={{ stakeKey: rewardAccount.bech32 }}
                         />
                       </div>
+                      {rewardAccount.mismatch && rewardAccount.intrinsicNetwork && (
+                        <NetworkMismatchBadge
+                          intrinsicNetwork={rewardAccount.intrinsicNetwork}
+                          txNetwork={network}
+                        />
+                      )}
                     </div>
                   )}
                   
@@ -834,48 +899,68 @@ function GovernanceActionItem({
                   );
                 }
                 
-                // Handle withdrawals object
-                if (key === 'withdrawals' && typeof value === 'object') {
-                  // Helper function to format ADA with commas and proper decimals
+                // Handle withdrawals (array of { account, rawAccount, amount } from worker;
+                // legacy object shape Record<string, string> is also supported for older data)
+                if (key === 'withdrawals' && (Array.isArray(value) || (typeof value === 'object' && value !== null))) {
                   const formatAdaDisplay = (adaValue: string | number): string => {
                     const numValue = typeof adaValue === 'string' ? parseFloat(adaValue.replace(/,/g, '')) : adaValue;
                     if (isNaN(numValue)) return String(adaValue);
-                    
-                    // If it's a whole number, don't show decimals
                     if (numValue % 1 === 0) {
                       return Math.floor(numValue).toLocaleString('en-US');
                     }
-                    // Otherwise show up to 6 decimals but remove trailing zeros
                     return numValue.toLocaleString('en-US', {
                       maximumFractionDigits: 6,
-                      minimumFractionDigits: 0
+                      minimumFractionDigits: 0,
                     });
                   };
-                  
+
+                  type Row = { displayBech32: string; resolved: DisplayRewardAccount | null; amount: string };
+                  const rows: Row[] = Array.isArray(value)
+                    ? (value as Array<{ account?: unknown; rawAccount?: string; amount?: unknown }>).map((entry) => {
+                        const resolved = resolveRewardAccount(entry?.account, network);
+                        const fallback = typeof entry?.rawAccount === 'string' ? entry.rawAccount : '';
+                        return {
+                          displayBech32: resolved?.bech32 ?? fallback,
+                          resolved,
+                          amount: String(entry?.amount ?? ''),
+                        };
+                      })
+                    : Object.entries(value as Record<string, unknown>).map(([account, amount]) => ({
+                        displayBech32: account,
+                        resolved: { bech32: account, intrinsicNetwork: null, mismatch: false },
+                        amount: String(amount),
+                      }));
+
                   return (
                     <div key={key} className="col-span-2">
                       <div className="font-medium mb-2">{displayLabel}:</div>
                       <div className="space-y-3 pl-4 border-l-2 border-muted">
-                        {Object.entries(value as Record<string, any>).map(([account, amount]) => {
-                          const formattedAmount = formatAdaDisplay(String(amount));
+                        {rows.map((row, idx) => {
+                          const formattedAmount = formatAdaDisplay(row.amount);
                           return (
-                            <div key={account} className="space-y-1">
+                            <div key={`${row.displayBech32}-${idx}`} className="space-y-1">
                               <div className="font-medium text-xs mb-1">Destination:</div>
                               <div className="font-mono text-xs break-all flex items-center gap-2 mb-2">
-                                <span className="flex-1">{account}</span>
+                                <span className="flex-1">{row.displayBech32}</span>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 px-2"
-                                  onClick={() => copyToClipboard(account, 'Stake Address')}
+                                  onClick={() => copyToClipboard(row.displayBech32, 'Stake Address')}
                                 >
                                   <Copy className="h-3 w-3" />
                                 </Button>
-                                <BlockExplorerLink 
-                                  type="stakeKey" 
-                                  params={{ stakeKey: account }}
+                                <BlockExplorerLink
+                                  type="stakeKey"
+                                  params={{ stakeKey: row.displayBech32 }}
                                 />
                               </div>
+                              {row.resolved?.mismatch && row.resolved.intrinsicNetwork && (
+                                <NetworkMismatchBadge
+                                  intrinsicNetwork={row.resolved.intrinsicNetwork}
+                                  txNetwork={network}
+                                />
+                              )}
                               <div className="flex items-center justify-between">
                                 <span className="text-muted-foreground text-xs">Amount:</span>
                                 <span className="font-mono font-semibold text-xs">{formattedAmount} ada</span>
@@ -1586,47 +1671,42 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
 
-    // Extract withdrawals from proposalDetails.withdrawals, which the worker has
-    // already normalized to the selected network. Reading from raw would reintroduce
-    // unnormalized keys and show duplicate Destination rows.
-    const withdrawals: Record<string, string> = {};
+    // The worker emits withdrawals as Array<{ account: RewardAccountRef|null, rawAccount: string, amount: string }>
+    // (lovelace integer string for amount). Convert lovelace -> ADA string for display while
+    // preserving the structured RewardAccountRef so the renderer can encode bech32 with
+    // the parsed network and detect intrinsic-network mismatches.
+    const formatLovelaceAmount = (amount: unknown): string => {
+      try {
+        const lovelace = typeof amount === 'bigint' ? amount : BigInt(String(amount));
+        return formatAda(lovelace);
+      } catch {
+        return String(amount ?? '');
+      }
+    };
 
     if (proposalDetails.withdrawals) {
       if (Array.isArray(proposalDetails.withdrawals)) {
-        // Array format
-        proposalDetails.withdrawals.forEach((withdrawal: any) => {
-          if (withdrawal.reward_account || withdrawal.account) {
-            const account = withdrawal.reward_account || withdrawal.account;
-            const amount = withdrawal.amount || withdrawal.coin || 0;
-            try {
-              const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(amount);
-              withdrawals[account] = formatAda(bigintAmount);
-            } catch {
-              withdrawals[account] = String(amount);
-            }
-          }
-        });
+        details.withdrawals = (proposalDetails.withdrawals as Array<{ account?: unknown; rawAccount?: string; amount?: unknown; reward_account?: unknown; coin?: unknown }>)
+          .map((withdrawal) => ({
+            account: withdrawal.account ?? withdrawal.reward_account ?? null,
+            rawAccount: typeof withdrawal.rawAccount === 'string' ? withdrawal.rawAccount : '',
+            amount: formatLovelaceAmount(withdrawal.amount ?? withdrawal.coin ?? 0),
+          }));
       } else if (typeof proposalDetails.withdrawals === 'object') {
-        // Object format: stake address -> lovelace amount
-        Object.entries(proposalDetails.withdrawals).forEach(([account, amount]) => {
-          try {
-            const bigintAmount = typeof amount === 'bigint' ? amount : BigInt(String(amount));
-            withdrawals[account] = formatAda(bigintAmount);
-          } catch {
-            withdrawals[account] = String(amount);
-          }
-        });
+        // Legacy object format: stake-address-string -> lovelace amount
+        details.withdrawals = Object.entries(proposalDetails.withdrawals as Record<string, unknown>)
+          .map(([account, amount]) => ({
+            account: null,
+            rawAccount: account,
+            amount: formatLovelaceAmount(amount),
+          }));
       }
     }
-    
-    if (Object.keys(withdrawals).length > 0) {
-      details.withdrawals = withdrawals;
-    }
-    
+
     if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
       details.epoch = proposalDetails.epoch;
     }
-    
+
     return details;
   };
 
@@ -2471,6 +2551,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                   key={index}
                   action={action}
                   index={index}
+                  network={network}
                   copyToClipboard={copyToClipboard}
                   protocolParamNames={PROTOCOL_PARAM_NAMES}
                   formatProtocolParamValue={formatProtocolParamValue}
