@@ -2098,11 +2098,18 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       }
     }
     
-    // Clean up CSL objects
-    if (transaction) transaction.free();
-    if (body) body.free();
-    if (witnessSet) witnessSet.free();
-    if (auxiliaryData) auxiliaryData.free();
+    // Clean up CSL objects. Some CSL methods (e.g. TransactionWitnessSet.to_js_value
+    // on certain shapes) throw mid-call and leak an active wasm-bindgen borrow.
+    // A subsequent free() then throws "recursive use of an object detected" and
+    // would turn a successful parse into a failure. Swallow cleanup errors.
+    try {
+      if (transaction) transaction.free();
+      if (body) body.free();
+      if (witnessSet) witnessSet.free();
+      if (auxiliaryData) auxiliaryData.free();
+    } catch (cleanupError) {
+      console.warn('Error during cleanup:', cleanupError);
+    }
     
     return {
       success: true,
