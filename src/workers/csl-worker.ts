@@ -416,22 +416,25 @@ function getDatumType(plutusData: any): string {
 function parseDatumContent(plutusData: any): any {
   try {
     const kind = plutusData.kind();
-    
+
     switch (kind) {
-      case 0: // Constr
+      case 0: { // Constr
+        const constr = plutusData.as_constr_plutus_data();
+        if (!constr) return null;
+        const data = constr.data();
         return {
-          constructor: plutusData.as_constr()?.constr_index() || 0,
-          fields: plutusData.as_constr()?.fields() ? 
-            Array.from({ length: plutusData.as_constr().fields().len() }, (_, i) => 
-              parseDatumContent(plutusData.as_constr().fields().get(i))
-            ) : []
+          constructor: Number(constr.alternative().to_str()),
+          fields: Array.from({ length: data.len() }, (_, i) =>
+            parseDatumContent(data.get(i))
+          ),
         };
+      }
       case 1: // Map
         return parseDatumMap(plutusData.as_map());
       case 2: // List
         return parseDatumList(plutusData.as_list());
       case 3: // Int
-        return plutusData.as_int().to_str();
+        return plutusData.as_integer().to_str();
       case 4: // Bytes
         return Array.from(plutusData.as_bytes()).map((b: unknown) => (b as number).toString(16).padStart(2, '0')).join('');
       default:
@@ -2167,7 +2170,12 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown parsing error',
+      error:
+        error instanceof Error
+          ? error.message
+          : error == null
+            ? 'Worker threw an empty value (likely a CSL/asmjs internal error — check the browser console for details).'
+            : `CSL threw a non-Error value: ${String(error)}`,
       details: error instanceof Error ? error.stack : undefined,
     };
   }
@@ -2235,12 +2243,17 @@ self.onmessage = async (event) => {
         self.postMessage({ type: 'ERROR', data: { error: 'Unknown message type' } });
     }
   } catch (error) {
-    self.postMessage({ 
-      type: 'ERROR', 
-      data: { 
-        error: error instanceof Error ? error.message : 'Unknown error',
+    self.postMessage({
+      type: 'ERROR',
+      data: {
+        error:
+          error instanceof Error
+            ? error.message
+            : error == null
+              ? 'Worker threw an empty value (check the browser console for details).'
+              : `Worker threw a non-Error value: ${String(error)}`,
         details: error instanceof Error ? error.stack : undefined,
-      } 
+      },
     });
   }
 };
