@@ -414,6 +414,7 @@ function getDatumType(plutusData: any): string {
 }
 
 function parseDatumContent(plutusData: any): any {
+  if (!plutusData || typeof plutusData.kind !== 'function') return null;
   try {
     const kind = plutusData.kind();
     
@@ -455,9 +456,16 @@ function parseDatumMap(map: any): Record<string, any> {
   const result: Record<string, any> = {};
   const keys = map.keys();
   for (let i = 0; i < keys.len(); i++) {
-    const key = parseDatumContent(keys.get(i));
-    const value = parseDatumContent(map.get(keys.get(i)));
-    result[String(key)] = value;
+    const keyData = keys.get(i);
+    const key = parseDatumContent(keyData);
+    const values = map.get(keyData);
+    if (!values) continue;
+    const parsedValues: any[] = [];
+    for (let j = 0; j < values.len(); j++) {
+      const v = values.get(j);
+      if (v) parsedValues.push(parseDatumContent(v));
+    }
+    result[String(key)] = parsedValues.length === 1 ? parsedValues[0] : parsedValues;
   }
   return result;
 }
