@@ -1013,12 +1013,24 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       withdrawals = [];
       const keys = bodyWithdrawals.keys();
       for (let i = 0; i < keys.len(); i++) {
-        const stakeAddr = keys.get(i).to_address().to_bech32();
-        const amount = BigInt(bodyWithdrawals.get(keys.get(i))?.to_str() || '0');
-        withdrawals.push({
-          stakeAddr,
-          amount
-        });
+        try {
+          const rewardAddr = keys.get(i);
+          const cslAddr = rewardAddr.to_address();
+          let stakeAddr: string;
+          try {
+            stakeAddr = cslAddr.to_bech32();
+          } catch {
+            // Older asmjs CSL builds throw on certain reward-address bech32
+            // encodings (e.g. script-credential reward addresses). Fall back
+            // to hex so the parse still succeeds.
+            stakeAddr = cslAddr.to_hex();
+          }
+          const amountBignum = bodyWithdrawals.get(rewardAddr);
+          const amount = BigInt(amountBignum?.to_str() || '0');
+          withdrawals.push({ stakeAddr, amount });
+        } catch (withdrawalError) {
+          console.warn(`Skipping withdrawal[${i}]:`, withdrawalError);
+        }
       }
     }
     
