@@ -1,7 +1,7 @@
 // src/workers/csl-worker.ts
 // Real CSL-based transaction parser
 
-import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
+import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 import * as bech32Buffer from 'bech32-buffer';
 import type { Network, RewardAccountRef, StakeCredential } from '@/domain/tx';
 
@@ -2292,33 +2292,36 @@ async function computeTransactionHash(hex: string): Promise<string> {
 
 // Handle messages from main thread
 self.onmessage = async (event) => {
-  const { type, data } = event.data;
-  
+  const { type, data, requestId } = event.data;
+
   try {
     switch (type) {
-      case 'PARSE_TRANSACTION':
+      case 'PARSE_TRANSACTION': {
         const result = await parseTransaction(data.hex, data.network || 'mainnet');
-        self.postMessage({ type: 'PARSE_RESULT', data: result });
+        self.postMessage({ requestId, type: 'PARSE_RESULT', data: result });
         break;
+      }
       case 'COMPUTE_HASH':
         try {
           const hash = await computeTransactionHash(data.hex);
-          self.postMessage({ type: 'HASH_RESULT', data: { hash } });
+          self.postMessage({ requestId, type: 'HASH_RESULT', data: { hash } });
         } catch (error) {
-          self.postMessage({ 
-            type: 'ERROR', 
-            data: { 
+          self.postMessage({
+            requestId,
+            type: 'ERROR',
+            data: {
               error: error instanceof Error ? error.message : 'Failed to compute hash',
               details: error instanceof Error ? error.stack : undefined
-            } 
+            }
           });
         }
         break;
       default:
-        self.postMessage({ type: 'ERROR', data: { error: 'Unknown message type' } });
+        self.postMessage({ requestId, type: 'ERROR', data: { error: 'Unknown message type' } });
     }
   } catch (error) {
     self.postMessage({
+      requestId,
       type: 'ERROR',
       data: {
         error:
