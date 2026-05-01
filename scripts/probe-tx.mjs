@@ -56,6 +56,33 @@ step('body.donation()', () => body.donation());
 step('body.current_treasury_value()', () => body.current_treasury_value());
 
 console.log('---');
+console.log('walking voting proposals:');
+const votingProposals = body.voting_proposals();
+if (votingProposals) {
+  const vpLen = step('voting_proposals.len()', () => votingProposals.len());
+  console.log(`  proposal count: ${vpLen}`);
+  for (let i = 0; i < vpLen; i++) {
+    console.log(`  proposal[${i}]:`);
+    const proposal = step(`    voting_proposals.get(${i})`, () => votingProposals.get(i));
+    console.log(`    typeof proposal.proposal_procedure: ${typeof proposal.proposal_procedure}`);
+    console.log(`    typeof proposal.reward_account:     ${typeof proposal.reward_account}`);
+    console.log(`    typeof proposal.deposit:            ${typeof proposal.deposit}`);
+    console.log(`    typeof proposal.anchor:             ${typeof proposal.anchor}`);
+    console.log(`    typeof proposal.governance_action:  ${typeof proposal.governance_action}`);
+    const rewardAddr = step(`    proposal.reward_account()`, () => proposal.reward_account());
+    if (rewardAddr) {
+      const addr = step(`      rewardAddr.to_address()`, () => rewardAddr.to_address());
+      step(`      addr.to_bech32()`, () => addr.to_bech32());
+    }
+    step(`    proposal.deposit()`, () => proposal.deposit());
+    step(`    proposal.anchor()`, () => proposal.anchor());
+    step(`    proposal.governance_action()`, () => proposal.governance_action());
+  }
+} else {
+  console.log('  (no voting proposals)');
+}
+
+console.log('---');
 console.log('walking withdrawals:');
 const withdrawals = body.withdrawals();
 if (withdrawals) {

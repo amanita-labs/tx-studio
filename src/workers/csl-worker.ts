@@ -1181,13 +1181,14 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
             for (let i = 0; i < proposalsLen; i++) {
               try {
                 const proposal = votingProposals.get(i);
-                const procedure = proposal.proposal_procedure();
-                const rewardAccountAddr = procedure?.reward_account();
+                // VotingProposal exposes proposal-procedure fields directly —
+                // there is no .proposal_procedure() wrapper in CSL.
+                const rewardAccountAddr = proposal.reward_account?.();
                 rewardAccountRefs[i] = rewardAccountAddr
                   ? extractRewardAccountRef(rewardAccountAddr)
                   : null;
               } catch (error) {
-                console.warn('Error extracting reward account from CSL:', error);
+                console.warn(`Skipping reward_account on proposal[${i}]:`, error);
                 rewardAccountRefs[i] = null;
               }
             }
