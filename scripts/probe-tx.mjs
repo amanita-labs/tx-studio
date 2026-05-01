@@ -56,6 +56,29 @@ step('body.donation()', () => body.donation());
 step('body.current_treasury_value()', () => body.current_treasury_value());
 
 console.log('---');
+console.log('walking withdrawals:');
+const withdrawals = body.withdrawals();
+if (withdrawals) {
+  const wkeys = step('withdrawals.keys()', () => withdrawals.keys());
+  const wlen = step('wkeys.len()', () => wkeys.len());
+  console.log(`  withdrawal count: ${wlen}`);
+  for (let i = 0; i < wlen; i++) {
+    console.log(`  withdrawal[${i}]:`);
+    const rewardAddr = step(`    wkeys.get(${i})`, () => wkeys.get(i));
+    const addr = step(`    rewardAddr.to_address()`, () => rewardAddr.to_address());
+    step(`    addr.to_bech32()`, () => addr.to_bech32());
+    step(`    addr.to_hex()`, () => addr.to_hex());
+    step(`    addr.network_id()`, () => addr.network_id());
+    step(`    rewardAddr.network_id()`, () => rewardAddr.network_id());
+    step(`    rewardAddr.payment_cred()`, () => rewardAddr.payment_cred());
+    const amount = step(`    withdrawals.get(rewardAddr)`, () => withdrawals.get(rewardAddr));
+    if (amount) step(`    amount.to_str()`, () => amount.to_str());
+  }
+} else {
+  console.log('  (no withdrawals)');
+}
+
+console.log('---');
 console.log('walking outputs:');
 const outLen = outputs.len();
 for (let i = 0; i < outLen; i++) {
