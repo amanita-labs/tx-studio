@@ -448,6 +448,7 @@ function parseDatumContent(plutusData: any): any {
 }
 
 function parseDatumList(list: any): any[] {
+  if (!list || typeof list.len !== 'function') return [];
   const result = [];
   for (let i = 0; i < list.len(); i++) {
     result.push(parseDatumContent(list.get(i)));
@@ -456,13 +457,14 @@ function parseDatumList(list: any): any[] {
 }
 
 function parseDatumMap(map: any): Record<string, any> {
+  if (!map || typeof map.keys !== 'function') return {};
   const result: Record<string, any> = {};
   const keys = map.keys();
   for (let i = 0; i < keys.len(); i++) {
     const keyData = keys.get(i);
     const key = parseDatumContent(keyData);
     const values = map.get(keyData);
-    if (!values) continue;
+    if (!values || typeof values.len !== 'function') continue;
     const parsedValues: any[] = [];
     for (let j = 0; j < values.len(); j++) {
       const v = values.get(j);
@@ -479,7 +481,8 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
   let body: any = null;
   let witnessSet: any = null;
   let auxiliaryData: any = null;
-  
+  let phase = 'init';
+
   try {
     await initializeParser();
     
@@ -516,6 +519,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse transaction using CSL
+    phase = 'CSL.Transaction.from_hex';
     transaction = CSL.Transaction.from_hex(cleanHex);
     body = transaction.body();
     witnessSet = transaction.witness_set();
@@ -534,10 +538,12 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     const size = hex.length / 2;
     
     // Calculate transaction ID (hash of the body)
+    phase = 'computeTxHash';
     const fixedTransaction = CSL.FixedTransaction.from_hex(hex);
     const id = fixedTransaction.transaction_hash().to_hex();
     
     // Determine era based on transaction structure
+    phase = 'detectEra';
     let era = "Unknown";
     try {
       // Check for Conway era features first
@@ -555,6 +561,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse fee
+    phase = 'parseFee';
     const fee = BigInt(body.fee().to_str());
 
     // Parse treasury donation (Conway era, tx body field 19)
@@ -567,6 +574,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     } catch { /* donation() not available in this CSL version */ }
 
     // Parse TTL
+    phase = 'parseTTL';
     const ttlBignum = body.ttl_bignum();
     const ttl = ttlBignum ? Number(ttlBignum.to_str()) : null;
     
@@ -575,6 +583,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     const validityStart = validityStartBignum ? Number(validityStartBignum.to_str()) : null;
     
     // Parse inputs
+    phase = 'parseInputs';
     const inputs = [];
     const bodyInputs = body.inputs();
     for (let i = 0; i < bodyInputs.len(); i++) {
@@ -591,6 +600,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse collateral inputs
+    phase = 'parseCollateralInputs';
     const collateralInputs = body.collateral();
     if (collateralInputs) {
       for (let i = 0; i < collateralInputs.len(); i++) {
@@ -608,9 +618,11 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse outputs
+    phase = 'parseOutputs';
     const outputs = [];
     const bodyOutputs = body.outputs();
     for (let i = 0; i < bodyOutputs.len(); i++) {
+      phase = `parseOutputs[${i}]`;
       const output = bodyOutputs.get(i);
       const address = output.address().to_bech32();
       const amount = output.amount();
@@ -719,6 +731,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse mint
+    phase = 'parseMint';
     let mint = undefined;
     const sortedMintPolicyIds: string[] = [];
     const mintData = body.mint();
@@ -754,6 +767,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse certificates
+    phase = 'parseCertificates';
     let certs = undefined;
     const bodyCerts = body.certs();
     if (bodyCerts) {
@@ -992,6 +1006,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse withdrawals
+    phase = 'parseWithdrawals';
     let withdrawals = undefined;
     const bodyWithdrawals = body.withdrawals();
     if (bodyWithdrawals) {
@@ -1008,6 +1023,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse governance data (Conway era)
+    phase = 'parseGovernance';
     let governance: {
       constitution: { hash: string; url?: string } | null;
       committee: { members: Array<{ keyHash: string; epoch: number }>; threshold: number } | null;
@@ -1425,6 +1441,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse metadata with enhanced handling
+    phase = 'parseMetadata';
     const metadata = [];
     if (auxiliaryData) {
       const metadataMap = auxiliaryData.metadata();
@@ -1459,10 +1476,12 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse script data hash and total collateral
+    phase = 'parseScriptDataHash';
     const scriptDataHash = body.script_data_hash()?.to_hex();
     const totalCollateral = body.total_collateral()?.to_str();
     
     // Parse collateral return
+    phase = 'parseCollateralReturn';
     let collateralReturn = undefined;
     const collateralReturnOutput = body.collateral_return();
     if (collateralReturnOutput) {
@@ -1500,6 +1519,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse reference inputs
+    phase = 'parseReferenceInputs';
     const referenceInputs = [];
     const refInputs = body.reference_inputs();
     if (refInputs) {
@@ -1513,10 +1533,12 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Parse scripts and redeemers
+    phase = 'parseScriptsRedeemers';
     const scripts = [];
     const redeemers: Array<{ purpose: string; index: number; exUnits: { mem: number; steps: number }; data?: string; scriptHash?: string }> = [];
     
     // Native scripts
+    phase = 'parseNativeScripts';
     const nativeScripts = witnessSet.native_scripts();
     if (nativeScripts) {
       for (let i = 0; i < nativeScripts.len(); i++) {
@@ -1542,6 +1564,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
 
     // Plutus scripts
+    phase = 'parsePlutusScripts';
     const plutusScripts = witnessSet.plutus_scripts();
     if (plutusScripts) {
       for (let i = 0; i < plutusScripts.len(); i++) {
@@ -1571,6 +1594,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Redeemers
+    phase = 'parseRedeemers';
     const witnessRedeemers = witnessSet.redeemers();
     if (witnessRedeemers) {
       for (let i = 0; i < witnessRedeemers.len(); i++) {
@@ -1674,6 +1698,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
 
     // Resolve scriptHash on redeemers where possible
+    phase = 'resolveRedeemerScriptHashes';
     // Mint: policy ID at sorted index IS the script hash
     for (const r of redeemers) {
       if (r.purpose === 'mint' && r.index < sortedMintPolicyIds.length) {
@@ -1760,6 +1785,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
 
     // Count witnesses and extract signer details
+    phase = 'parseWitnessSigners';
     const vkeyCount = witnessSet.vkeys()?.len() || 0;
     const nativeCount = witnessSet.native_scripts()?.len() || 0;
     const plutusCount = witnessSet.plutus_scripts()?.len() || 0;
@@ -1788,6 +1814,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Get actual VKey witnesses (signatures provided)
+    phase = 'parseVkeyWitnesses';
     const vkeys = witnessSet.vkeys();
     const vkeyWitnesses: Array<{ vkey: string; signature: string; hash: string }> = [];
     if (vkeys) {
@@ -1998,6 +2025,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Native script witnesses
+    phase = 'parseNativeScriptWitnesses';
     if (nativeScripts) {
       for (let i = 0; i < nativeScripts.len(); i++) {
         const script = nativeScripts.get(i);
@@ -2017,6 +2045,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Plutus script witnesses
+    phase = 'parsePlutusScriptWitnesses';
     if (plutusScripts) {
       for (let i = 0; i < plutusScripts.len(); i++) {
         const script = plutusScripts.get(i);
@@ -2036,6 +2065,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     }
     
     // Enhanced validation and warnings
+    phase = 'validation';
     const warnings: string[] = [];
     const validation = {
       isValid: true,
@@ -2113,6 +2143,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     // on certain shapes) throw mid-call and leak an active wasm-bindgen borrow.
     // A subsequent free() then throws "recursive use of an object detected" and
     // would turn a successful parse into a failure. Swallow cleanup errors.
+    phase = 'cleanup';
     try {
       if (transaction) transaction.free();
       if (body) body.free();
@@ -2164,9 +2195,9 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       },
     };
   } catch (error) {
-    console.error('Transaction parsing error:', error);
-    
-    // Clean up CSL objects on error
+    console.error(`Transaction parsing error [phase=${phase}]:`, error,
+      'typeof:', typeof error, 'isError:', error instanceof Error);
+
     try {
       if (transaction) transaction.free();
       if (body) body.free();
@@ -2175,15 +2206,16 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     } catch (cleanupError) {
       console.warn('Error during cleanup:', cleanupError);
     }
-    
+
+    const baseMsg =
+      error instanceof Error
+        ? error.message
+        : error == null
+          ? 'worker threw an empty value (check browser console for details)'
+          : `non-Error throw: ${String(error)}`;
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : error == null
-            ? 'Worker threw an empty value (likely a CSL/asmjs internal error — check the browser console for details).'
-            : `CSL threw a non-Error value: ${String(error)}`,
+      error: `[${phase}] ${baseMsg}`,
       details: error instanceof Error ? error.stack : undefined,
     };
   }
