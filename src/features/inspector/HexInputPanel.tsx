@@ -13,8 +13,10 @@ import { isValidHex } from '@/lib/utils/hex';
 import { isValidTransactionHash } from '@/lib/blockfrost/config';
 import { SAMPLE_TRANSACTIONS } from '@/lib/sample-data';
 import { useCSLWorker } from '@/hooks/use-csl-worker';
+// Note: computeTransactionHash now comes from useCSLWorker so it shares the
+// long-lived worker instead of spawning a fresh worker (and re-loading wasm)
+// per call.
 import { useBlockfrost } from '@/hooks/use-blockfrost';
-import { computeTransactionHash } from '@/lib/utils/tx-hash';
 import { toast } from 'sonner';
 import { BlockfrostFetch } from '@/components/blockfrost-fetch';
 import { Network } from '@/domain/tx';
@@ -25,7 +27,7 @@ export function HexInputPanel() {
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
   const [isSampleOpen, setIsSampleOpen] = useState(false);
-  const { parseTransaction } = useCSLWorker();
+  const { parseTransaction, computeTransactionHash } = useCSLWorker();
   const { searchTransactionAcrossNetworks, detectNetworkFromInputs } = useBlockfrost();
 
   const validateHex = useCallback((hex: string) => {
@@ -203,7 +205,7 @@ export function HexInputPanel() {
         setLoading(false);
       }
     }
-  }, [network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks, detectNetworkFromInputs]);
+  }, [network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, setParsedTx, parseTransaction, computeTransactionHash, searchTransactionAcrossNetworks, detectNetworkFromInputs]);
 
   const handleDissect = useCallback(async () => {
     if (!localHex.trim()) {
@@ -365,7 +367,7 @@ export function HexInputPanel() {
       toast.error(`Parsing failed: ${errorMessage}`);
       setLoading(false);
     }
-  }, [localHex, isValid, network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, setParsedTx, parseTransaction, searchTransactionAcrossNetworks, detectNetworkFromInputs]);
+  }, [localHex, isValid, network, setTxHex, setNetwork, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, setParsedTx, parseTransaction, computeTransactionHash, searchTransactionAcrossNetworks, detectNetworkFromInputs]);
 
 
   const handleCopyToClipboard = async () => {
