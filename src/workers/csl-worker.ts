@@ -1193,10 +1193,32 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
               }
             }
             
-            // Second pass: convert to JS values for easier processing
-            const proposalsJs = votingProposals.to_js_value();
-            if (Array.isArray(proposalsJs)) {
+            // Second pass: convert to JS values for easier processing.
+            // Some asmjs CSL builds throw `Cannot set properties of undefined`
+            // from the collection-level `to_js_value()`. Fall back to
+            // per-proposal `to_js_value()` (which has been observed to
+            // succeed on the same data) so a single asmjs hiccup doesn't
+            // wipe out the entire governance section.
+            let proposalsJs: any[] = [];
+            try {
+              const collectionJs = votingProposals.to_js_value();
+              if (Array.isArray(collectionJs)) {
+                proposalsJs = collectionJs;
+              }
+            } catch (collectionErr) {
+              console.warn('voting_proposals.to_js_value() failed; falling back to per-proposal:', collectionErr);
+              for (let i = 0; i < proposalsLen; i++) {
+                try {
+                  proposalsJs.push(votingProposals.get(i).to_js_value());
+                } catch (perProposalErr) {
+                  console.warn(`Skipping proposal[${i}] (to_js_value failed):`, perProposalErr);
+                  proposalsJs.push(null);
+                }
+              }
+            }
+            if (proposalsJs.length > 0) {
               proposalsJs.forEach((proposal: any, index: number) => {
+                if (!proposal) return; // per-proposal to_js_value failed for this entry
                 let proposalType = 'Unknown';
                 let details: Record<string, unknown> = {};
                 
