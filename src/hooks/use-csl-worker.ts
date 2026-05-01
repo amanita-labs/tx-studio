@@ -15,7 +15,7 @@ export function useCSLWorker() {
     // Handle messages from worker
     workerRef.current.onmessage = (event) => {
       const { type, data } = event.data;
-      
+
       if (type === 'PARSE_RESULT') {
         const callback = callbacksRef.current.get('parse');
         if (callback) {
@@ -32,6 +32,29 @@ export function useCSLWorker() {
           });
           callbacksRef.current.delete('parse');
         }
+      }
+    };
+
+    workerRef.current.onerror = (event) => {
+      const callback = callbacksRef.current.get('parse');
+      if (callback) {
+        const location = event.filename ? ` (${event.filename}:${event.lineno})` : '';
+        callback({
+          success: false,
+          error: `Worker error: ${event.message || 'unknown'}${location}`,
+        });
+        callbacksRef.current.delete('parse');
+      }
+    };
+
+    workerRef.current.onmessageerror = () => {
+      const callback = callbacksRef.current.get('parse');
+      if (callback) {
+        callback({
+          success: false,
+          error: 'Worker message could not be deserialized',
+        });
+        callbacksRef.current.delete('parse');
       }
     };
 
