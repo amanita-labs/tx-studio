@@ -76,7 +76,22 @@ if (votingProposals) {
     }
     step(`    proposal.deposit()`, () => proposal.deposit());
     step(`    proposal.anchor()`, () => proposal.anchor());
-    step(`    proposal.governance_action()`, () => proposal.governance_action());
+    const govAction = step(`    proposal.governance_action()`, () => proposal.governance_action());
+    step(`    govAction.kind()`, () => govAction.kind());
+    step(`    proposal.to_js_value()`, () => proposal.to_js_value());
+  }
+  step('voting_proposals.to_js_value() (collection)', () => votingProposals.to_js_value());
+  // also try kind-specific accessors
+  for (let i = 0; i < vpLen; i++) {
+    const proposal = votingProposals.get(i);
+    const ga = proposal.governance_action();
+    step(`    governance_action[${i}].as_parameter_change_action()`, () => ga.as_parameter_change_action?.());
+    step(`    governance_action[${i}].as_treasury_withdrawals_action()`, () => ga.as_treasury_withdrawals_action?.());
+    step(`    governance_action[${i}].as_hard_fork_initiation_action()`, () => ga.as_hard_fork_initiation_action?.());
+    step(`    governance_action[${i}].as_no_confidence_action()`, () => ga.as_no_confidence_action?.());
+    step(`    governance_action[${i}].as_new_constitution_action()`, () => ga.as_new_constitution_action?.());
+    step(`    governance_action[${i}].as_update_committee_action()`, () => ga.as_update_committee_action?.());
+    step(`    governance_action[${i}].as_info_action()`, () => ga.as_info_action?.());
   }
 } else {
   console.log('  (no voting proposals)');
