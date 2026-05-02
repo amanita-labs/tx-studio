@@ -36,7 +36,7 @@ import { formatLovelace, formatAda, formatAssetQuantity } from '@/lib/utils/ada'
 import { encodeStakeAddress } from '@/lib/utils/stake-address';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
-import { getKnownAddressLabel, getKnownSignerLabel } from '@/lib/labels';
+import { getKnownCredLabel, resolveAddressLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
@@ -2736,8 +2736,11 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                         These signers must provide signatures for the transaction to be valid.
                       </p>
                       {requiredSigners.map((signer, index) => {
-                        const signerLabel = getKnownSignerLabel(signer.hash);
-                        const signerAddressLabel = getKnownAddressLabel(signer.address);
+                        const signerLabel = getKnownCredLabel(signer.hash, 'payment', network);
+                        const signerAddressLabel = resolveAddressLabel(
+                          { address: signer.address, addressCreds: signer.addressCreds },
+                          network,
+                        );
                         const hasMatchingWitness = witnessHashes.has(signer.hash.toLowerCase());
 
                         return (
@@ -2776,7 +2779,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                                   </div>
                                 </div>
                                 {signerLabel && (
-                                  <KnownLabelHighlight category="signer" label={signerLabel} />
+                                  <KnownLabelHighlight category="payment-cred" label={signerLabel} />
                                 )}
                                 {hasMatchingWitness && (
                                   <div className="flex items-center gap-2 text-sm text-green-600">
@@ -2871,9 +2874,9 @@ export function ContentsTab({ tx }: ContentsTabProps) {
                               <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-2">
                                 Blake2b-224 Hash
                                 {(() => {
-                                  const hashLabel = getKnownSignerLabel(witness.hash);
+                                  const hashLabel = getKnownCredLabel(witness.hash, 'payment', network);
                                   return hashLabel ? (
-                                    <KnownLabelHighlight category="signer" label={hashLabel} />
+                                    <KnownLabelHighlight category="payment-cred" label={hashLabel} />
                                   ) : null;
                                 })()}
                               </div>

@@ -7,9 +7,10 @@ import { Copy, ArrowRight, Coins, Shield, ArrowDownRight, ArrowUpRight } from 'l
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
-import { getKnownAddressLabel } from '@/lib/labels';
+import { resolveAddressLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { useTokenRegistry } from '@/hooks/use-token-registry';
+import { useAppStore } from '@/lib/store';
 import { AssetDisplay } from '@/components/asset-display';
 
 interface IoValueTabProps {
@@ -30,6 +31,7 @@ function truncateAddress(address: string, startLength: number = 15, endLength: n
 
 export function IoValueTab({ tx }: IoValueTabProps) {
   const { getMetadata } = useTokenRegistry(tx);
+  const network = useAppStore((s) => s.network);
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -58,7 +60,10 @@ export function IoValueTab({ tx }: IoValueTabProps) {
               {tx.inputs
                 .filter(input => !input.isCollateral)
                 .map((input, index) => {
-                  const resolvedLabel = getKnownAddressLabel(input.resolved?.address);
+                  const resolvedLabel = resolveAddressLabel(
+                    { address: input.resolved?.address, addressCreds: input.resolved?.addressCreds },
+                    network,
+                  );
 
                   return (
                     <div key={index} className="border rounded-lg p-3 space-y-2">
@@ -165,7 +170,10 @@ export function IoValueTab({ tx }: IoValueTabProps) {
               {tx.inputs
                 .filter(input => input.isCollateral)
                 .map((input, index) => {
-                  const collateralLabel = getKnownAddressLabel(input.resolved?.address);
+                  const collateralLabel = resolveAddressLabel(
+                    { address: input.resolved?.address, addressCreds: input.resolved?.addressCreds },
+                    network,
+                  );
 
                   return (
                     <div key={index} className="border rounded-lg p-3 space-y-2 bg-orange-50 dark:bg-orange-950/20">
@@ -273,7 +281,10 @@ export function IoValueTab({ tx }: IoValueTabProps) {
           ) : (
             <div className="space-y-3">
               {tx.outputs.map((output, index) => {
-                const outputLabel = getKnownAddressLabel(output.address);
+                const outputLabel = resolveAddressLabel(
+                  { address: output.address, addressCreds: output.addressCreds },
+                  network,
+                );
 
                 return (
                   <div key={index} className="border rounded-lg p-3 space-y-2">
@@ -530,7 +541,10 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                 The collateral return output specifies where any unused collateral should be returned after script execution.
               </p>
               {(() => {
-                const collateralReturnLabel = getKnownAddressLabel(tx.collateralReturn.address);
+                const collateralReturnLabel = resolveAddressLabel(
+                  { address: tx.collateralReturn.address, addressCreds: tx.collateralReturn.addressCreds },
+                  network,
+                );
 
                 return (
                   <div className="border rounded-lg p-3 space-y-2">

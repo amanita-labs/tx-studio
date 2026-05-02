@@ -3,7 +3,62 @@
 
 import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 import * as bech32Buffer from 'bech32-buffer';
-import type { Network, RewardAccountRef, StakeCredential } from '@/domain/tx';
+import type { AddressCredInfo, AddressCreds, Network, RewardAccountRef, StakeCredential } from '@/domain/tx';
+
+function cslCredToInfo(cred: CSL.Credential | undefined | null): AddressCredInfo | undefined {
+  if (!cred) return undefined;
+  try {
+    // CSL.Credential exposes kind() returning 0 for keyhash, 1 for scripthash.
+    const k = typeof cred.kind === 'function' ? cred.kind() : undefined;
+    if (k === 0) {
+      const kh = cred.to_keyhash?.();
+      if (kh) return { kind: 'key', hash: kh.to_hex() };
+    } else if (k === 1) {
+      const sh = cred.to_scripthash?.();
+      if (sh) return { kind: 'script', hash: sh.to_hex() };
+    }
+    // Fallback: try both accessors regardless of kind() availability.
+    const kh = cred.to_keyhash?.();
+    if (kh) return { kind: 'key', hash: kh.to_hex() };
+    const sh = cred.to_scripthash?.();
+    if (sh) return { kind: 'script', hash: sh.to_hex() };
+  } catch {
+    // fall through
+  }
+  return undefined;
+}
+
+function decomposeAddress(cslAddr: CSL.Address | undefined | null): AddressCreds | undefined {
+  if (!cslAddr) return undefined;
+  try {
+    const base = CSL.BaseAddress.from_address(cslAddr);
+    if (base) {
+      return {
+        paymentCred: cslCredToInfo(base.payment_cred()),
+        stakeCred: cslCredToInfo(base.stake_cred()),
+      };
+    }
+  } catch {
+    // fall through
+  }
+  try {
+    const ent = CSL.EnterpriseAddress.from_address(cslAddr);
+    if (ent) {
+      return { paymentCred: cslCredToInfo(ent.payment_cred()) };
+    }
+  } catch {
+    // fall through
+  }
+  try {
+    const reward = CSL.RewardAddress.from_address(cslAddr);
+    if (reward) {
+      return { stakeCred: cslCredToInfo(reward.payment_cred()) };
+    }
+  } catch {
+    // fall through
+  }
+  return undefined;
+}
 
 let isInitialized = false;
 
@@ -624,7 +679,9 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     for (let i = 0; i < bodyOutputs.len(); i++) {
       phase = `parseOutputs[${i}]`;
       const output = bodyOutputs.get(i);
-      const address = output.address().to_bech32();
+      const cslOutAddr = output.address();
+      const address = cslOutAddr.to_bech32();
+      const addressCreds = decomposeAddress(cslOutAddr);
       const amount = output.amount();
       
       // Parse ADA amount
@@ -723,13 +780,14 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       
       outputs.push({
         address,
+        addressCreds,
         ada,
         assets,
         datum,
         scriptRef
       });
     }
-    
+
     // Parse mint
     phase = 'parseMint';
     let mint = undefined;
@@ -1025,9 +1083,10 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
             // to hex so the parse still succeeds.
             stakeAddr = cslAddr.to_hex();
           }
+          const addressCreds = decomposeAddress(cslAddr);
           const amountBignum = bodyWithdrawals.get(rewardAddr);
           const amount = BigInt(amountBignum?.to_str() || '0');
-          withdrawals.push({ stakeAddr, amount });
+          withdrawals.push({ stakeAddr, addressCreds, amount });
         } catch (withdrawalError) {
           console.warn(`Skipping withdrawal[${i}]:`, withdrawalError);
         }
@@ -1520,7 +1579,9 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
     let collateralReturn = undefined;
     const collateralReturnOutput = body.collateral_return();
     if (collateralReturnOutput) {
-      const address = collateralReturnOutput.address().to_bech32();
+      const cslColAddr = collateralReturnOutput.address();
+      const address = cslColAddr.to_bech32();
+      const addressCreds = decomposeAddress(cslColAddr);
       const amount = collateralReturnOutput.amount();
       const ada = amount.coin();
       const assets = [];
@@ -1548,6 +1609,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       
       collateralReturn = {
         address,
+        addressCreds,
         ada: BigInt(ada.to_str()),
         assets
       };
@@ -1580,11 +1642,13 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         const script = nativeScripts.get(i);
         const hash = script.hash().to_hex();
         let address: string | undefined;
+        let addressCreds: AddressCreds | undefined;
         try {
           const scriptHash = CSL.ScriptHash.from_bytes(Buffer.from(hash, 'hex'));
           const credential = CSL.Credential.from_scripthash(scriptHash);
           const enterpriseAddr = CSL.EnterpriseAddress.new(networkId, credential);
           address = enterpriseAddr.to_address().to_bech32();
+          addressCreds = { paymentCred: { kind: 'script', hash } };
         } catch (e) {
           console.warn('Failed to derive enterprise address for native script:', e);
         }
@@ -1593,7 +1657,8 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
           hash,
           bytesLen: script.to_bytes().length,
           bytes: script.to_hex(),
-          address
+          address,
+          addressCreds
         });
       }
     }
@@ -1610,11 +1675,13 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                     version.kind() === 2 ? "PlutusV3" : "PlutusV1";
         const hash = script.hash().to_hex();
         let address: string | undefined;
+        let addressCreds: AddressCreds | undefined;
         try {
           const scriptHash = CSL.ScriptHash.from_bytes(Buffer.from(hash, 'hex'));
           const credential = CSL.Credential.from_scripthash(scriptHash);
           const enterpriseAddr = CSL.EnterpriseAddress.new(networkId, credential);
           address = enterpriseAddr.to_address().to_bech32();
+          addressCreds = { paymentCred: { kind: 'script', hash } };
         } catch (e) {
           console.warn('Failed to derive enterprise address for plutus script:', e);
         }
@@ -1623,7 +1690,8 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
           hash,
           bytesLen: script.to_bytes().length,
           bytes: script.to_hex(),
-          address
+          address,
+          addressCreds
         });
       }
     }

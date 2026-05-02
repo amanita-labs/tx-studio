@@ -3,10 +3,8 @@
 
 import { type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { KnownLabelEntry } from '@/lib/labels';
+import { KnownLabelEntry, type TransactionLabelCategory } from '@/lib/labels';
 import { cn } from '@/lib/utils';
-
-type KnownLabelCategory = 'script' | 'address' | 'signer';
 
 type CategoryTheme = {
   title: string;
@@ -17,7 +15,7 @@ type CategoryTheme = {
   linkClass: string;
 };
 
-const CATEGORY_THEMES: Record<KnownLabelCategory, CategoryTheme> = {
+const CATEGORY_THEMES: Record<TransactionLabelCategory, CategoryTheme> = {
   script: {
     title: 'Known Script',
     containerClass: 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40',
@@ -34,18 +32,50 @@ const CATEGORY_THEMES: Record<KnownLabelCategory, CategoryTheme> = {
     descriptionClass: 'text-blue-700/80 dark:text-blue-200/80',
     linkClass: 'text-blue-700 hover:text-blue-800 dark:text-blue-200 dark:hover:text-blue-100',
   },
-  signer: {
-    title: 'Known Signer',
+  'payment-cred': {
+    title: 'Known Payment Key',
     containerClass: 'border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/40',
     badgeClass: 'bg-purple-600/10 text-purple-700 hover:bg-purple-500/20 dark:bg-purple-500/10 dark:text-purple-200',
     nameClass: 'text-purple-800 dark:text-purple-100',
     descriptionClass: 'text-purple-700/80 dark:text-purple-200/80',
     linkClass: 'text-purple-700 hover:text-purple-800 dark:text-purple-200 dark:hover:text-purple-100',
   },
+  'stake-cred': {
+    title: 'Known Stake Key',
+    containerClass: 'border-sky-200 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40',
+    badgeClass: 'bg-sky-600/10 text-sky-700 hover:bg-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200',
+    nameClass: 'text-sky-800 dark:text-sky-100',
+    descriptionClass: 'text-sky-700/80 dark:text-sky-200/80',
+    linkClass: 'text-sky-700 hover:text-sky-800 dark:text-sky-200 dark:hover:text-sky-100',
+  },
+  drep: {
+    title: 'Known DRep',
+    containerClass: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40',
+    badgeClass: 'bg-amber-600/10 text-amber-700 hover:bg-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200',
+    nameClass: 'text-amber-800 dark:text-amber-100',
+    descriptionClass: 'text-amber-700/80 dark:text-amber-200/80',
+    linkClass: 'text-amber-700 hover:text-amber-800 dark:text-amber-200 dark:hover:text-amber-100',
+  },
+  cc: {
+    title: 'Known Committee',
+    containerClass: 'border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40',
+    badgeClass: 'bg-rose-600/10 text-rose-700 hover:bg-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200',
+    nameClass: 'text-rose-800 dark:text-rose-100',
+    descriptionClass: 'text-rose-700/80 dark:text-rose-200/80',
+    linkClass: 'text-rose-700 hover:text-rose-800 dark:text-rose-200 dark:hover:text-rose-100',
+  },
+  pool: {
+    title: 'Known Pool',
+    containerClass: 'border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/40',
+    badgeClass: 'bg-indigo-600/10 text-indigo-700 hover:bg-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-200',
+    nameClass: 'text-indigo-800 dark:text-indigo-100',
+    descriptionClass: 'text-indigo-700/80 dark:text-indigo-200/80',
+    linkClass: 'text-indigo-700 hover:text-indigo-800 dark:text-indigo-200 dark:hover:text-indigo-100',
+  },
 };
 
 type KnownLabelHighlightProps = {
-  category: KnownLabelCategory;
+  category: TransactionLabelCategory;
   label: KnownLabelEntry;
   className?: string;
   children?: ReactNode;
@@ -94,4 +124,3 @@ export function KnownLabelHighlight({ category, label, className, children }: Kn
     </div>
   );
 }
-
