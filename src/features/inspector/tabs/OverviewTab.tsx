@@ -59,7 +59,7 @@ interface OverviewTabProps {
 
 export function OverviewTab({ tx }: OverviewTabProps) {
   const { network, isDetectingNetwork, networkDetected, isOnChain, onChainMeta, setNetwork } = useAppStore();
-  const transactionLabels = collectTransactionLabels(tx);
+  const transactionLabels = collectTransactionLabels(tx, network);
   
   const getNetworkDisplayName = (net: string) => {
     switch (net) {
@@ -103,8 +103,16 @@ export function OverviewTab({ tx }: OverviewTabProps) {
         return 'Script';
       case 'address':
         return 'Address';
-      case 'signer':
-        return 'Signer';
+      case 'payment-cred':
+        return 'Payment Key';
+      case 'stake-cred':
+        return 'Stake Key';
+      case 'drep':
+        return 'DRep';
+      case 'cc':
+        return 'Committee';
+      case 'pool':
+        return 'Pool';
       default:
         return 'Label';
     }

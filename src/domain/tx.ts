@@ -1,4 +1,7 @@
 // src/domain/tx.ts
+export type AddressCredInfo = { kind: 'key' | 'script'; hash: string };
+export type AddressCreds = { paymentCred?: AddressCredInfo; stakeCred?: AddressCredInfo };
+
 export type DomainTx = {
   id: string;
   sizeBytes: number;
@@ -8,13 +11,14 @@ export type DomainTx = {
   slot?: number | null;
   validity: { start?: number | null; end?: number | null };
   inputs: Array<{
-    txId: string; 
-    index: number; 
+    txId: string;
+    index: number;
     isCollateral: boolean;
-    resolved?: { address?: string; value?: ValueSummary } // optional future lookup
+    resolved?: { address?: string; addressCreds?: AddressCreds; value?: ValueSummary } // optional future lookup
   }>;
   outputs: Array<{
     address: string;
+    addressCreds?: AddressCreds;
     ada: bigint;
     assets: Array<{ policyId: string; assetName: string; quantity: bigint }>;
     datum?: { inline?: boolean | string; hash?: string; ref?: boolean; type?: string; content?: unknown; size?: number };
@@ -22,17 +26,17 @@ export type DomainTx = {
   }>;
   mint?: Array<{ policyId: string; assetName: string; quantity: bigint }>;
   certs?: Array<CertificateVM>;           // normalized, labeled
-  withdrawals?: Array<{ stakeAddr: string; amount: bigint }>;
+  withdrawals?: Array<{ stakeAddr: string; addressCreds?: AddressCreds; amount: bigint }>;
   governance?: GovernanceVM | null;       // Conway actions, drep votes, etc.
   metadata?: Array<{ label: string; json?: unknown; cbor?: string }>;
-  scripts?: Array<{ type: string; hash: string; bytesLen: number; bytes?: string; address?: string }>;
+  scripts?: Array<{ type: string; hash: string; bytesLen: number; bytes?: string; address?: string; addressCreds?: AddressCreds }>;
   redeemers?: Array<{ purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }>;
   witnesses: { vkeyCount: number; nativeCount: number; plutusCount: number };
   vkeyWitnesses?: Array<{ vkey: string; signature: string; hash: string }>;
-  signers?: Array<{ type: 'vkey' | 'native' | 'plutus'; hash: string; address?: string; isWitness?: boolean; isRequired?: boolean }>;
+  signers?: Array<{ type: 'vkey' | 'native' | 'plutus'; hash: string; address?: string; addressCreds?: AddressCreds; isWitness?: boolean; isRequired?: boolean }>;
   scriptDataHash?: string;
   totalCollateral?: bigint;
-  collateralReturn?: { address: string; ada: bigint; assets: Array<{ policyId: string; assetName: string; quantity: bigint }> };
+  collateralReturn?: { address: string; addressCreds?: AddressCreds; ada: bigint; assets: Array<{ policyId: string; assetName: string; quantity: bigint }> };
   referenceInputs?: Array<{ txId: string; index: number }>;
   warnings: string[];
 };
