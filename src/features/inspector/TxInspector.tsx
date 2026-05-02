@@ -120,7 +120,7 @@ export function TxInspector() {
 
   return (
     <div className="container mx-auto p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-5rem)]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[calc(100vh-7.75rem)]">
           {/* Left Panel - Hex Input */}
           <div className="flex flex-col">
             <HexInputPanel />

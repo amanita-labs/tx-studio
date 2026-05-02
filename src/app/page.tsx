@@ -6,7 +6,7 @@ import { TxInspector } from '@/features/inspector/TxInspector';
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-background">
       <Suspense fallback={
         <div className="flex items-center justify-center h-screen">
           <div className="text-center">
