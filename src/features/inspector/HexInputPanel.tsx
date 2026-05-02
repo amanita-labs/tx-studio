@@ -21,9 +21,13 @@ import { toast } from 'sonner';
 import { BlockfrostFetch } from '@/components/blockfrost-fetch';
 import { Network } from '@/domain/tx';
 import type { BlockfrostTransaction } from '@/lib/types/blockfrost';
+import { CquisitorButton } from '@/components/cquisitor-button';
+
+const SHARE_URL_SOFT_LIMIT = 4096;
+const SHARE_URL_HARD_LIMIT = 8192;
 
 export function HexInputPanel() {
-  const { txHex, parsedTx, network, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, clearTx } = useAppStore();
+  const { txHex, parsedTx, network, networkDetected, isOnChain, setTxHex, setNetwork, setParsedTx, setLoading, setDetectingNetwork, setNetworkDetected, setIsOnChain, setOnChainMeta, setError, clearTx } = useAppStore();
   const [localHex, setLocalHex] = useState(txHex);
   const [isValid, setIsValid] = useState(true);
   const [isSampleOpen, setIsSampleOpen] = useState(false);
@@ -398,13 +402,29 @@ export function HexInputPanel() {
       toast.error('No transaction to share');
       return;
     }
-    
+
+    const netParam = networkDetected ? network : 'unknown';
+    const shareUrl = isOnChain
+      ? `${window.location.origin}/${parsedTx.tx.id}`
+      : `${window.location.origin}/?cbor=${txHex}&net=${netParam}&type=Transaction`;
+
     try {
-      const shareUrl = `${window.location.origin}/${parsedTx.tx.id}`;
       await navigator.clipboard.writeText(shareUrl);
-      toast.success('Shareable link copied to clipboard');
     } catch {
       toast.error('Failed to copy share link');
+      return;
+    }
+
+    if (shareUrl.length > SHARE_URL_HARD_LIMIT) {
+      toast.warning(
+        `Link copied — ${shareUrl.length.toLocaleString()} bytes. Likely too long for many browsers/CDNs; consider sending the hex file instead.`
+      );
+    } else if (shareUrl.length > SHARE_URL_SOFT_LIMIT) {
+      toast.warning(
+        `Link copied — ${shareUrl.length.toLocaleString()} bytes. May be truncated by some clients.`
+      );
+    } else {
+      toast.success('Shareable link copied to clipboard');
     }
   };
 
@@ -504,6 +524,7 @@ export function HexInputPanel() {
                   Share
                 </Button>
               )}
+              <CquisitorButton txHex={txHex} network={network} networkDetected={networkDetected} />
               <Button variant="outline" onClick={() => {
                 clearTx();
                 setLocalHex('');
