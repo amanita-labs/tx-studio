@@ -2335,3 +2335,11 @@ self.onmessage = async (event) => {
     });
   }
 };
+
+// Announce that the worker is ready to receive messages. The host (the
+// useCSLWorker hook) buffers any outbound calls until this READY arrives,
+// because messages posted before this point can be dispatched against a
+// global with no `onmessage` handler set yet (webpack's async chunk +
+// asyncWebAssembly bootstrap defers user code until after wasm loads) and
+// would otherwise be silently dropped.
+self.postMessage({ type: 'WORKER_READY' });

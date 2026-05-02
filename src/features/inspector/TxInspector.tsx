@@ -13,6 +13,14 @@ import { Button } from '@/components/ui/button';
 import { isValidTransactionHash } from '@/lib/blockfrost/config';
 import { useBlockfrost } from '@/hooks/use-blockfrost';
 import { useCSLWorker } from '@/hooks/use-csl-worker';
+import { Network } from '@/domain/tx';
+
+const VALID_NETWORKS: ReadonlySet<Network> = new Set(['mainnet', 'preprod', 'preview']);
+
+function parseNetworkParam(value: string | null): Network | null {
+  if (!value) return null;
+  return VALID_NETWORKS.has(value as Network) ? (value as Network) : null;
+}
 
 export function TxInspector() {
   const searchParams = useSearchParams();
@@ -34,14 +42,15 @@ export function TxInspector() {
   const { parseTransaction } = useCSLWorker();
   const hasLoadedFromUrl = useRef<string | null>(null);
 
-  // Load transaction from URL path (/{txHash}) or query params (?hex=...)
+  // Load transaction from URL path (/{txHash}) or query params (?cbor=... or ?hex=...)
   useEffect(() => {
     // First check URL path for transaction hash
     const pathHash = pathname && pathname !== '/' ? pathname.slice(1) : null;
-    
-    // Then check query params
-    const queryHex = searchParams.get('hex');
-    
+
+    // Then check query params — prefer ?cbor= (cquisitor-style) but fall back to legacy ?hex=
+    const queryHex = searchParams.get('cbor') ?? searchParams.get('hex');
+    const queryNet = parseNetworkParam(searchParams.get('net'));
+
     // Prefer path hash over query hex
     const hashToLoad = pathHash || queryHex;
     
@@ -78,9 +87,28 @@ export function TxInspector() {
             setLoading(false);
           });
       } else if (hashToLoad.length >= 100) {
-        // It's a full hex transaction, not a hash
+        // It's a full hex transaction, not a hash — auto-parse so the
+        // inspector populates without the user clicking Dissect.
         hasLoadedFromUrl.current = hashToLoad;
+        const networkToUse: Network = queryNet ?? 'mainnet';
+        if (queryNet) {
+          setNetwork(queryNet);
+          setNetworkDetected(true);
+        }
         setTxHex(hashToLoad);
+        setLoading(true);
+        setError(null);
+        parseTransaction(hashToLoad, networkToUse)
+          .then((parseResult) => {
+            setParsedTx(parseResult);
+          })
+          .catch((err) => {
+            const errorMsg = err instanceof Error ? err.message : 'Failed to parse transaction';
+            setError(errorMsg);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
       }
     }
     
