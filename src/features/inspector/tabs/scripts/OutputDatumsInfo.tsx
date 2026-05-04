@@ -33,12 +33,13 @@ export function OutputDatumsInfo({ tx }: OutputDatumsInfoProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {outputsWithDatum.map(({ output, index }) => (
+          {outputsWithDatum.map(({ output, index }, i) => (
             <DatumOutputCard
               key={index}
               index={index}
               address={output.address}
               datum={output.datum!}
+              defaultOpen={i === 0}
             />
           ))}
         </div>

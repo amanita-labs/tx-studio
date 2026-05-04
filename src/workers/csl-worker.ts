@@ -468,66 +468,14 @@ function getDatumType(plutusData: any): string {
   }
 }
 
-function parseDatumContent(plutusData: any): any {
-  if (!plutusData || typeof plutusData.kind !== 'function') return null;
+function decodePlutusDataToJson(plutusData: any): unknown {
+  if (!plutusData || typeof plutusData.to_json !== 'function') return null;
   try {
-    const kind = plutusData.kind();
-
-    switch (kind) {
-      case 0: { // Constr
-        const constr = plutusData.as_constr_plutus_data();
-        if (!constr) return null;
-        const data = constr.data();
-        return {
-          constructor: Number(constr.alternative().to_str()),
-          fields: Array.from({ length: data.len() }, (_, i) =>
-            parseDatumContent(data.get(i))
-          ),
-        };
-      }
-      case 1: // Map
-        return parseDatumMap(plutusData.as_map());
-      case 2: // List
-        return parseDatumList(plutusData.as_list());
-      case 3: // Int
-        return plutusData.as_integer().to_str();
-      case 4: // Bytes
-        return Array.from(plutusData.as_bytes()).map((b: unknown) => (b as number).toString(16).padStart(2, '0')).join('');
-      default:
-        return null;
-    }
+    return JSON.parse(plutusData.to_json(CSL.PlutusDatumSchema.DetailedSchema));
   } catch (error) {
-    console.warn('Error parsing datum content:', error);
+    console.warn('Error decoding PlutusData to JSON:', error);
     return null;
   }
-}
-
-function parseDatumList(list: any): any[] {
-  if (!list || typeof list.len !== 'function') return [];
-  const result = [];
-  for (let i = 0; i < list.len(); i++) {
-    result.push(parseDatumContent(list.get(i)));
-  }
-  return result;
-}
-
-function parseDatumMap(map: any): Record<string, any> {
-  if (!map || typeof map.keys !== 'function') return {};
-  const result: Record<string, any> = {};
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i++) {
-    const keyData = keys.get(i);
-    const key = parseDatumContent(keyData);
-    const values = map.get(keyData);
-    if (!values || typeof values.len !== 'function') continue;
-    const parsedValues: any[] = [];
-    for (let j = 0; j < values.len(); j++) {
-      const v = values.get(j);
-      if (v) parsedValues.push(parseDatumContent(v));
-    }
-    result[String(key)] = parsedValues.length === 1 ? parsedValues[0] : parsedValues;
-  }
-  return result;
 }
 
 // Real CSL-based transaction parsing
@@ -719,17 +667,19 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
       const plutusData = output.plutus_data();
       
       if (plutusData) {
-        // Inline datum - try to parse the content
+        // Inline datum - decode to DetailedSchema JSON and capture raw CBOR
         try {
           const datumType = getDatumType(plutusData);
-          const datumContent = parseDatumContent(plutusData);
-          
+          const datumContent = decodePlutusDataToJson(plutusData);
+          const datumBytes = plutusData.to_bytes();
+
           datum = {
             inline: true,
             hash: dataHash?.to_hex() || undefined,
             type: datumType,
             content: datumContent,
-            size: plutusData.to_bytes().length
+            cbor: Buffer.from(datumBytes).toString('hex'),
+            size: datumBytes.length
           };
         } catch (error) {
           console.warn('Error parsing inline datum:', error);
@@ -1710,43 +1660,19 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                        tagKind === 4 ? "vote" :
                        tagKind === 5 ? "propose" : "unknown";
         
-        // Parse redeemer data from PlutusData to JSON format
+        // Parse redeemer data into DetailedSchema JSON (string), with hex fallback
         let parsedData = undefined;
         const redeemerData = redeemer.data();
         if (redeemerData) {
           try {
-            // Check if it's a valid PlutusData object
-            if (typeof redeemerData.kind === 'function') {
-              const datumContent = parseDatumContent(redeemerData);
-              // Only stringify if we got valid content, otherwise fall back to hex
-              if (datumContent !== null && datumContent !== undefined) {
-                try {
-                  parsedData = JSON.stringify(datumContent);
-                } catch (stringifyError) {
-                  console.warn('Error stringifying redeemer datum content:', stringifyError);
-                  // Fall back to hex if stringification fails
-                  parsedData = redeemerData.to_hex();
-                }
-              } else {
-                // If parsing returned null but we have data, fall back to hex
-                console.warn('parseDatumContent returned null for redeemer, falling back to hex');
-                try {
-                  parsedData = redeemerData.to_hex();
-                } catch (hexError) {
-                  console.warn('Error converting redeemer data to hex:', hexError);
-                }
-              }
+            const datumContent = decodePlutusDataToJson(redeemerData);
+            if (datumContent !== null && datumContent !== undefined) {
+              parsedData = JSON.stringify(datumContent);
             } else {
-              // If it's not a PlutusData object, try to convert to hex
-              try {
-                parsedData = redeemerData.to_hex();
-              } catch (hexError) {
-                console.warn('Redeemer data is not PlutusData and cannot convert to hex:', hexError);
-              }
+              parsedData = redeemerData.to_hex();
             }
           } catch (error) {
             console.warn('Error parsing redeemer data:', error);
-            // Fallback to hex if parsing fails
             try {
               parsedData = redeemerData.to_hex();
             } catch (hexError) {
