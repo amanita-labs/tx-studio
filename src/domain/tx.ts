@@ -21,7 +21,7 @@ export type DomainTx = {
     addressCreds?: AddressCreds;
     ada: bigint;
     assets: Array<{ policyId: string; assetName: string; quantity: bigint }>;
-    datum?: { inline?: boolean | string; hash?: string; ref?: boolean; type?: string; content?: unknown; size?: number };
+    datum?: { inline?: boolean | string; hash?: string; ref?: boolean; type?: string; content?: unknown; cbor?: string; size?: number };
     scriptRef?: { type: "PlutusV1"|"PlutusV2"|"PlutusV3"|"Native"; bytes: string };
   }>;
   mint?: Array<{ policyId: string; assetName: string; quantity: bigint }>;

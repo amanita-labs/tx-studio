@@ -59,6 +59,7 @@ export interface ExUnitsDiff {
 export interface DatumInfo {
   type: 'inline' | 'hash';
   value: string;
+  cbor?: string; // raw CBOR hex of the inline datum
   decodedType?: string; // "constr", "map", "list", "int", "bytes"
-  decodedContent?: unknown; // structured Plutus Data from CSL
+  decodedContent?: unknown; // CSL DetailedSchema JSON shape
 }
