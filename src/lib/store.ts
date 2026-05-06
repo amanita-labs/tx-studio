@@ -90,7 +90,8 @@ interface AppState {
   builderTxBodyElements: BuilderTxBodyElement[];
   walletConnected: boolean;
   walletName: string | null;
-  walletApi: unknown | null; // BrowserWallet instance
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletApi: any | null; // BrowserWallet instance
   builtTxHex: string | null;
   signedTxHex: string | null;
 
@@ -117,7 +118,8 @@ interface AppState {
   addTxBodyElement: (element: BuilderTxBodyElement) => void;
   removeTxBodyElement: (id: string) => void;
   clearBuilder: () => void;
-  setWalletApi: (api: unknown | null, name: string | null) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setWalletApi: (api: any | null, name: string | null) => void;
   setBuiltTxHex: (hex: string | null) => void;
   setSignedTxHex: (hex: string | null) => void;
   disconnectWallet: () => void;
@@ -197,7 +199,8 @@ export const useAppStore = create<AppState>()(
         builtTxHex: null,
         signedTxHex: null,
       }),
-      setWalletApi: (api: unknown | null, name: string | null) => set({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setWalletApi: (api: any | null, name: string | null) => set({
         walletApi: api,
         walletName: name,
         walletConnected: api !== null,

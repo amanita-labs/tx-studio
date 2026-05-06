@@ -132,7 +132,8 @@ export async function connectWallet(walletName: string, cips: number[] = [30, 95
 /**
  * Get wallet information (name, network, balance)
  */
-export async function getWalletInfo(wallet: { name: string; getNetworkId: () => Promise<number>; getUtxos: () => Promise<unknown[]> }): Promise<{
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getWalletInfo(wallet: any): Promise<{
   name: string;
   networkId: number;
   balance: string;
@@ -161,7 +162,8 @@ export async function getWalletInfo(wallet: { name: string; getNetworkId: () => 
  * Check if connected wallet supports CIP-95 extension
  * Uses Mesh.js getExtensions() API as documented: https://meshjs.dev/apis/wallets/browserwallet#get-extensions
  */
-async function checkCIP95Support(wallet: { getSupportedExtensions?: () => Promise<Array<{ cip: number }>> }): Promise<boolean> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function checkCIP95Support(wallet: any): Promise<boolean> {
   try {
     // Method 1: Use Mesh.js getExtensions() API (recommended)
     if (typeof wallet.getExtensions === 'function') {
@@ -169,10 +171,9 @@ async function checkCIP95Support(wallet: { getSupportedExtensions?: () => Promis
         const extensions = await wallet.getExtensions();
         
         if (Array.isArray(extensions)) {
-          const hasCIP95 = extensions.some((ext: { cip: number }) => {
+          const hasCIP95 = extensions.some((ext: { cip: number | string }) => {
             // Handle both { cip: 95 } and { cip: "95" } formats
-            const cipValue = ext.cip;
-            return cipValue === 95 || cipValue === '95' || String(cipValue) === '95';
+            return String(ext.cip) === '95';
           });
           
           if (hasCIP95) {
@@ -200,7 +201,8 @@ async function checkCIP95Support(wallet: { getSupportedExtensions?: () => Promis
 /**
  * Get DRep information from wallet (CIP-95)
  */
-export async function getDRepInfo(wallet: { getDRep?: () => Promise<{ publicKey?: string; pubDrepKey?: string; publicKeyHash?: string; pubDrepKeyHash?: string; dRepIDCip105?: string; drepIDCip105?: string; dRepIDCip129?: string; drepIDCip129?: string } | null> }): Promise<DRepInfo | null> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getDRepInfo(wallet: any): Promise<DRepInfo | null> {
   try {
     // Check if wallet supports CIP-95
     const supportsCIP95 = await checkCIP95Support(wallet);
@@ -232,7 +234,8 @@ export async function getDRepInfo(wallet: { getDRep?: () => Promise<{ publicKey?
 /**
  * Get registered and unregistered stake keys from wallet (CIP-95)
  */
-export async function getStakeKeys(wallet: { getRegisteredPubStakeKeys?: () => Promise<unknown>; getUnregisteredPubStakeKeys?: () => Promise<unknown> }): Promise<StakeKeysInfo> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getStakeKeys(wallet: any): Promise<StakeKeysInfo> {
   try {
     // Check if wallet supports CIP-95
     const supportsCIP95 = await checkCIP95Support(wallet);
@@ -246,7 +249,8 @@ export async function getStakeKeys(wallet: { getRegisteredPubStakeKeys?: () => P
     const unregistered = await wallet.getUnregisteredPubStakeKeys();
     
     // Handle different response formats
-    const normalizeStakeKeys = (keys: unknown): StakeKeyInfo[] => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const normalizeStakeKeys = (keys: any): StakeKeyInfo[] => {
       if (!keys) return [];
       
       // If it's an array of strings (hashes), convert to objects
@@ -269,10 +273,15 @@ export async function getStakeKeys(wallet: { getRegisteredPubStakeKeys?: () => P
       
       // If it's an array of objects with pubStakeKey
       if (Array.isArray(keys)) {
-        return (keys as Array<string | { pubStakeKey?: string; pubStakeKeyHash?: string }>).map((key) => ({
-          pubStakeKey: key.pubStakeKey || key.pubStakeKeyHash || (typeof key === 'string' ? key : ''),
-          pubStakeKeyHash: key.pubStakeKeyHash || key.pubStakeKey || (typeof key === 'string' ? key : ''),
-        }));
+        return (keys as Array<string | { pubStakeKey?: string; pubStakeKeyHash?: string }>).map((key) => {
+          if (typeof key === 'string') {
+            return { pubStakeKey: key, pubStakeKeyHash: key };
+          }
+          return {
+            pubStakeKey: key.pubStakeKey || key.pubStakeKeyHash || '',
+            pubStakeKeyHash: key.pubStakeKeyHash || key.pubStakeKey || '',
+          };
+        });
       }
       
       return [];
@@ -291,7 +300,8 @@ export async function getStakeKeys(wallet: { getRegisteredPubStakeKeys?: () => P
 /**
  * Sign a transaction using the wallet
  */
-export async function signTransaction(wallet: { signTx: (txHex: string, partialSign: boolean) => Promise<string> }, txHex: string): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function signTransaction(wallet: any, txHex: string): Promise<string> {
   try {
     const signedTx = await wallet.signTx(txHex, false);
     return signedTx;
@@ -304,7 +314,8 @@ export async function signTransaction(wallet: { signTx: (txHex: string, partialS
 /**
  * Submit a signed transaction to the network
  */
-export async function submitTransaction(wallet: { submitTx: (signedTxHex: string) => Promise<string> }, signedTxHex: string): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function submitTransaction(wallet: any, signedTxHex: string): Promise<string> {
   try {
     const txHash = await wallet.submitTx(signedTxHex);
     return txHash;
@@ -317,7 +328,8 @@ export async function submitTransaction(wallet: { submitTx: (signedTxHex: string
 /**
  * Get UTXOs from the wallet for transaction building
  */
-export async function getUTXOs(wallet: { getUtxos: () => Promise<unknown[]> }): Promise<unknown[]> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getUTXOs(wallet: any): Promise<unknown[]> {
   try {
     const utxos = await wallet.getUtxos();
     return utxos || [];
@@ -330,7 +342,8 @@ export async function getUTXOs(wallet: { getUtxos: () => Promise<unknown[]> }): 
 /**
  * Get change address from wallet
  */
-export async function getChangeAddress(wallet: { getChangeAddress: () => Promise<string> }): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getChangeAddress(wallet: any): Promise<string> {
   try {
     const address = await wallet.getChangeAddress();
     return address;

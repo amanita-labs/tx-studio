@@ -261,7 +261,7 @@ function ValidationResultCard({ result }: ValidationResultCardProps) {
             <p className={`text-sm ${result.passed ? 'text-green-600' : 'text-destructive'}`}>
               {result.message}
             </p>
-            {result.details && (
+            {result.details != null && (
               <details className="mt-2">
                 <summary className="text-xs text-muted-foreground cursor-pointer">
                   View Details

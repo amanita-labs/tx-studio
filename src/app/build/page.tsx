@@ -2,7 +2,15 @@
 'use client';
 
 import { Suspense } from 'react';
-import { TxBuilder } from '@/features/builder/TxBuilder';
+import dynamic from 'next/dynamic';
+
+// CSL/Mesh load WASM at module-import time, which fails during static
+// prerender. Defer the import to the client to avoid touching WASM on
+// the server.
+const TxBuilder = dynamic(
+  () => import('@/features/builder/TxBuilder').then((m) => m.TxBuilder),
+  { ssr: false }
+);
 
 export default function BuildPage() {
   return (

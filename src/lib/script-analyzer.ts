@@ -165,17 +165,19 @@ export class ScriptAnalyzer {
     };
   }
 
-  private analyzeRedeemer(redeemer: { purpose?: 'spend' | 'mint' | 'cert' | 'reward'; scriptHash?: string; data?: string; executionUnits?: { memory?: number; steps?: number } }, index: number): RedeemerInfo {
-    const purpose = redeemer.purpose || 'spend';
+  private analyzeRedeemer(redeemer: { purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }, index: number): RedeemerInfo {
+    const validPurposes = ['spend', 'mint', 'cert', 'reward'] as const;
+    const purpose = (validPurposes as readonly string[]).includes(redeemer.purpose)
+      ? (redeemer.purpose as typeof validPurposes[number])
+      : 'spend';
     const scriptHash = redeemer.scriptHash || 'unknown';
     const data = redeemer.data || '';
-    
-    // Parse execution units
+
     let executionUnits = null;
-    if (redeemer.executionUnits) {
+    if (redeemer.exUnits) {
       executionUnits = {
-        memory: redeemer.executionUnits.memory || 0,
-        steps: redeemer.executionUnits.steps || 0
+        memory: redeemer.exUnits.mem || 0,
+        steps: redeemer.exUnits.steps || 0
       };
     }
 

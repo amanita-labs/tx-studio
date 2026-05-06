@@ -23,9 +23,9 @@ export function TxBuilder() {
           Some certificate types and transaction body elements may not be fully implemented yet.
         </AlertDescription>
       </Alert>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-8rem)]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:h-[calc(100vh-12rem)]">
         {/* Left Panel - Wallet Connection + Certificate Builder Forms */}
-        <div className="flex flex-col space-y-4">
+        <div className="flex flex-col space-y-4 lg:min-h-0">
           {walletConnected ? (
             <WalletConnection />
           ) : (

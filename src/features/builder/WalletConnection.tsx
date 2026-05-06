@@ -15,7 +15,7 @@ import { formatAda } from '@/lib/utils/ada';
 import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 
 export function WalletConnection() {
-  const { walletApi, walletName, walletConnected, setWalletApi } = useAppStore();
+  const { walletApi, walletName, walletConnected, setWalletApi, setNetwork } = useAppStore();
   const [walletInfo, setWalletInfo] = useState<{
     name: string;
     networkId: number;
@@ -126,6 +126,11 @@ export function WalletConnection() {
       setWalletInfo(info);
       setDrepInfo(drep);
       setStakeKeys(keys);
+      // Keep store network in sync with the connected wallet so downstream
+      // tx building uses the right networkId (mainnet=1, otherwise testnet=0).
+      if (info.network) {
+        setNetwork(info.network);
+      }
     } catch (error) {
       console.error('Error loading wallet info:', error);
       toast.error('Failed to load wallet information');

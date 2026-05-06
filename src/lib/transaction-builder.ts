@@ -659,12 +659,13 @@ export function assembleTransaction(params: {
     // TODO: Process transaction body elements
     // This will require implementing builder functions for each element type
     if (txBodyElements.length > 0) {
-      console.log(`⚠️ Transaction body elements (${txBodyElements.length}) are not yet fully implemented in assembleTransaction`);
-      // For now, we'll continue with certificate-based building
-      // Full implementation will require:
-      // - Processing inputs/outputs from txBodyElements
-      // - Setting fees, validity intervals, withdrawals, mint, etc.
-      // - Handling governance procedures, treasury amounts, etc.
+      const supportedTypes = new Set(['ProposalProcedures']);
+      const unsupported = txBodyElements.filter(e => !supportedTypes.has(e.type));
+      if (unsupported.length > 0) {
+        console.warn(
+          `Transaction body elements not yet implemented and will be skipped: ${unsupported.map(e => e.type).join(', ')}`
+        );
+      }
     }
     
     // Warn about votes (not supported as certificates)
@@ -672,31 +673,67 @@ export function assembleTransaction(params: {
       console.warn(`Votes (${voteTypes.length}) cannot be added as certificates. Votes must be added to voting_procedures in the transaction body.`);
     }
     
-    // Build certificate list
+    // Build certificate list. Unknown/unsupported cert types are skipped with
+    // a warning rather than failing the whole build — the user can still build
+    // a tx that contains only supported items (e.g. a governance proposal).
     const certList = CSL.Certificates.new();
     createdObjects.push(certList);
-    
+
     const errors: BuildError[] = [];
-    
+    const skipped: string[] = [];
+
     for (let i = 0; i < certificateTypes.length; i++) {
       const certData = certificateTypes[i];
       const { cert, error } = buildCertificateFromData(certData);
-      
+
       if (error) {
+        if (error.message.startsWith('Unknown certificate type:')) {
+          skipped.push(certData.type);
+          continue;
+        }
         errors.push(error);
         continue;
       }
-      
+
       certList.add(cert);
       // Note: cert is owned by certList, will be freed when certList is freed
     }
-    
-    // Only proceed if we have at least one certificate
-    if (certList.len() === 0 && errors.length > 0) {
+
+    if (skipped.length > 0) {
+      console.warn(`Skipping unsupported certificate types: ${skipped.join(', ')}`);
+    }
+
+    // Build voting proposals from tx body elements (CBOR-pasted gov actions).
+    const proposalElements = txBodyElements.filter(e => e.type === 'ProposalProcedures');
+    const votingProposals = proposalElements.length > 0 ? CSL.VotingProposals.new() : null;
+    if (votingProposals) {
+      createdObjects.push(votingProposals);
+    }
+    for (const element of proposalElements) {
+      const raw = (element.data?.proposalData as string | undefined)?.trim();
+      if (!raw) {
+        errors.push({ message: 'Proposal procedure has no data', field: 'proposalData' });
+        continue;
+      }
+      try {
+        const proposal = CSL.VotingProposal.from_hex(raw);
+        votingProposals!.add(proposal);
+        // Note: VotingProposals.add takes ownership of the proposal.
+      } catch (e) {
+        errors.push({
+          message: `Failed to parse proposal procedure CBOR: ${e instanceof Error ? e.message : 'invalid hex'}`,
+          field: 'proposalData',
+        });
+      }
+    }
+
+    // Fail only if everything fell through — no valid certs AND no valid proposals.
+    const haveAnything = certList.len() > 0 || (votingProposals?.len() ?? 0) > 0;
+    if (!haveAnything && errors.length > 0) {
       safeFree(...createdObjects);
       return {
         txBody: null as unknown as CSL.TransactionBody,
-        error: { message: `Failed to build certificates: ${errors.map(e => e.message).join(', ')}` }
+        error: { message: `Failed to build transaction: ${errors.map(e => e.message).join(', ')}` }
       };
     }
     
@@ -769,40 +806,13 @@ export function assembleTransaction(params: {
       }
     }
     
-    // Create transaction body
-    // CSL TransactionBody.new() may have different signatures in different versions
-    // Try the most common signature first: new(inputs, outputs)
-    // Type definitions may be incorrect, so we use type assertion
-    let txBody: CSL.TransactionBody;
-    try {
-      const TransactionBodyClass = CSL.TransactionBody as unknown as { new: (inputs: CSL.TransactionInputs, outputs: CSL.TransactionOutputs) => CSL.TransactionBody };
-      txBody = TransactionBodyClass.new(inputs, outputs);
-    } catch (error) {
-      // Some CSL versions may require different constructor signature
-      // Try alternative: new() then set inputs/outputs separately
-      const TransactionBodyClass = CSL.TransactionBody as unknown as { new: () => CSL.TransactionBody };
-      txBody = TransactionBodyClass.new();
-      const txBodyObj = txBody as unknown as { set_inputs?: (inputs: CSL.TransactionInputs) => void; set_outputs?: (outputs: CSL.TransactionOutputs) => void };
-      if (txBodyObj.set_inputs) txBodyObj.set_inputs(inputs);
-      if (txBodyObj.set_outputs) txBodyObj.set_outputs(outputs);
-    }
-    
-    // Note: inputs and outputs are owned by txBody, don't free them separately
-    
-    // Set fee - CSL API may use different method names
+    // Create transaction body. CSL requires fee at construction time via
+    // new_tx_body(inputs, outputs, fee); the legacy `new(...)` overload also
+    // takes a fee and is deprecated.
     const feeBigNum = CSL.BigNum.from_str(calculatedFee.toString());
-    const txBodyObj = txBody as unknown as { set_fee?: (fee: CSL.BigNum) => void; fee?: CSL.BigNum };
-    try {
-      if (txBodyObj.set_fee) {
-        txBodyObj.set_fee(feeBigNum);
-      } else {
-        txBodyObj.fee = feeBigNum;
-      }
-    } catch (error) {
-      // Alternative method name
-      txBodyObj.fee = feeBigNum;
-    }
-    feeBigNum.free(); // Free immediately after use
+    const txBody: CSL.TransactionBody = CSL.TransactionBody.new_tx_body(inputs, outputs, feeBigNum);
+    feeBigNum.free(); // BigNum is copied into txBody; safe to free.
+    // Note: inputs and outputs are owned by txBody, don't free them separately
     
     // Set certificates (only if we have any)
     if (certList.len() > 0) {
@@ -820,6 +830,14 @@ export function assembleTransaction(params: {
       // Note: certList is owned by txBody now, don't free it separately
     } else {
       certList.free(); // Free if not used
+    }
+
+    // Set voting proposals (governance actions) if any were parsed.
+    if (votingProposals && votingProposals.len() > 0) {
+      txBody.set_voting_proposals(votingProposals);
+      // votingProposals is owned by txBody now, don't free it separately
+    } else if (votingProposals) {
+      votingProposals.free();
     }
     
     // Set TTL (validity interval end) - set to current slot + 3600 (1 hour)
@@ -862,11 +880,21 @@ export function serializeTransaction(txBody: CSL.TransactionBody): string {
   if (!txBody) {
     throw new Error('Transaction body is required');
   }
-  
+
+  // Wrap the body in a full Transaction so the resulting hex matches the
+  // Conway `transaction = [body, witness_set, is_valid, aux_data?]` shape.
+  // Wallets / parsers expect a CBOR array, not a bare body Map.
+  let witnessSet: CSL.TransactionWitnessSet | null = null;
+  let tx: CSL.Transaction | null = null;
   try {
-    return txBody.to_hex();
+    witnessSet = CSL.TransactionWitnessSet.new();
+    tx = CSL.Transaction.new(txBody, witnessSet, undefined);
+    return tx.to_hex();
   } catch (error) {
     throw new Error(`Failed to serialize transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    tx?.free();
+    witnessSet?.free();
   }
 }
 

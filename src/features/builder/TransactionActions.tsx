@@ -13,6 +13,18 @@ import { Wrench, FileSignature, Send, Copy, Eye, Download, Loader2 } from 'lucid
 import { ExportDialog } from '@/components/export-dialog';
 import { useCSLWorker } from '@/hooks/use-csl-worker';
 
+// CIP-30 wallet error: user pressed Cancel in the wallet popup.
+// TxSignError.UserDeclined = 2 ; TxSendError.Refused = 1.
+// Some wallets put the code on the thrown object, others stringify it.
+function isUserDeclined(err: unknown): boolean {
+  if (typeof err === 'object' && err !== null && 'code' in err) {
+    const code = (err as { code: unknown }).code;
+    if (code === 1 || code === 2) return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /user declined|user rejected|user cancelled|user canceled/i.test(msg);
+}
+
 export function TransactionActions() {
   const router = useRouter();
   const {
@@ -23,7 +35,8 @@ export function TransactionActions() {
     signedTxHex,
     setBuiltTxHex,
     setSignedTxHex,
-    network
+    network,
+    setNetwork
   } = useAppStore();
   const [building, setBuilding] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -31,90 +44,92 @@ export function TransactionActions() {
   const { parseTransaction } = useCSLWorker();
 
   const handleBuild = async () => {
-    console.group('🚀 Building Transaction');
-    
+    console.group('Building Transaction');
+
     if (!walletApi) {
-      console.error('❌ Wallet not connected');
+      console.error('Wallet not connected');
       toast.error('Wallet not connected');
       console.groupEnd();
       return;
     }
 
     if (builderCertificates.length === 0 && builderTxBodyElements.length === 0) {
-      console.error('❌ No certificates or transaction body elements to build');
+      console.error('No certificates or transaction body elements to build');
       toast.error('Add at least one certificate or transaction body element');
       console.groupEnd();
       return;
     }
 
-    console.log('Certificates to build:', builderCertificates.length);
-    console.log('Network:', network);
-
     setBuilding(true);
     try {
-      // Get UTXOs from wallet
-      console.log('Step 1: Getting UTXOs from wallet...');
+      // Derive network from wallet rather than trusting the store value,
+      // which can drift if the user switches wallet networks mid-session.
+      console.log('Step 1: Detecting wallet network...');
+      const networkId = await walletApi.getNetworkId();
+      const buildNetwork: typeof network = networkId === 1 ? 'mainnet' : 'preprod';
+      if (buildNetwork !== network) {
+        console.log(`Network override: store=${network} -> wallet=${buildNetwork}`);
+        setNetwork(buildNetwork);
+      }
+      console.log('Network:', buildNetwork);
+      console.log('Certificates to build:', builderCertificates.length);
+      console.log('Transaction body elements:', builderTxBodyElements.length);
+
+      console.log('Step 2: Getting UTXOs from wallet...');
       const utxos = await getUTXOs(walletApi);
-      console.log(`✓ Retrieved ${utxos.length} UTXO(s)`);
-      
+      console.log(`Retrieved ${utxos.length} UTXO(s)`);
+
       if (utxos.length === 0) {
-        console.error('❌ No UTXOs available');
+        console.error('No UTXOs available');
         toast.error('No UTXOs available in wallet');
         console.groupEnd();
         return;
       }
 
-      // Get change address
-      console.log('Step 2: Getting change address...');
+      console.log('Step 3: Getting change address...');
       const changeAddress = await walletApi.getChangeAddress();
-      console.log('✓ Change address:', changeAddress);
+      console.log('Change address:', changeAddress);
 
-      // Combine certificates and votes (votes are certificates)
       const allCertificates = [...builderCertificates];
-      
-      // Build transaction
-      console.log('Step 3: Assembling transaction...');
-      console.log('Transaction body elements:', builderTxBodyElements.length);
+
+      console.log('Step 4: Assembling transaction...');
       const { txBody, error } = assembleTransaction({
         certificates: allCertificates,
         txBodyElements: builderTxBodyElements,
-        utxos: utxos,
+        utxos: utxos as Parameters<typeof assembleTransaction>[0]['utxos'],
         changeAddress: changeAddress,
-        network: network
+        network: buildNetwork
       });
 
       if (error || !txBody) {
-        console.error('❌ Transaction assembly failed:', error);
+        console.error('Transaction assembly failed:', error);
         console.error('Assembly params:', {
           certificateCount: allCertificates.length,
           utxoCount: utxos.length,
           changeAddress,
-          network,
+          network: buildNetwork,
         });
         toast.error(error?.message || 'Failed to build transaction');
         console.groupEnd();
         return;
       }
 
-      // Calculate fee
-      console.log('Step 4: Calculating fee...');
-      const fee = calculateFee(txBody, network);
-      console.log('✓ Fee calculated:', fee.toString());
+      console.log('Step 5: Calculating fee...');
+      const fee = calculateFee(txBody, buildNetwork);
+      console.log('Fee calculated:', fee.toString());
 
-      // Serialize transaction
-      console.log('Step 5: Serializing transaction...');
+      console.log('Step 6: Serializing transaction...');
       const txHex = serializeTransaction(txBody);
-      console.log('✓ Transaction serialized, hex length:', txHex.length);
-      
-      // Free transaction body after serialization to prevent memory leaks
+      console.log('Transaction serialized, hex length:', txHex.length);
+
       freeTransactionBody(txBody);
-      
+
       setBuiltTxHex(txHex);
-      console.log('✅ Transaction built successfully');
+      console.log('Transaction built successfully');
       toast.success('Transaction built successfully');
       console.groupEnd();
     } catch (error) {
-      console.error('❌ Unexpected error building transaction:', error);
+      console.error('Unexpected error building transaction:', error);
       console.error('Error details:', {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : String(error),
@@ -144,6 +159,12 @@ export function TransactionActions() {
       setSignedTxHex(signedTx);
       toast.success('Transaction signed successfully');
     } catch (error) {
+      // CIP-30 TxSignError.UserDeclined = 2 — user pressed Cancel in the
+      // wallet popup. Treat as a benign no-op rather than an error.
+      if (isUserDeclined(error)) {
+        toast('Signing cancelled');
+        return;
+      }
       console.error('Error signing transaction:', error);
       toast.error(`Failed to sign transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
@@ -163,6 +184,10 @@ export function TransactionActions() {
       toast.success(`Transaction submitted! Hash: ${txHash.slice(0, 16)}...`);
       // Optionally navigate to inspector with the signed tx
     } catch (error) {
+      if (isUserDeclined(error)) {
+        toast('Submission cancelled');
+        return;
+      }
       console.error('Error submitting transaction:', error);
       toast.error(`Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
@@ -195,7 +220,7 @@ export function TransactionActions() {
     router.push(`/?hex=${encodeURIComponent(hex)}`);
   };
 
-  const canBuild = walletApi && builderCertificates.length > 0;
+  const canBuild = walletApi && (builderCertificates.length > 0 || builderTxBodyElements.length > 0);
   const canSign = walletApi && builtTxHex && !signedTxHex;
   const canSubmit = walletApi && signedTxHex;
 

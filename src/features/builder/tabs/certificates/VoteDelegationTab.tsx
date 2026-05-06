@@ -50,14 +50,14 @@ export function VoteDelegationTab() {
 
   const handleBuild = async () => {
     if (!validate()) {
-      console.log('❌ Validation failed:', errors);
+      console.log('Validation failed:', errors);
       return;
     }
 
     const drepIdValue = drepId.trim();
     const stakeCredValue = stakeCredential.trim();
     
-    console.group('📝 Building Vote Delegation Certificate');
+    console.group('Building Vote Delegation Certificate');
     console.log('Form values:', { drepId: drepIdValue, stakeCredential: stakeCredValue });
     
     setLoading(true);
@@ -65,7 +65,7 @@ export function VoteDelegationTab() {
       const { cert, error } = buildVoteDelegationCert(drepIdValue, stakeCredValue);
       
       if (error || !cert) {
-        console.error('❌ Certificate build failed:', error);
+        console.error('Certificate build failed:', error);
         console.error('Input values:', { drepId: drepIdValue, stakeCredential: stakeCredValue });
         toast.error(error?.message || 'Failed to build certificate');
         console.groupEnd();
@@ -82,7 +82,7 @@ export function VoteDelegationTab() {
       };
 
       addCertificate(certificate);
-      console.log('✅ Certificate added to transaction:', certificate);
+      console.log('Certificate added to transaction:', certificate);
       toast.success('Vote delegation certificate added to transaction');
       
       // Reset form
@@ -91,7 +91,7 @@ export function VoteDelegationTab() {
       setErrors({});
       console.groupEnd();
     } catch (error) {
-      console.error('❌ Unexpected error building certificate:', error);
+      console.error('Unexpected error building certificate:', error);
       console.error('Error details:', {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : String(error),

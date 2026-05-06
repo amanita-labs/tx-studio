@@ -124,7 +124,7 @@ interface MetadataCardProps {
 function MetadataCard({ metadata, parsed, onCopy }: MetadataCardProps) {
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'nft': return <Image className="h-4 w-4" alt="" />;
+      case 'nft': return <Image className="h-4 w-4" />;
       case 'token': return <Coins className="h-4 w-4" />;
       case 'governance': return <Vote className="h-4 w-4" />;
       case 'custom': return <Settings className="h-4 w-4" />;
