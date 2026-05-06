@@ -10,7 +10,7 @@ import { useAppStore } from '@/lib/store';
 import { getDRepInfo, getStakeKeys } from '@/lib/wallet-connector';
 import { toast } from 'sonner';
 import type { DRepInfo, StakeKeysInfo } from '@/lib/wallet-connector';
-import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
+import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 import * as bech32Buffer from 'bech32-buffer';
 
 interface WalletCredentialSelectorProps {

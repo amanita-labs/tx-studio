@@ -12,7 +12,7 @@ import { useAppStore } from '@/lib/store';
 import { getWalletInfo, getDRepInfo, getStakeKeys, type DRepInfo, type StakeKeysInfo } from '@/lib/wallet-connector';
 import { toast } from 'sonner';
 import { formatAda } from '@/lib/utils/ada';
-import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
+import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 
 export function WalletConnection() {
   const { walletApi, walletName, walletConnected, setWalletApi } = useAppStore();

@@ -2,7 +2,7 @@
 // Core transaction building logic using CSL
 // IMPROVED VERSION: Better memory management, error handling, and efficiency
 
-import * as CSL from '@emurgo/cardano-serialization-lib-asmjs';
+import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 import * as bech32Buffer from 'bech32-buffer';
 import { Network } from '@/domain/tx';
 import { BuilderCertificate, BuilderTxBodyElement } from '@/lib/store';
