@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Copy, Download, Hash, AlertTriangle, FileText, Image, Coins, Vote, Settings, Eye, EyeOff } from 'lucide-react';
+import { Copy, Hash, AlertTriangle, FileText, Image, Coins, Vote, Settings, Eye, EyeOff } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { MetadataParser, MetadataAnalysis, ParsedMetadata } from '@/lib/metadata-parser';
 import { JsonViewer } from '@/components/json-viewer';
@@ -24,6 +24,7 @@ export function MetadataTab({ tx }: MetadataTabProps) {
     if (tx.metadata && tx.metadata.length > 0) {
       analyzeMetadata();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tx.metadata]);
 
   const analyzeMetadata = async () => {
@@ -45,28 +46,8 @@ export function MetadataTab({ tx }: MetadataTabProps) {
     try {
       await navigator.clipboard.writeText(text);
       toast.success(`${label} copied to clipboard`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy to clipboard');
-    }
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'nft': return <Image className="h-4 w-4" />;
-      case 'token': return <Coins className="h-4 w-4" />;
-      case 'governance': return <Vote className="h-4 w-4" />;
-      case 'custom': return <Settings className="h-4 w-4" />;
-      default: return <FileText className="h-4 w-4" />;
-    }
-  };
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'nft': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      case 'token': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'governance': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'custom': return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
   };
 
@@ -135,7 +116,7 @@ export function MetadataTab({ tx }: MetadataTabProps) {
 }
 
 interface MetadataCardProps {
-  metadata: any;
+  metadata: { label: number | string; json?: unknown; cbor?: string };
   parsed?: ParsedMetadata;
   onCopy: (text: string, label: string) => void;
 }

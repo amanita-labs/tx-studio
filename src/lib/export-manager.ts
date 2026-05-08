@@ -16,10 +16,10 @@ export interface ExportOptions {
 export interface ExportData {
   transaction: DomainTx;
   hex?: string;
-  metadata?: any[];
-  scripts?: any[];
-  validation?: any[];
-  cbor?: any[];
+  metadata?: Array<{ label: string; json?: unknown; cbor?: string }>;
+  scripts?: Array<{ type: string; hash: string; bytesLen: number }>;
+  validation?: Array<{ type: string; message: string; severity: string }>;
+  cbor?: Array<{ label: string; bytes: string }>;
   timestamp?: string;
 }
 

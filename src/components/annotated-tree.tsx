@@ -24,7 +24,7 @@ export function AnnotatedTree({
     <div className={cn("font-mono text-sm", className)}>
       <TooltipProvider>
         <div className="space-y-1">
-          {nodes.map((node, index) => (
+          {nodes.map((node) => (
             <TreeNode
               key={node.id}
               node={node}
@@ -74,12 +74,15 @@ function TreeNode({ node, depth, onNodeHover, onNodeClick }: TreeNodeProps) {
     }
   };
 
-  const formatValue = (value: any, type: string) => {
+  const formatValue = (value: unknown, type: string) => {
     if (type === 'bytes') {
-      return `0x${value.slice(0, 16)}${value.length > 16 ? '...' : ''}`;
+      if (typeof value === 'string') {
+        return `0x${value.slice(0, 16)}${value.length > 16 ? '...' : ''}`;
+      }
+      return `0x${String(value).slice(0, 16)}...`;
     }
     if (type === 'string') {
-      return `"${value}"`;
+      return `"${String(value)}"`;
     }
     if (type === 'array') {
       return `[${Array.isArray(value) ? value.length : 0} items]`;
@@ -158,7 +161,7 @@ function TreeNode({ node, depth, onNodeHover, onNodeClick }: TreeNodeProps) {
       {/* Children */}
       {hasChildren && isExpanded && (
         <div className="space-y-1">
-          {node.children!.map((child, index) => (
+          {node.children!.map((child) => (
             <TreeNode
               key={child.id}
               node={child}

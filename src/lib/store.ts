@@ -1,7 +1,7 @@
 // src/lib/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DomainTx, Network, TxParseResult } from '@/domain/tx';
+import { Network, TxParseResult } from '@/domain/tx';
 import { BlockExplorerId } from '@/lib/types/block-explorer';
 import { EvalResponse } from '@/lib/types/script-eval';
 
@@ -12,6 +12,54 @@ export interface OnChainMeta {
   slot: number;
   index: number;       // tx position within block
 }
+
+export type BuilderCertificate = {
+  id: string;
+  type: 
+    | 'StakeRegistration' 
+    | 'StakeDeregistration' 
+    | 'StakeDelegation' 
+    | 'PoolRegistration' 
+    | 'PoolRetirement' 
+    | 'AccountRegistration' 
+    | 'AccountUnregistration' 
+    | 'VoteDelegation' 
+    | 'StakeVoteDelegation' 
+    | 'StakeRegDelegation' 
+    | 'VoteRegDelegation' 
+    | 'StakeVoteRegDelegation' 
+    | 'CommitteeAuth' 
+    | 'CommitteeResignation' 
+    | 'DRepRegistration' 
+    | 'DRepUpdate' 
+    | 'DRepRetirement' 
+    | 'Vote';
+  data: Record<string, unknown>;
+};
+
+export type BuilderTxBodyElement = {
+  id: string;
+  type: 
+    | 'TransactionInputs'
+    | 'CollateralInputs'
+    | 'ReferenceInputs'
+    | 'TransactionOutputs'
+    | 'CollateralReturn'
+    | 'Fee'
+    | 'ValidityIntervalStart'
+    | 'ValidityIntervalEnd'
+    | 'TotalCollateral'
+    | 'Withdrawals'
+    | 'Mint'
+    | 'AuxiliaryDataHash'
+    | 'ScriptDataHash'
+    | 'RequiredSigners'
+    | 'VotingProcedures'
+    | 'ProposalProcedures'
+    | 'TreasuryAmount'
+    | 'TreasuryDonation';
+  data: Record<string, unknown>;
+};
 
 interface AppState {
   // Transaction data
@@ -37,6 +85,16 @@ interface AppState {
   // Block explorer preference
   blockExplorer: BlockExplorerId;
 
+  // Builder state
+  builderCertificates: BuilderCertificate[];
+  builderTxBodyElements: BuilderTxBodyElement[];
+  walletConnected: boolean;
+  walletName: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletApi: any | null; // BrowserWallet instance
+  builtTxHex: string | null;
+  signedTxHex: string | null;
+
   // Actions
   setTxHex: (hex: string) => void;
   setParsedTx: (result: TxParseResult | null) => void;
@@ -53,6 +111,18 @@ interface AppState {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setBlockExplorer: (explorer: BlockExplorerId) => void;
   clearTx: () => void;
+  
+  // Builder actions
+  addCertificate: (cert: BuilderCertificate) => void;
+  removeCertificate: (id: string) => void;
+  addTxBodyElement: (element: BuilderTxBodyElement) => void;
+  removeTxBodyElement: (id: string) => void;
+  clearBuilder: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setWalletApi: (api: any | null, name: string | null) => void;
+  setBuiltTxHex: (hex: string | null) => void;
+  setSignedTxHex: (hex: string | null) => void;
+  disconnectWallet: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -72,6 +142,15 @@ export const useAppStore = create<AppState>()(
       evalCache: {},
       theme: 'system',
       blockExplorer: 'cardanoscan',
+
+      // Builder state
+      builderCertificates: [],
+      builderTxBodyElements: [],
+      walletConnected: false,
+      walletName: null,
+      walletApi: null,
+      builtTxHex: null,
+      signedTxHex: null,
 
       // Actions
       setTxHex: (hex: string) => set({ txHex: hex }),
@@ -99,6 +178,41 @@ export const useAppStore = create<AppState>()(
         isOnChain: false,
         onChainMeta: null,
         activeTab: 'overview'
+      }),
+      
+      // Builder actions
+      addCertificate: (cert: BuilderCertificate) => set((state) => ({
+        builderCertificates: [...state.builderCertificates, cert]
+      })),
+      removeCertificate: (id: string) => set((state) => ({
+        builderCertificates: state.builderCertificates.filter(c => c.id !== id)
+      })),
+      addTxBodyElement: (element: BuilderTxBodyElement) => set((state) => ({
+        builderTxBodyElements: [...state.builderTxBodyElements, element]
+      })),
+      removeTxBodyElement: (id: string) => set((state) => ({
+        builderTxBodyElements: state.builderTxBodyElements.filter(e => e.id !== id)
+      })),
+      clearBuilder: () => set({
+        builderCertificates: [],
+        builderTxBodyElements: [],
+        builtTxHex: null,
+        signedTxHex: null,
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setWalletApi: (api: any | null, name: string | null) => set({
+        walletApi: api,
+        walletName: name,
+        walletConnected: api !== null,
+      }),
+      setBuiltTxHex: (hex: string | null) => set({ builtTxHex: hex }),
+      setSignedTxHex: (hex: string | null) => set({ signedTxHex: hex }),
+      disconnectWallet: () => set({
+        walletApi: null,
+        walletName: null,
+        walletConnected: false,
+        builtTxHex: null,
+        signedTxHex: null,
       }),
     }),
     {

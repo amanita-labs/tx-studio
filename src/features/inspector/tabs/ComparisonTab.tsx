@@ -28,9 +28,8 @@ interface ComparisonTabProps {
   txHex: string;
 }
 
-export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
+export function ComparisonTab({ tx }: ComparisonTabProps) {
   const [compareHex, setCompareHex] = useState('');
-  const [compareTx, setCompareTx] = useState<DomainTx | null>(null);
   const [diff, setDiff] = useState<TransactionDiff | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +65,6 @@ export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
         warnings: []
       };
 
-      setCompareTx(mockCompareTx);
-
       // Perform comparison
       const analyzer = TransactionDiffAnalyzer.getInstance();
       const result = analyzer.compare(tx, mockCompareTx);
@@ -79,33 +76,13 @@ export function ComparisonTab({ tx, txHex }: ComparisonTabProps) {
     }
   };
 
-  const getDiffIcon = (type: string) => {
-    switch (type) {
-      case 'added': return <Plus className="h-4 w-4 text-green-500" />;
-      case 'removed': return <Minus className="h-4 w-4 text-red-500" />;
-      case 'modified': return <Edit className="h-4 w-4 text-yellow-500" />;
-      case 'unchanged': return <CheckCircle2 className="h-4 w-4 text-gray-500" />;
-      default: return <FileText className="h-4 w-4" />;
-    }
-  };
-
-  const getDiffColor = (type: string) => {
-    switch (type) {
-      case 'added': return 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20';
-      case 'removed': return 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20';
-      case 'modified': return 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20';
-      case 'unchanged': return 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/20';
-      default: return 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/20';
-    }
-  };
-
   const copyDiff = async () => {
     if (!diff) return;
     
     try {
       await navigator.clipboard.writeText(safeStringify(diff, 2));
       toast.success('Comparison result copied to clipboard');
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy comparison');
     }
   };

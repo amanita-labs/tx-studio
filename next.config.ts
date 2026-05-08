@@ -46,6 +46,17 @@ const nextConfig: NextConfig = {
   // dev and production.
   webpack: (config) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
+    // libsodium-wrappers-sumo's ESM build has a broken relative import
+    // (`./libsodium-sumo.mjs` doesn't exist there — it lives in the separate
+    // libsodium-sumo package). Alias to the CJS variant which imports it
+    // correctly via `require("libsodium-sumo")`.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'libsodium-wrappers-sumo$': join(
+        __dirname,
+        'node_modules/libsodium-wrappers-sumo/dist/modules-sumo/libsodium-wrappers.js'
+      ),
+    };
     return config;
   },
 };

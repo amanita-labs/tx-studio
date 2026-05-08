@@ -13,7 +13,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Search, 
   X, 
-  Clock, 
   Hash, 
   MapPin, 
   Coins, 
@@ -52,6 +51,7 @@ export function TransactionSearchComponent({ tx, txHex, onResultClick }: Transac
     } else {
       setResults(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, filter]);
 
   const performSearch = async () => {
@@ -150,7 +150,7 @@ export function TransactionSearchComponent({ tx, txHex, onResultClick }: Transac
               <Label className="text-sm font-medium">Search Type</Label>
               <Select
                 value={filter.type}
-                onValueChange={(value: any) => setFilter(prev => ({ ...prev, type: value }))}
+                onValueChange={(value: SearchFilter['type']) => setFilter(prev => ({ ...prev, type: value }))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -215,7 +215,7 @@ export function TransactionSearchComponent({ tx, txHex, onResultClick }: Transac
             {results.results.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No matches found for "{query}"</p>
+                <p>No matches found for &quot;{query}&quot;</p>
                 <p className="text-sm">Try adjusting your search terms or filters</p>
               </div>
             ) : (

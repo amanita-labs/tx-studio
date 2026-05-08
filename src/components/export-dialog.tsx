@@ -5,11 +5,10 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Download, FileText, FileCode, FileSpreadsheet, FileImage, File, FileJson, FileType } from 'lucide-react';
+import { Download, FileText, FileCode, FileSpreadsheet, FileImage, File, FileJson } from 'lucide-react';
 import { DomainTx } from '@/domain/tx';
 import { ExportManager, ExportOptions } from '@/lib/export-manager';
 import { toast } from 'sonner';
@@ -107,7 +106,7 @@ export function ExportDialog({ tx, txHex, children }: ExportDialogProps) {
                       ? 'ring-2 ring-primary bg-primary/5' 
                       : 'hover:bg-muted/50'
                   }`}
-                  onClick={() => setOptions(prev => ({ ...prev, format: format as any }))}
+                  onClick={() => setOptions(prev => ({ ...prev, format: format as ExportOptions['format'] }))}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center space-x-3">

@@ -104,7 +104,7 @@ export class ScriptAnalyzer {
     };
   }
 
-  private analyzeScript(script: any): ScriptInfo {
+  private analyzeScript(script: { hash?: string; size?: number; purpose?: 'spend' | 'mint' | 'cert' | 'reward' | 'unknown' }): ScriptInfo {
     // This is a simplified analysis - in a real implementation,
     // you would parse the actual script bytes and analyze the Plutus code
     const hash = script.hash || 'unknown';
@@ -165,17 +165,19 @@ export class ScriptAnalyzer {
     };
   }
 
-  private analyzeRedeemer(redeemer: any, index: number): RedeemerInfo {
-    const purpose = redeemer.purpose || 'spend';
+  private analyzeRedeemer(redeemer: { purpose: string; index: number; exUnits?: { mem: number; steps: number }; data?: string; scriptHash?: string }, index: number): RedeemerInfo {
+    const validPurposes = ['spend', 'mint', 'cert', 'reward'] as const;
+    const purpose = (validPurposes as readonly string[]).includes(redeemer.purpose)
+      ? (redeemer.purpose as typeof validPurposes[number])
+      : 'spend';
     const scriptHash = redeemer.scriptHash || 'unknown';
     const data = redeemer.data || '';
-    
-    // Parse execution units
+
     let executionUnits = null;
-    if (redeemer.executionUnits) {
+    if (redeemer.exUnits) {
       executionUnits = {
-        memory: redeemer.executionUnits.memory || 0,
-        steps: redeemer.executionUnits.steps || 0
+        memory: redeemer.exUnits.mem || 0,
+        steps: redeemer.exUnits.steps || 0
       };
     }
 

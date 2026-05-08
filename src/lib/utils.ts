@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
  * Safely stringify data that may contain BigInt values
  * Converts BigInt to string representation to avoid serialization errors
  */
-export function safeStringify(data: any, space?: number): string {
+export function safeStringify(data: unknown, space?: number): string {
   return JSON.stringify(data, (key, value) => {
     if (typeof value === 'bigint') {
       return value.toString() + 'n';
@@ -21,6 +21,6 @@ export function safeStringify(data: any, space?: number): string {
 /**
  * Check if a value is a BigInt
  */
-export function isBigInt(value: any): value is bigint {
+export function isBigInt(value: unknown): value is bigint {
   return typeof value === 'bigint';
 }

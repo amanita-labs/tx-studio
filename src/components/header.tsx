@@ -6,8 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { BlockExplorerSelector } from '@/components/block-explorer-selector';
-import { FileText, Code, Home } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { FileText, Code } from 'lucide-react';
 
 export function Header() {
   const pathname = usePathname();
