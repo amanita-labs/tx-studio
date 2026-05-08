@@ -45,8 +45,10 @@ export function TxBuilder() {
         </div>
 
         {/* Right Panel - Transaction Summary + Actions */}
-        <div className="flex flex-col space-y-4">
-          <TransactionSummary />
+        <div className="flex flex-col space-y-4 lg:min-h-0">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <TransactionSummary />
+          </div>
           <TransactionActions />
         </div>
       </div>
