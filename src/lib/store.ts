@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware';
 import { Network, TxParseResult } from '@/domain/tx';
 import { BlockExplorerId } from '@/lib/types/block-explorer';
 import { EvalResponse } from '@/lib/types/script-eval';
+import { UplcLookup } from '@/lib/uplc-link/types';
 
 export interface OnChainMeta {
   block: string;       // block hash
@@ -79,6 +80,9 @@ interface AppState {
   // Eval cache (not persisted)
   evalCache: Record<string, EvalResponse>;
 
+  // uplc.link verification cache (not persisted, key = lowercased script hash)
+  uplcCache: Record<string, UplcLookup>;
+
   // Theme
   theme: 'light' | 'dark' | 'system';
 
@@ -108,6 +112,9 @@ interface AppState {
   setOnChainMeta: (meta: OnChainMeta | null) => void;
   setEvalCache: (key: string, result: EvalResponse) => void;
   getEvalCache: (key: string) => EvalResponse | null;
+  setUplcCache: (hash: string, result: UplcLookup) => void;
+  getUplcCache: (hash: string) => UplcLookup | null;
+  clearUplcCacheEntry: (hash: string) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setBlockExplorer: (explorer: BlockExplorerId) => void;
   clearTx: () => void;
@@ -140,6 +147,7 @@ export const useAppStore = create<AppState>()(
       isOnChain: false,
       onChainMeta: null,
       evalCache: {},
+      uplcCache: {},
       theme: 'system',
       blockExplorer: 'cardanoscan',
 
@@ -167,6 +175,17 @@ export const useAppStore = create<AppState>()(
         evalCache: { ...state.evalCache, [key]: result },
       })),
       getEvalCache: (key: string) => get().evalCache[key] || null,
+      setUplcCache: (hash: string, result: UplcLookup) => set((state) => ({
+        uplcCache: { ...state.uplcCache, [hash.toLowerCase()]: result },
+      })),
+      getUplcCache: (hash: string) => get().uplcCache[hash.toLowerCase()] || null,
+      clearUplcCacheEntry: (hash: string) => set((state) => {
+        const key = hash.toLowerCase();
+        if (!(key in state.uplcCache)) return state;
+        const next = { ...state.uplcCache };
+        delete next[key];
+        return { uplcCache: next };
+      }),
       setTheme: (theme: 'light' | 'dark' | 'system') => set({ theme }),
       setBlockExplorer: (explorer: BlockExplorerId) => set({ blockExplorer: explorer }),
       clearTx: () => set({
