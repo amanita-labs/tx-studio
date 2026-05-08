@@ -165,17 +165,15 @@ export function TransactionSummary() {
           </div>
 
           {/* Votes */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <Vote className="h-4 w-4" />
-                Votes ({votes.length})
-              </h3>
-            </div>
-            <ScrollArea className="h-32">
-              {votes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No votes added</p>
-              ) : (
+          {votes.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Vote className="h-4 w-4" />
+                  Votes ({votes.length})
+                </h3>
+              </div>
+              <ScrollArea className="h-32">
                 <div className="space-y-2">
                   {votes.map((vote) => (
                     <div
@@ -200,22 +198,24 @@ export function TransactionSummary() {
                     </div>
                   ))}
                 </div>
-              )}
-            </ScrollArea>
-          </div>
+              </ScrollArea>
+            </div>
+          )}
 
           <Separator />
 
           {/* Transaction Body Elements */}
-          {builderTxBodyElements.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  Transaction Body Elements ({builderTxBodyElements.length})
-                </h3>
-              </div>
-              <ScrollArea className="h-48">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Transaction Body Elements ({builderTxBodyElements.length})
+              </h3>
+            </div>
+            <ScrollArea className="h-48">
+              {builderTxBodyElements.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No transaction body elements added</p>
+              ) : (
                 <div className="space-y-3">
                   {groupedTxBodyElements.inputs.length > 0 && (
                     <div>
@@ -310,9 +310,9 @@ export function TransactionSummary() {
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
-            </div>
-          )}
+              )}
+            </ScrollArea>
+          </div>
 
           <Separator />
 
