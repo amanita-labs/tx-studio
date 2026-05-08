@@ -295,6 +295,393 @@ function createAnchor(anchor?: Anchor): CSL.Anchor | null {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Governance proposal helpers (Info / ParameterChange)                       */
+/* -------------------------------------------------------------------------- */
+
+export type CostModels = {
+  PlutusV1?: number[];
+  PlutusV2?: number[];
+  PlutusV3?: number[];
+};
+
+const COST_MODEL_LANGUAGES = ['PlutusV1', 'PlutusV2', 'PlutusV3'] as const;
+type CostModelLang = typeof COST_MODEL_LANGUAGES[number];
+type GuardrailsLang = 'V1' | 'V2' | 'V3';
+
+/**
+ * Normalise a language key to the canonical PlutusV1/V2/V3 form.
+ * Accepts variants like "plutus_v1", "PlutusV1", "PLUTUS_V2", "plutusV3".
+ */
+function normaliseLanguageKey(key: string): CostModelLang | null {
+  const k = key.toLowerCase().replace(/_/g, '');
+  if (k === 'plutusv1') return 'PlutusV1';
+  if (k === 'plutusv2') return 'PlutusV2';
+  if (k === 'plutusv3') return 'PlutusV3';
+  return null;
+}
+
+/**
+ * Coerce a JSON value into a JS integer. Accepts numbers, BigInts, and decimal
+ * integer strings (incl. negatives). Returns null on anything else.
+ */
+function coerceInt(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isInteger(v)) return v;
+  if (typeof v === 'bigint') {
+    if (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= BigInt(Number.MIN_SAFE_INTEGER)) return Number(v);
+    return null;
+  }
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (!/^-?[0-9]+$/.test(t)) return null;
+    const n = Number(t);
+    return Number.isInteger(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Walk a parsed JSON tree and return the first object that looks like a
+ * cost-models map — either explicitly under a `cost_models` / `costModels`
+ * key, or any object whose own keys all look like Plutus language identifiers.
+ *
+ * This handles the IntersectMBO governance metadata.jsonld shape where the
+ * map is buried at body.onChain.gov_action.protocol_param_update.cost_models.
+ */
+function findCostModelsRoot(node: unknown): Record<string, unknown> | null {
+  const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === 'object' && !Array.isArray(v);
+
+  const looksLikeMap = (obj: Record<string, unknown>): boolean => {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return false;
+    return keys.every((k) => normaliseLanguageKey(k) !== null);
+  };
+
+  // BFS to prefer the shallowest match.
+  const queue: unknown[] = [node];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    if (!isPlainObject(cur)) continue;
+
+    if (cur.cost_models && isPlainObject(cur.cost_models)) return cur.cost_models;
+    if (cur.costModels && isPlainObject(cur.costModels)) return cur.costModels;
+    if (looksLikeMap(cur)) return cur;
+
+    for (const v of Object.values(cur)) {
+      if (isPlainObject(v) || Array.isArray(v)) queue.push(v);
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse a cost-models JSON string into a structured CostModels object.
+ *
+ * Accepts:
+ *   - Bare maps: `{ "PlutusV1": [...], "PlutusV2": [...], "PlutusV3": [...] }`
+ *     or snake_case `{ "plutus_v1": [...], ... }`.
+ *   - Wrapped maps: any depth — the parser walks the tree and finds the first
+ *     `cost_models` (or all-Plutus-key) object. Works on cardano-cli output
+ *     and the IntersectMBO metadata.jsonld `body.onChain.gov_action.protocol_param_update.cost_models`.
+ *   - Array entries as JS numbers OR decimal-integer strings (cardano-cli
+ *     emits strings, including negatives).
+ */
+export function parseCostModelsJson(input: string): { models: CostModels | null; error?: BuildError } {
+  const trimmed = (input ?? '').trim();
+  if (!trimmed) {
+    return { models: null, error: { message: 'Cost models JSON is required', field: 'costModelsJson' } };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (e) {
+    return {
+      models: null,
+      error: { message: `Invalid JSON: ${e instanceof Error ? e.message : 'parse error'}`, field: 'costModelsJson' },
+    };
+  }
+
+  const cur = findCostModelsRoot(parsed);
+  if (!cur) {
+    return {
+      models: null,
+      error: { message: 'Could not find a cost_models object in the JSON. Expected keys like PlutusV1/PlutusV2/PlutusV3 or plutus_v1/plutus_v2/plutus_v3.', field: 'costModelsJson' },
+    };
+  }
+
+  const out: CostModels = {};
+  for (const [rawKey, value] of Object.entries(cur as Record<string, unknown>)) {
+    const lang = normaliseLanguageKey(rawKey);
+    if (!lang) {
+      return {
+        models: null,
+        error: { message: `Unknown language key "${rawKey}". Allowed: PlutusV1, PlutusV2, PlutusV3 (or plutus_v1 / plutus_v2 / plutus_v3)`, field: 'costModelsJson' },
+      };
+    }
+    if (!Array.isArray(value)) {
+      return {
+        models: null,
+        error: { message: `${rawKey} must be an array of integers`, field: 'costModelsJson' },
+      };
+    }
+    if (value.length === 0) {
+      return {
+        models: null,
+        error: { message: `${rawKey} array is empty`, field: 'costModelsJson' },
+      };
+    }
+    const arr: number[] = [];
+    for (let i = 0; i < value.length; i++) {
+      const n = coerceInt(value[i]);
+      if (n === null) {
+        return {
+          models: null,
+          error: { message: `${rawKey}[${i}] must be an integer (number or numeric string), got ${JSON.stringify(value[i])}`, field: 'costModelsJson' },
+        };
+      }
+      arr.push(n);
+    }
+    out[lang] = arr;
+  }
+
+  if (Object.keys(out).length === 0) {
+    return { models: null, error: { message: 'At least one Plutus version is required', field: 'costModelsJson' } };
+  }
+
+  return { models: out };
+}
+
+function languageForKey(key: CostModelLang): CSL.Language {
+  if (key === 'PlutusV1') return CSL.Language.new_plutus_v1();
+  if (key === 'PlutusV2') return CSL.Language.new_plutus_v2();
+  return CSL.Language.new_plutus_v3();
+}
+
+/**
+ * Build a CSL Costmdls from the structured cost-models object. Caller owns the
+ * returned object (free it directly, OR pass to ProtocolParamUpdate.set_cost_models
+ * which takes ownership).
+ */
+export function buildCostmdls(models: CostModels): CSL.Costmdls {
+  const costmdls = CSL.Costmdls.new();
+  for (const key of COST_MODEL_LANGUAGES) {
+    const arr = models[key];
+    if (!arr) continue;
+
+    const language = languageForKey(key);
+    const costModel = CSL.CostModel.new();
+    try {
+      for (let i = 0; i < arr.length; i++) {
+        const intVal = CSL.Int.from_str(String(arr[i]));
+        try {
+          // CostModel.set returns the previous value (or zero) — free it.
+          const prev = costModel.set(i, intVal);
+          safeFree(prev);
+        } finally {
+          safeFree(intVal);
+        }
+      }
+      // Costmdls.insert takes ownership of the value (CostModel) and copies the key (Language).
+      // Returns the previous value, if any — free it.
+      const prevModel = costmdls.insert(language, costModel);
+      safeFree(prevModel);
+    } finally {
+      // Language is copied; free it. CostModel was transferred above.
+      safeFree(language);
+    }
+  }
+  return costmdls;
+}
+
+/**
+ * Compute the policy_hash (ScriptHash hex) for a Plutus script supplied as
+ * raw script-bytes hex. The language tag is required because the on-chain
+ * hash differs between V1/V2/V3 even for the same bytes.
+ */
+export function computeScriptHashHex(
+  scriptHex: string,
+  language: GuardrailsLang
+): { hashHex: string; error?: BuildError } {
+  let plutusScript: CSL.PlutusScript | null = null;
+  let scriptHash: CSL.ScriptHash | null = null;
+  let cslLanguage: CSL.Language | null = null;
+  try {
+    validateHex(scriptHex, undefined, 'Guardrails script');
+    const bytes = Buffer.from(scriptHex.trim(), 'hex');
+    cslLanguage = languageForKey(`Plutus${language}` as CostModelLang);
+    plutusScript = CSL.PlutusScript.new_with_version(bytes, cslLanguage);
+    scriptHash = plutusScript.hash();
+    return { hashHex: scriptHash.to_hex() };
+  } catch (e) {
+    return {
+      hashHex: '',
+      error: { message: e instanceof Error ? e.message : 'Failed to hash script', field: 'guardrailsScript' },
+    };
+  } finally {
+    safeFree(scriptHash, plutusScript, cslLanguage);
+  }
+}
+
+type ProposalCommon = {
+  depositLovelace: bigint;
+  rewardAddressBech32: string;
+  metadataUrl: string;
+  metadataHashHex: string;
+};
+
+/**
+ * Allocate the four common pieces of a VotingProposal: deposit BigNum,
+ * RewardAddress, Anchor, and the parsed bech32 Address. The caller takes
+ * ownership of all returned objects until VotingProposal.new consumes them.
+ *
+ * Throws on validation failure; callers should wrap in try/finally and free
+ * any partial allocations they receive.
+ */
+function allocateProposalCommons(p: ProposalCommon): {
+  address: CSL.Address;
+  rewardAddress: CSL.RewardAddress;
+  anchor: CSL.Anchor;
+  deposit: CSL.BigNum;
+} {
+  if (!p.rewardAddressBech32 || typeof p.rewardAddressBech32 !== 'string') {
+    throw new Error('Deposit return address is required');
+  }
+  if (!p.metadataUrl) throw new Error('Metadata URL is required');
+  validateHex(p.metadataHashHex, 64, 'Metadata hash');
+  if (p.depositLovelace <= 0n) throw new Error('Deposit must be greater than 0');
+
+  let address: CSL.Address | null = null;
+  let rewardAddress: CSL.RewardAddress | null = null;
+  let anchor: CSL.Anchor | null = null;
+  let deposit: CSL.BigNum | null = null;
+  try {
+    address = CSL.Address.from_bech32(p.rewardAddressBech32);
+    const maybeReward = CSL.RewardAddress.from_address(address);
+    if (!maybeReward) {
+      throw new Error('Address is not a stake (reward) address — must start with stake1/stake_test1');
+    }
+    rewardAddress = maybeReward;
+
+    anchor = createAnchor({ url: p.metadataUrl, hash: p.metadataHashHex });
+    if (!anchor) {
+      throw new Error('Failed to build anchor from URL/hash');
+    }
+
+    deposit = CSL.BigNum.from_str(p.depositLovelace.toString());
+
+    return { address, rewardAddress, anchor, deposit };
+  } catch (e) {
+    safeFree(deposit, anchor, rewardAddress, address);
+    throw e;
+  }
+}
+
+/**
+ * Build a VotingProposal containing an InfoAction and serialise it to hex.
+ */
+export function buildInfoProposalCbor(p: ProposalCommon): { hex: string; error?: BuildError } {
+  let address: CSL.Address | null = null;
+  let rewardAddress: CSL.RewardAddress | null = null;
+  let anchor: CSL.Anchor | null = null;
+  let deposit: CSL.BigNum | null = null;
+  let infoAction: CSL.InfoAction | null = null;
+  let govAction: CSL.GovernanceAction | null = null;
+  let proposal: CSL.VotingProposal | null = null;
+  try {
+    ({ address, rewardAddress, anchor, deposit } = allocateProposalCommons(p));
+
+    infoAction = CSL.InfoAction.new();
+    govAction = CSL.GovernanceAction.new_info_action(infoAction);
+    proposal = CSL.VotingProposal.new(govAction, anchor, rewardAddress, deposit);
+    const hex = proposal.to_hex();
+    return { hex };
+  } catch (e) {
+    return { hex: '', error: { message: e instanceof Error ? e.message : 'Failed to build info proposal' } };
+  } finally {
+    // VotingProposal.new takes ownership of govAction/anchor/rewardAddress/deposit.
+    // GovernanceAction.new_info_action takes ownership of infoAction.
+    // Address (parsed bech32) is independent and must be freed.
+    safeFree(proposal);
+    if (!proposal) safeFree(govAction, infoAction, anchor, rewardAddress, deposit);
+    safeFree(address);
+  }
+}
+
+type ParameterChangeParams = ProposalCommon & {
+  costModels: CostModels;
+  prevAction?: { txHash: string; index: number };
+  guardrailsScriptHashHex?: string;
+};
+
+/**
+ * Build a VotingProposal containing a ParameterChangeAction and serialise it to hex.
+ */
+export function buildParameterChangeProposalCbor(p: ParameterChangeParams): { hex: string; error?: BuildError } {
+  let address: CSL.Address | null = null;
+  let rewardAddress: CSL.RewardAddress | null = null;
+  let anchor: CSL.Anchor | null = null;
+  let deposit: CSL.BigNum | null = null;
+  let costmdls: CSL.Costmdls | null = null;
+  let ppu: CSL.ProtocolParamUpdate | null = null;
+  let txHash: CSL.TransactionHash | null = null;
+  let govActionId: CSL.GovernanceActionId | null = null;
+  let scriptHash: CSL.ScriptHash | null = null;
+  let action: CSL.ParameterChangeAction | null = null;
+  let govAction: CSL.GovernanceAction | null = null;
+  let proposal: CSL.VotingProposal | null = null;
+  try {
+    ({ address, rewardAddress, anchor, deposit } = allocateProposalCommons(p));
+
+    costmdls = buildCostmdls(p.costModels);
+    ppu = CSL.ProtocolParamUpdate.new();
+    ppu.set_cost_models(costmdls);
+    // set_cost_models takes ownership of costmdls; null out our reference.
+    costmdls = null;
+
+    if (p.prevAction) {
+      validateHex(p.prevAction.txHash, 64, 'Previous action tx hash');
+      txHash = CSL.TransactionHash.from_hex(p.prevAction.txHash);
+      govActionId = CSL.GovernanceActionId.new(txHash, p.prevAction.index);
+    }
+    if (p.guardrailsScriptHashHex) {
+      validateHex(p.guardrailsScriptHashHex, 56, 'Guardrails script hash');
+      scriptHash = CSL.ScriptHash.from_hex(p.guardrailsScriptHashHex);
+    }
+
+    if (govActionId && scriptHash) {
+      action = CSL.ParameterChangeAction.new_with_policy_hash_and_action_id(govActionId, ppu, scriptHash);
+    } else if (govActionId) {
+      action = CSL.ParameterChangeAction.new_with_action_id(govActionId, ppu);
+    } else if (scriptHash) {
+      action = CSL.ParameterChangeAction.new_with_policy_hash(ppu, scriptHash);
+    } else {
+      action = CSL.ParameterChangeAction.new(ppu);
+    }
+    // ParameterChangeAction.new* takes ownership of govActionId, ppu, scriptHash.
+    govActionId = null;
+    ppu = null;
+    scriptHash = null;
+    txHash = null; // owned by govActionId at this point
+
+    govAction = CSL.GovernanceAction.new_parameter_change_action(action);
+    action = null; // owned by govAction
+
+    proposal = CSL.VotingProposal.new(govAction, anchor, rewardAddress, deposit);
+    const hex = proposal.to_hex();
+    return { hex };
+  } catch (e) {
+    return { hex: '', error: { message: e instanceof Error ? e.message : 'Failed to build parameter change proposal' } };
+  } finally {
+    safeFree(proposal);
+    if (!proposal) {
+      safeFree(govAction, action, scriptHash, govActionId, txHash, ppu, costmdls, anchor, rewardAddress, deposit);
+    }
+    safeFree(address);
+  }
+}
+
 /**
  * Build Vote Delegation certificate - IMPROVED with better error handling
  */
@@ -622,6 +1009,13 @@ type UTXO = {
   };
 };
 
+// Default execution units for the {} redeemer attached to a guard-rails
+// script reference. The script doesn't run at submission time (it executes
+// at ratification), but a redeemer with ex_units is still required by the
+// CDDL. These are well under Conway maxTxExUnits.
+const DEFAULT_GUARDRAILS_EX_UNITS = { mem: BigInt(7_000_000), steps: BigInt(4_000_000_000) };
+const MAX_COLLATERAL_INPUTS = 3;
+
 export function assembleTransaction(params: {
   certificates: BuilderCertificate[];
   txBodyElements?: BuilderTxBodyElement[];
@@ -629,18 +1023,50 @@ export function assembleTransaction(params: {
   changeAddress: string;
   network: Network;
   fee?: bigint;
-}): { txBody: CSL.TransactionBody; error?: BuildError } {
-  const { certificates, txBodyElements = [], utxos, changeAddress, network, fee } = params;
-  
+}): {
+  txBody: CSL.TransactionBody;
+  txWitnessSet?: CSL.TransactionWitnessSet;
+  error?: BuildError;
+} {
+  const { certificates, txBodyElements = [], utxos: rawUtxos, changeAddress, network, fee } = params;
+
   // Track all CSL objects for cleanup on error
   const createdObjects: Array<unknown> = [];
-  
+
+  // Detect early whether the resulting tx will carry a Plutus script
+  // (guard-rails for a parameter change). If so we need a collateral input.
+  const willHaveScripts = txBodyElements.some(
+    (el) => el.type === 'ProposalProcedures'
+      && typeof el.data?.guardrailsScriptHex === 'string'
+      && (el.data.guardrailsScriptHex as string).length > 0
+  );
+
+  // Pick a collateral UTXO from the wallet's regular UTXOs (preferring one
+  // that holds only ADA — Conway requires collateral to be pure-ADA). Exclude
+  // it from the regular input set so it isn't double-spent.
+  let collateralUtxo: UTXO | null = null;
+  let utxos: UTXO[] = rawUtxos;
+  if (willHaveScripts && rawUtxos.length > 0) {
+    const pureAda = rawUtxos.find((u) => {
+      const amounts = u.output?.amount ?? [];
+      return amounts.length === 1 && amounts[0].unit === 'lovelace';
+    });
+    collateralUtxo = pureAda ?? rawUtxos[0];
+    utxos = rawUtxos.filter((u) => u !== collateralUtxo);
+    if (utxos.length === 0) {
+      return {
+        txBody: null as unknown as CSL.TransactionBody,
+        error: { message: 'Need at least 2 UTXOs in wallet: one for inputs and one for collateral when using a guard-rails script.' },
+      };
+    }
+  }
+
   try {
     // Validate inputs
     if (!changeAddress || typeof changeAddress !== 'string') {
       throw new Error('Change address is required');
     }
-    
+
     if (!utxos || utxos.length === 0) {
       throw new Error('At least one UTXO is required');
     }
@@ -709,6 +1135,11 @@ export function assembleTransaction(params: {
     if (votingProposals) {
       createdObjects.push(votingProposals);
     }
+    // For each proposal added, track whether it references a guard-rails
+    // script. Index in this array == index in the VotingProposals collection.
+    type GuardrailsInfo = { scriptHex: string; language: GuardrailsLang; costModels?: CostModels };
+    const guardrailsByIndex: Array<GuardrailsInfo | null> = [];
+
     for (const element of proposalElements) {
       const raw = (element.data?.proposalData as string | undefined)?.trim();
       if (!raw) {
@@ -719,6 +1150,18 @@ export function assembleTransaction(params: {
         const proposal = CSL.VotingProposal.from_hex(raw);
         votingProposals!.add(proposal);
         // Note: VotingProposals.add takes ownership of the proposal.
+
+        const scriptHex = element.data?.guardrailsScriptHex as string | undefined;
+        const lang = element.data?.guardrailsLanguage as GuardrailsLang | undefined;
+        if (scriptHex && lang) {
+          guardrailsByIndex.push({
+            scriptHex,
+            language: lang,
+            costModels: element.data?.costModels as CostModels | undefined,
+          });
+        } else {
+          guardrailsByIndex.push(null);
+        }
       } catch (e) {
         errors.push({
           message: `Failed to parse proposal procedure CBOR: ${e instanceof Error ? e.message : 'invalid hex'}`,
@@ -775,20 +1218,42 @@ export function assembleTransaction(params: {
       }
     }
     
+    // Sum deposits from voting proposals — these come out of the wallet's
+    // funds at submission time and must be subtracted from change. (Cert
+    // deposits are also a thing but our currently-supported certs have none.)
+    let proposalDepositTotal = BigInt(0);
+    if (votingProposals && votingProposals.len() > 0) {
+      for (let i = 0; i < votingProposals.len(); i++) {
+        const p = votingProposals.get(i);
+        const dep = p.deposit();
+        proposalDepositTotal += BigInt(dep.to_str());
+        dep.free();
+        // p is owned by the collection; don't free.
+      }
+    }
+
+    // Detect if this tx will carry scripts/redeemers (changes fee floor).
+    const hasScripts = guardrailsByIndex.some((g) => g !== null);
+
     // Create transaction outputs
     const outputs = CSL.TransactionOutputs.new();
     createdObjects.push(outputs);
-    
-    // Calculate output value (total input - fee)
-    const calculatedFee = fee || BigInt(200000); // Default fee estimate
-    
-    if (totalInput < calculatedFee) {
+
+    // Fee placeholder. With scripts + ex_units this can be ~1.3 ADA on mainnet;
+    // we leave a 2 ADA cushion. Without scripts we use the historic 0.2 ADA
+    // estimate. The wallet/node validates exact min_fee at submission.
+    const calculatedFee = fee ?? (hasScripts ? BigInt(2_000_000) : BigInt(200_000));
+
+    const outflow = calculatedFee + proposalDepositTotal;
+    if (totalInput < outflow) {
       safeFree(...createdObjects);
-      throw new Error(`Insufficient funds: total input ${totalInput} is less than fee ${calculatedFee}`);
+      throw new Error(
+        `Insufficient funds: total input ${totalInput} < fee ${calculatedFee} + deposits ${proposalDepositTotal} = ${outflow}`
+      );
     }
-    
-    const outputValue = totalInput - calculatedFee;
-    
+
+    const outputValue = totalInput - outflow;
+
     if (outputValue > 0) {
       try {
         // Validate address format
@@ -839,7 +1304,111 @@ export function assembleTransaction(params: {
     } else if (votingProposals) {
       votingProposals.free();
     }
-    
+
+    // ----- Plutus script attachments for guard-rails proposals -----
+    // For each proposal that references a guard-rails policy hash, attach the
+    // referenced PlutusScript to the witness set, add a {} redeemer tagged
+    // VotingProposal, and wire up collateral + script_data_hash on the body.
+    let txWitnessSet: CSL.TransactionWitnessSet | undefined;
+    const proposalsWithGuardrails = guardrailsByIndex
+      .map((g, i) => g ? { g, i } : null)
+      .filter((x): x is { g: GuardrailsInfo; i: number } => x !== null);
+
+    if (proposalsWithGuardrails.length > 0) {
+      const plutusScripts = CSL.PlutusScripts.new();
+      const redeemers = CSL.Redeemers.new();
+      let firstCostModels: CostModels | undefined;
+
+      try {
+        for (const { g, i } of proposalsWithGuardrails) {
+          if (!firstCostModels && g.costModels) firstCostModels = g.costModels;
+
+          // PlutusScript witness
+          const langKey = `Plutus${g.language}` as CostModelLang;
+          const cslLang = languageForKey(langKey);
+          let plutusScript: CSL.PlutusScript | null = null;
+          try {
+            plutusScript = CSL.PlutusScript.new_with_version(Buffer.from(g.scriptHex, 'hex'), cslLang);
+            plutusScripts.add(plutusScript);
+            // PlutusScripts.add takes ownership; null-out so finally doesn't double-free.
+            plutusScript = null;
+          } finally {
+            safeFree(plutusScript, cslLang);
+          }
+
+          // {} redeemer = Constr 0 [], tagged VotingProposal at this index.
+          const tag = CSL.RedeemerTag.new_voting_proposal();
+          const idxBN = CSL.BigNum.from_str(String(i));
+          const altBN = CSL.BigNum.from_str('0');
+          const data = CSL.PlutusData.new_empty_constr_plutus_data(altBN);
+          const memBN = CSL.BigNum.from_str(DEFAULT_GUARDRAILS_EX_UNITS.mem.toString());
+          const stepsBN = CSL.BigNum.from_str(DEFAULT_GUARDRAILS_EX_UNITS.steps.toString());
+          const exUnits = CSL.ExUnits.new(memBN, stepsBN);
+          const redeemer = CSL.Redeemer.new(tag, idxBN, data, exUnits);
+          redeemers.add(redeemer);
+          // Redeemer.new takes ownership of tag/idx/data/exUnits. exUnits owns mem/steps.
+          // altBN was consumed by new_empty_constr_plutus_data.
+          // Redeemers.add takes ownership of redeemer.
+        }
+
+        // script_data_hash uses the cost models of the languages USED IN THIS TX.
+        // For correct on-chain validation this should be the *current* cost models;
+        // we use the cost models the user is proposing as the closest-available
+        // approximation. The wallet will sign whatever bytes we hand it; the node
+        // validates the hash against its own params at submit time.
+        if (firstCostModels) {
+          let costmdls: CSL.Costmdls | null = null;
+          let scriptDataHash: CSL.ScriptDataHash | null = null;
+          try {
+            costmdls = buildCostmdls(firstCostModels);
+            scriptDataHash = CSL.hash_script_data(redeemers, costmdls);
+            txBody.set_script_data_hash(scriptDataHash);
+          } finally {
+            safeFree(scriptDataHash, costmdls);
+          }
+        } else {
+          console.warn('No cost models available — script_data_hash not set; tx will be rejected on submission.');
+        }
+
+        // Collateral input: a single UTXO chosen from the wallet's own UTXO
+        // set (preferring pure-ADA), reserved at the top of this function.
+        if (!collateralUtxo) {
+          throw new Error('Guard-rails script referenced but no collateral UTXO could be reserved.');
+        }
+
+        const collateralInputs = CSL.TransactionInputs.new();
+        const collTxId = CSL.TransactionHash.from_bytes(Buffer.from(collateralUtxo.input.txHash, 'hex'));
+        const collInput = CSL.TransactionInput.new(collTxId, collateralUtxo.input.outputIndex);
+        collateralInputs.add(collInput);
+        collTxId.free();
+        collInput.free();
+
+        const collLovelace = (collateralUtxo.output?.amount ?? []).find(a => a.unit === 'lovelace');
+        const collateralLovelace = collLovelace ? BigInt(collLovelace.quantity) : BigInt(0);
+
+        txBody.set_collateral(collateralInputs);
+        // Note: collateralInputs is now owned by txBody.
+
+        if (collateralLovelace > 0) {
+          const totalCollateral = CSL.BigNum.from_str(collateralLovelace.toString());
+          txBody.set_total_collateral(totalCollateral);
+          totalCollateral.free();
+        }
+        // Suppress unused-var warning; MAX_COLLATERAL_INPUTS kept for future multi-collateral selection.
+        void MAX_COLLATERAL_INPUTS;
+
+        // Build the witness set with scripts + redeemers. (Vkey witnesses are
+        // appended by the wallet at signTx time.)
+        txWitnessSet = CSL.TransactionWitnessSet.new();
+        txWitnessSet.set_plutus_scripts(plutusScripts);
+        txWitnessSet.set_redeemers(redeemers);
+        // plutusScripts and redeemers are owned by txWitnessSet.
+      } catch (scriptErr) {
+        safeFree(plutusScripts, redeemers, txWitnessSet);
+        throw scriptErr;
+      }
+    }
+
     // Set TTL (validity interval end) - set to current slot + 3600 (1 hour)
     const currentSlot = Math.floor(Date.now() / 1000) + 3600; // Rough estimate
     const ttlBigNum = CSL.BigNum.from_str(currentSlot.toString());
@@ -858,12 +1427,12 @@ export function assembleTransaction(params: {
     
     // Clear createdObjects since txBody now owns them
     createdObjects.length = 0;
-    
-    return { txBody };
+
+    return { txBody, txWitnessSet };
   } catch (error) {
     // Clean up all created objects on error
     safeFree(...createdObjects);
-    
+
     return {
       txBody: null as unknown as CSL.TransactionBody,
       error: {
@@ -874,9 +1443,14 @@ export function assembleTransaction(params: {
 }
 
 /**
- * Serialize transaction to hex - IMPROVED with validation
+ * Serialize transaction to hex - IMPROVED with validation.
+ * If a witness set is supplied (e.g. carrying script witnesses + redeemers),
+ * it's embedded into the resulting Transaction; otherwise an empty one is used.
  */
-export function serializeTransaction(txBody: CSL.TransactionBody): string {
+export function serializeTransaction(
+  txBody: CSL.TransactionBody,
+  providedWitnessSet?: CSL.TransactionWitnessSet
+): string {
   if (!txBody) {
     throw new Error('Transaction body is required');
   }
@@ -884,17 +1458,17 @@ export function serializeTransaction(txBody: CSL.TransactionBody): string {
   // Wrap the body in a full Transaction so the resulting hex matches the
   // Conway `transaction = [body, witness_set, is_valid, aux_data?]` shape.
   // Wallets / parsers expect a CBOR array, not a bare body Map.
-  let witnessSet: CSL.TransactionWitnessSet | null = null;
+  const ownsWitnessSet = !providedWitnessSet;
+  const witnessSet = providedWitnessSet ?? CSL.TransactionWitnessSet.new();
   let tx: CSL.Transaction | null = null;
   try {
-    witnessSet = CSL.TransactionWitnessSet.new();
     tx = CSL.Transaction.new(txBody, witnessSet, undefined);
     return tx.to_hex();
   } catch (error) {
     throw new Error(`Failed to serialize transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
     tx?.free();
-    witnessSet?.free();
+    if (ownsWitnessSet) witnessSet.free();
   }
 }
 

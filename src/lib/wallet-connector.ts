@@ -2,6 +2,7 @@
 // Wallet integration wrapper using Mesh.js BrowserWallet API
 'use client';
 
+import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 import { Network } from '@/domain/tx';
 
 // Dynamic import to avoid server-side WASM loading issues
@@ -350,5 +351,36 @@ export async function getChangeAddress(wallet: any): Promise<string> {
   } catch (error) {
     console.error('Error getting change address:', error);
     throw error;
+  }
+}
+
+/**
+ * Get the connected wallet's first reward (stake) address as bech32.
+ * Returns null if the wallet has no reward address set.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getRewardAddressBech32(wallet: any): Promise<string | null> {
+  try {
+    const hexes: string[] = await wallet.getRewardAddresses();
+    if (!Array.isArray(hexes) || hexes.length === 0) return null;
+
+    let address: CSL.Address | null = null;
+    let rewardAddress: CSL.RewardAddress | null = null;
+    let bech32Addr: CSL.Address | null = null;
+    try {
+      address = CSL.Address.from_bytes(Buffer.from(hexes[0], 'hex'));
+      const maybe = CSL.RewardAddress.from_address(address);
+      if (!maybe) return null;
+      rewardAddress = maybe;
+      bech32Addr = rewardAddress.to_address();
+      return bech32Addr.to_bech32();
+    } finally {
+      if (bech32Addr && typeof bech32Addr.free === 'function') bech32Addr.free();
+      if (rewardAddress && typeof rewardAddress.free === 'function') rewardAddress.free();
+      if (address && typeof address.free === 'function') address.free();
+    }
+  } catch (error) {
+    console.warn('Error getting reward address:', error);
+    return null;
   }
 }

@@ -93,12 +93,12 @@ export function TransactionActions() {
       const allCertificates = [...builderCertificates];
 
       console.log('Step 4: Assembling transaction...');
-      const { txBody, error } = assembleTransaction({
+      const { txBody, txWitnessSet, error } = assembleTransaction({
         certificates: allCertificates,
         txBodyElements: builderTxBodyElements,
         utxos: utxos as Parameters<typeof assembleTransaction>[0]['utxos'],
         changeAddress: changeAddress,
-        network: buildNetwork
+        network: buildNetwork,
       });
 
       if (error || !txBody) {
@@ -119,7 +119,7 @@ export function TransactionActions() {
       console.log('Fee calculated:', fee.toString());
 
       console.log('Step 6: Serializing transaction...');
-      const txHex = serializeTransaction(txBody);
+      const txHex = serializeTransaction(txBody, txWitnessSet);
       console.log('Transaction serialized, hex length:', txHex.length);
 
       freeTransactionBody(txBody);

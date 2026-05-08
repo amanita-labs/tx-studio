@@ -8,8 +8,34 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { X, Copy, CheckCircle2, FileText, Vote, Settings } from 'lucide-react';
-import { useAppStore } from '@/lib/store';
+import { useAppStore, type BuilderTxBodyElement } from '@/lib/store';
 import { toast } from 'sonner';
+import { formatAda } from '@/lib/utils/ada';
+
+function summarizeTxBodyElement(el: BuilderTxBodyElement): string {
+  if (el.type === 'ProposalProcedures') {
+    const kind = el.data?.kind;
+    if (kind === 'info') {
+      const deposit = el.data?.deposit;
+      try {
+        return `Info · ${formatAda(BigInt(String(deposit ?? 0)))} ada`;
+      } catch {
+        return 'Info';
+      }
+    }
+    if (kind === 'parameter-change') {
+      const cm = el.data?.costModels as { PlutusV1?: number[]; PlutusV2?: number[]; PlutusV3?: number[] } | undefined;
+      const langs = cm
+        ? Object.keys(cm).filter((k): k is 'PlutusV1' | 'PlutusV2' | 'PlutusV3' =>
+            ['PlutusV1', 'PlutusV2', 'PlutusV3'].includes(k))
+        : [];
+      return `Parameter Change${langs.length ? ` · ${langs.join(', ')}` : ''}`;
+    }
+    // 'cbor' or missing — fall through to legacy hex-snippet behaviour.
+  }
+  const first = Object.values(el.data ?? {})[0];
+  return first ? String(first).slice(0, 20) : 'Element';
+}
 
 export function TransactionSummary() {
   const { builderCertificates, builderTxBodyElements, builtTxHex, removeCertificate, removeTxBodyElement } = useAppStore();
@@ -257,7 +283,7 @@ export function TransactionSummary() {
                       </div>
                     </div>
                   )}
-                  {Object.entries(groupedTxBodyElements).filter(([key, items]) => 
+                  {Object.entries(groupedTxBodyElements).filter(([key, items]) =>
                     !['inputs', 'outputs', 'fees'].includes(key) && items.length > 0
                   ).map(([key, items]) => (
                     <div key={key}>
@@ -272,7 +298,7 @@ export function TransactionSummary() {
                                 {getTxBodyElementLabel(el.type)}
                               </Badge>
                               <span className="text-xs text-muted-foreground truncate">
-                                {Object.values(el.data)[0] ? String(Object.values(el.data)[0]).slice(0, 20) : 'Element'}
+                                {summarizeTxBodyElement(el)}
                               </span>
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => removeTxBodyElement(el.id)}>
