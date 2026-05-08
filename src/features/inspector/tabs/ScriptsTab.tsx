@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { DomainTx } from '@/domain/tx';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
+import { UplcLinkBadge } from '@/components/uplc-link-badge';
 import { getKnownScriptLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { useAppStore } from '@/lib/store';
@@ -269,10 +270,13 @@ export function ScriptsTab({ tx, txHex, isOnChain }: ScriptsTabProps) {
                           </Badge>
                         ))}
                       </div>
-                      <Badge className={getScriptTypeColor(safeType)}>
-                        {getScriptTypeIcon(safeType)}
-                        <span className="ml-1">{safeType}</span>
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className={getScriptTypeColor(safeType)}>
+                          {getScriptTypeIcon(safeType)}
+                          <span className="ml-1">{safeType}</span>
+                        </Badge>
+                        <UplcLinkBadge hash={safeHash} type={safeType} txHash={tx.id} />
+                      </div>
                     </div>
 
                     <div className="space-y-1">
