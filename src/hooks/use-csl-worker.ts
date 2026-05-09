@@ -1,5 +1,6 @@
 // src/hooks/use-csl-worker.ts
 import { TxParseResult, Network } from '@/domain/tx';
+import type { Cip169Binding } from '@/lib/governance-metadata/types';
 
 // Module-level cache so hashes computed in one component instance are
 // reused by another (e.g. paste -> network detection -> dissect).
@@ -130,6 +131,43 @@ function computeTransactionHash(hex: string): Promise<string> {
   });
 }
 
+type Cip169WorkerResult =
+  | { binding: 'ok'; selectorKind: string }
+  | { binding: 'mismatch'; differences: Array<{ path: string; metadataValue: unknown; actionValue: unknown }> }
+  | { binding: 'error'; error: string };
+
+function verifyCip169(metadata: unknown, txHex: string): Promise<Cip169Binding> {
+  return new Promise((resolve) => {
+    const w = getWorker();
+    const requestId = nextRequestId++;
+    const timeout = setTimeout(() => {
+      callbacks.delete(requestId);
+      resolve({ status: 'error', error: 'CIP-169 verification timed out' });
+    }, 10_000);
+    callbacks.set(requestId, ({ type, data }) => {
+      clearTimeout(timeout);
+      if (type === 'VERIFY_CIP169_RESULT') {
+        const r = data as Cip169WorkerResult;
+        if (r.binding === 'ok') {
+          resolve({ status: 'ok', selectorKind: r.selectorKind });
+        } else if (r.binding === 'mismatch') {
+          resolve({ status: 'mismatch', differences: r.differences });
+        } else {
+          resolve({ status: 'error', error: r.error });
+        }
+      } else if (type === 'ERROR') {
+        const err = (data as { error?: string }).error ?? 'CIP-169 worker error';
+        resolve({ status: 'error', error: err });
+      } else {
+        resolve({ status: 'error', error: `Unexpected worker response: ${type}` });
+      }
+    });
+    postWhenReady(() =>
+      w.postMessage({ requestId, type: 'VERIFY_CIP169', data: { metadata, txCbor: txHex } }),
+    );
+  });
+}
+
 export function useCSLWorker() {
-  return { parseTransaction, computeTransactionHash };
+  return { parseTransaction, computeTransactionHash, verifyCip169 };
 }

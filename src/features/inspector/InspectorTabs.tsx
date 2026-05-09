@@ -12,6 +12,9 @@ import { ScriptsTab } from './tabs/ScriptsTab';
 // import { ComparisonTab } from './tabs/ComparisonTab'; // Hidden for now
 import { SearchTab } from './tabs/SearchTab';
 import { ContentsTab } from './tabs/ContentsTab';
+import { GovernanceTab } from './tabs/GovernanceTab';
+import { txHasGovernanceAnchors } from '@/lib/governance-metadata/collect-anchors';
+import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 
 interface InspectorTabsProps {
@@ -21,20 +24,22 @@ interface InspectorTabsProps {
 
 export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
   const isOnChain = useAppStore(s => s.isOnChain);
+  const showGovernance = txHasGovernanceAnchors(tx);
 
   return (
     <div className="h-full">
       <Tabs defaultValue="overview" className="h-full flex flex-col">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className={cn('grid w-full', showGovernance ? 'grid-cols-8' : 'grid-cols-7')}>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="io-value">I/O & Value</TabsTrigger>
           <TabsTrigger value="contents">Contents</TabsTrigger>
+          {showGovernance && <TabsTrigger value="governance">Governance</TabsTrigger>}
           <TabsTrigger value="metadata">Metadata</TabsTrigger>
           <TabsTrigger value="scripts">Scripts</TabsTrigger>
           <TabsTrigger value="cbor">Raw</TabsTrigger>
           <TabsTrigger value="search">Search</TabsTrigger>
         </TabsList>
-        
+
         <div className="flex-1 overflow-hidden">
           <TabsContent value="overview" className="h-full">
             <OverviewTab tx={tx} />
@@ -45,6 +50,11 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
           <TabsContent value="contents" className="h-full">
             <ContentsTab tx={tx} />
           </TabsContent>
+          {showGovernance && (
+            <TabsContent value="governance" className="h-full">
+              <GovernanceTab tx={tx} txHex={txHex} />
+            </TabsContent>
+          )}
           <TabsContent value="metadata" className="h-full">
             <MetadataTab tx={tx} />
           </TabsContent>
