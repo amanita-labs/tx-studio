@@ -1,8 +1,51 @@
 // src/hooks/use-blockfrost.ts
 import { useState, useCallback } from 'react';
 import { Network } from '@/domain/tx';
-import { FetchTransactionResponse } from '@/lib/types/blockfrost';
+import { FetchTransactionResponse, FetchTxUtxosResponse } from '@/lib/types/blockfrost';
 import { NetworkDetectionResponse } from '@/lib/blockfrost/multi-network-search';
+
+/**
+ * Standalone client-side fetcher for a transaction's UTXOs (the producing tx's outputs).
+ * Used by useResolveInputs to fan out parallel requests; not bound to React state so
+ * concurrent calls don't clobber each other.
+ */
+export async function fetchTransactionUtxosClient(
+  hash: string,
+  network: Network
+): Promise<FetchTxUtxosResponse> {
+  const trimmedHash = hash.trim();
+  if (trimmedHash.length !== 64) {
+    return { success: false, error: 'Transaction hash must be 64 hexadecimal characters' };
+  }
+  try {
+    const response = await fetch(
+      `/api/blockfrost/transactions/${encodeURIComponent(trimmedHash)}/utxos?network=${network}`
+    );
+    if (!response.ok) {
+      let errorMsg = 'Failed to fetch transaction UTXOs';
+      try {
+        const errorData: FetchTxUtxosResponse = await response.json();
+        errorMsg = errorData.success === false ? errorData.error : `HTTP ${response.status}: ${response.statusText}`;
+      } catch {
+        errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+      }
+      return { success: false, error: errorMsg, statusCode: response.status };
+    }
+    const data: FetchTxUtxosResponse = await response.json();
+    return data;
+  } catch (err) {
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      return {
+        success: false,
+        error: 'Network error. API routes are not available in static export mode.',
+      };
+    }
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'An unexpected error occurred',
+    };
+  }
+}
 
 interface UseBlockfrostReturn {
   fetchTransaction: (hash: string, network: Network) => Promise<FetchTransactionResponse>;

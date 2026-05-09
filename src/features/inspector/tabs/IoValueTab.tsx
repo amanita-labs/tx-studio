@@ -12,6 +12,7 @@ import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { useTokenRegistry } from '@/hooks/use-token-registry';
 import { useAppStore } from '@/lib/store';
 import { AssetDisplay } from '@/components/asset-display';
+import { WalletSummaryCard } from './wallet-summary/WalletSummaryCard';
 
 interface IoValueTabProps {
   tx: DomainTx;
@@ -44,6 +45,8 @@ export function IoValueTab({ tx }: IoValueTabProps) {
 
   return (
     <div className="h-full overflow-auto p-4 space-y-4">
+      <WalletSummaryCard tx={tx} />
+
       {/* Inputs */}
       <Card>
         <CardHeader>

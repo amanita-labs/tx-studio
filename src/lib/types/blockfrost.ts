@@ -63,3 +63,32 @@ export interface FetchTransactionError {
 }
 
 export type FetchTransactionResponse = FetchTransactionResult | FetchTransactionError;
+
+export interface BlockfrostTxUtxoOutput {
+  address: string;
+  amount: Array<{ unit: string; quantity: string }>;
+  output_index: number;
+  data_hash: string | null;
+  inline_datum: string | null;
+  collateral: boolean;
+  reference_script_hash: string | null;
+}
+
+export interface BlockfrostTxUtxos {
+  hash: string;
+  outputs: BlockfrostTxUtxoOutput[];
+}
+
+export interface FetchTxUtxosResult {
+  success: true;
+  hash: string;
+  utxos: BlockfrostTxUtxos;
+}
+
+export interface FetchTxUtxosError {
+  success: false;
+  error: string;
+  statusCode?: number;
+}
+
+export type FetchTxUtxosResponse = FetchTxUtxosResult | FetchTxUtxosError;

@@ -1,6 +1,6 @@
 // src/lib/blockfrost/cache.ts
 import type { MultiNetworkSearchResponse, NetworkDetectionResponse } from './multi-network-search';
-import type { BlockfrostTransaction } from '@/lib/types/blockfrost';
+import type { BlockfrostTransaction, BlockfrostTxUtxos } from '@/lib/types/blockfrost';
 import type { ProtocolParamsSubset } from '@/lib/types/script-eval';
 import type { AllProtocolParams } from '@/lib/types/protocol-params';
 
@@ -98,6 +98,7 @@ export const CACHE_TTL_PROTOCOL_PARAMS = 4 * 60 * 60 * 1000; // 4 hours for prot
 export const multiNetworkSearchCache = new BlockfrostCache<MultiNetworkSearchResponse>();
 export const networkDetectionCache = new BlockfrostCache<NetworkDetectionResponse>();
 export const transactionCache = new BlockfrostCache<{ transaction: BlockfrostTransaction; hex: string }>();
+export const transactionUtxosCache = new BlockfrostCache<BlockfrostTxUtxos>();
 export const protocolParamsCache = new BlockfrostCache<ProtocolParamsSubset>();
 export const allProtocolParamsCache = new BlockfrostCache<AllProtocolParams>();
 
