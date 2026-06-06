@@ -130,6 +130,10 @@ export function useResolveInputs(tx: DomainTx | null): InputResolutionState {
 
         // Atomically merge this source tx's outputs into matching inputs.
         // Functional setState avoids races between parallel callbacks.
+        // Index outputs by output_index for O(1) lookup when many inputs share
+        // the same producer tx.
+        const outputByIndex = new Map<number, BlockfrostTxUtxoOutput>();
+        for (const o of result.outputs) outputByIndex.set(o.output_index, o);
         let resolvedNow = 0;
         useAppStore.setState((s) => {
           const current = s.parsedTx;
@@ -137,7 +141,7 @@ export function useResolveInputs(tx: DomainTx | null): InputResolutionState {
           let anyChange = false;
           const nextInputs = current.tx.inputs.map((inp) => {
             if (inp.txId !== sourceTxId || inp.resolved?.value) return inp;
-            const utxo = result.outputs.find((o) => o.output_index === inp.index);
+            const utxo = outputByIndex.get(inp.index);
             if (!utxo) return inp;
             anyChange = true;
             return {
