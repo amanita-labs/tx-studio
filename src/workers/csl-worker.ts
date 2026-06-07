@@ -2309,10 +2309,23 @@ self.onmessage = async (event) => {
           const { metadata, txCbor } = data as { metadata: unknown; txCbor: string };
           const result = await cip169.verifyAgainstTx(metadata, txCbor);
           if (!result.success) {
+            // ONCHAIN_SELECTOR_NOT_FOUND conflates "the bound item isn't in this
+            // tx" with "it is, but the library couldn't decode it" (decode skips
+            // the item silently). Re-decode to recover the `skipped` list so the
+            // caller can tell the two apart.
+            let skipped: Array<{ kind: string; reason: string }> = [];
+            if (result.error.code === 'ONCHAIN_SELECTOR_NOT_FOUND') {
+              try {
+                const decoded = cip169.decodeConwayTx(txCbor);
+                if (decoded.success) skipped = decoded.data.skipped;
+              } catch {
+                // best-effort; leave skipped empty
+              }
+            }
             self.postMessage({
               requestId,
               type: 'VERIFY_CIP169_RESULT',
-              data: { binding: 'error', error: result.error.message },
+              data: { binding: 'error', error: result.error.message, code: result.error.code, skipped },
             });
           } else if (result.data.matched) {
             self.postMessage({

@@ -33,7 +33,7 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="io-value">I/O & Value</TabsTrigger>
           <TabsTrigger value="contents">Contents</TabsTrigger>
-          {showGovernance && <TabsTrigger value="governance">Governance</TabsTrigger>}
+          {showGovernance && <TabsTrigger value="governance">gov-anchor</TabsTrigger>}
           <TabsTrigger value="metadata">Metadata</TabsTrigger>
           <TabsTrigger value="scripts">Scripts</TabsTrigger>
           <TabsTrigger value="cbor">Raw</TabsTrigger>

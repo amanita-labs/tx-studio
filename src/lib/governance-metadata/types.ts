@@ -1,3 +1,5 @@
+import type { OnChainKind } from './onchain';
+
 /** "{url}#{hash}" — stable id for the store and dedup. */
 export type AnchorKey = string;
 
@@ -17,6 +19,19 @@ export type Cip169Binding =
   | { status: 'verifying' }
   | { status: 'ok'; selectorKind: string }
   | { status: 'mismatch'; differences: Array<{ path: string; metadataValue: unknown; actionValue: unknown }> }
+  /**
+   * The document declares a CIP-169 binding to an on-chain item that is absent
+   * from the inspected transaction — i.e. the binding belongs to a different
+   * transaction (e.g. a vote's anchor re-using the proposal's rationale). Not a
+   * failure; informational.
+   */
+  | { status: 'not-in-tx'; boundKind: OnChainKind }
+  /**
+   * The bound on-chain item IS present in this transaction, but the metadata
+   * library could not decode it, so the binding cannot be verified. Surfaces a
+   * library limitation rather than a problem with the document or transaction.
+   */
+  | { status: 'undecodable'; boundKind: OnChainKind; reason: string }
   | { status: 'error'; error: string };
 
 export type SchemaIssue = {

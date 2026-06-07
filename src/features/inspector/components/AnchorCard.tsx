@@ -214,6 +214,13 @@ function CipBody({ result }: { result: ResolvedGovernanceMetadata }) {
   }
 }
 
+const onChainKindLabel: Record<string, string> = {
+  proposalProcedure: 'a governance action (proposal procedure)',
+  votingProcedures: 'voting procedures',
+  certificate: 'a DRep / committee certificate',
+  unknown: 'an on-chain item',
+};
+
 function Cip169Section({ result }: { result: ResolvedGovernanceMetadata }) {
   if (!result.hasCip169Extension) return null;
   const b = result.cip169;
@@ -225,6 +232,28 @@ function Cip169Section({ result }: { result: ResolvedGovernanceMetadata }) {
       <span className="text-green-600 dark:text-green-400">
         ✓ Binds to this transaction (selector: {b.selectorKind})
       </span>
+    );
+  } else if (b.status === 'not-in-tx') {
+    body = (
+      <div className="text-muted-foreground space-y-1">
+        <p>
+          This document declares a CIP-169 binding to{' '}
+          {onChainKindLabel[b.boundKind] ?? 'an on-chain item'}, which is not part of this
+          transaction — the binding most likely refers to a different transaction.
+        </p>
+        <p className="text-xs">Open that transaction to verify this binding.</p>
+      </div>
+    );
+  } else if (b.status === 'undecodable') {
+    body = (
+      <div className="text-yellow-700 dark:text-yellow-400 space-y-1">
+        <p>
+          ⚠ This transaction contains {onChainKindLabel[b.boundKind] ?? 'the on-chain item'} that
+          this binding refers to, but the metadata library could not decode it, so the binding
+          cannot be verified.
+        </p>
+        <p className="text-xs text-muted-foreground font-mono break-all">{b.reason}</p>
+      </div>
     );
   } else if (b.status === 'mismatch') {
     body = (
@@ -247,7 +276,7 @@ function Cip169Section({ result }: { result: ResolvedGovernanceMetadata }) {
     body = <span className="text-red-600 dark:text-red-400">Verify failed: {b.error}</span>;
   }
   return (
-    <div className="border-t pt-3 mt-3">
+    <div className="mb-3">
       <h4 className="text-sm font-medium mb-1">Transaction binding (CIP-169)</h4>
       <div className="text-sm">{body}</div>
     </div>
@@ -258,7 +287,7 @@ function AuthorsList({ authors }: { authors: AuthorWitness[] }) {
   if (authors.length === 0) return null;
   const validCount = authors.filter((a) => a.signature === 'valid').length;
   return (
-    <div className="border-t pt-3 mt-3">
+    <div className="mb-3">
       <h4 className="text-sm font-medium mb-2">
         Authors — {validCount} of {authors.length} signature{authors.length === 1 ? '' : 's'} valid
       </h4>
@@ -378,9 +407,18 @@ export function AnchorCard({ anchor, txHex }: { anchor: CollectedAnchor; txHex: 
                 </AlertDescription>
               </Alert>
             )}
-            <CipBody result={state.result} />
+            {/* Verification checks first, before the metadata content */}
             <Cip169Section result={state.result} />
             <AuthorsList authors={state.result.authors} />
+            <div
+              className={
+                state.result.hasCip169Extension || state.result.authors.length > 0
+                  ? 'border-t pt-4 mt-1'
+                  : undefined
+              }
+            >
+              <CipBody result={state.result} />
+            </div>
           </>
         )}
       </CardContent>

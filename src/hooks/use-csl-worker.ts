@@ -1,6 +1,7 @@
 // src/hooks/use-csl-worker.ts
 import { TxParseResult, Network } from '@/domain/tx';
 import type { Cip169Binding } from '@/lib/governance-metadata/types';
+import { inferOnChainBinding } from '@/lib/governance-metadata/onchain';
 
 // Module-level cache so hashes computed in one component instance are
 // reused by another (e.g. paste -> network detection -> dissect).
@@ -134,7 +135,7 @@ function computeTransactionHash(hex: string): Promise<string> {
 type Cip169WorkerResult =
   | { binding: 'ok'; selectorKind: string }
   | { binding: 'mismatch'; differences: Array<{ path: string; metadataValue: unknown; actionValue: unknown }> }
-  | { binding: 'error'; error: string };
+  | { binding: 'error'; error: string; code?: string; skipped?: Array<{ kind: string; reason: string }> };
 
 function verifyCip169(metadata: unknown, txHex: string): Promise<Cip169Binding> {
   return new Promise((resolve) => {
@@ -152,6 +153,20 @@ function verifyCip169(metadata: unknown, txHex: string): Promise<Cip169Binding> 
           resolve({ status: 'ok', selectorKind: r.selectorKind });
         } else if (r.binding === 'mismatch') {
           resolve({ status: 'mismatch', differences: r.differences });
+        } else if (r.code === 'ONCHAIN_SELECTOR_NOT_FOUND') {
+          // NOT_FOUND means either the bound item is genuinely absent (the
+          // binding targets a different transaction) or it is present but the
+          // library skipped it during decode (a library limitation). The
+          // `skipped` list, recovered by the worker, tells them apart.
+          const binding = inferOnChainBinding(metadata as Record<string, unknown>);
+          const proposalSkip = (r.skipped ?? []).find((s) => s.kind === 'proposal');
+          if (binding && binding.kind === 'proposalProcedure' && proposalSkip) {
+            resolve({ status: 'undecodable', boundKind: binding.kind, reason: proposalSkip.reason });
+          } else if (binding) {
+            resolve({ status: 'not-in-tx', boundKind: binding.kind });
+          } else {
+            resolve({ status: 'error', error: r.error });
+          }
         } else {
           resolve({ status: 'error', error: r.error });
         }

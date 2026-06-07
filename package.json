@@ -12,7 +12,7 @@
     "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
-    "@amanita-labs/cardano-governance-metadata": "^0.1.0",
+    "@amanita-labs/cardano-governance-metadata": "^0.1.2",
     "@blockfrost/blockfrost-js": "^6.1.0",
     "@emurgo/cardano-serialization-lib-browser": "^15.0.3",
     "@monaco-editor/react": "^4.7.0",
