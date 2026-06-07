@@ -89,7 +89,19 @@ export function useGovernanceMetadata() {
 
   const resolveAll = useCallback(
     async (anchors: CollectedAnchor[], txHex: string): Promise<void> => {
-      await Promise.all(anchors.map((a) => resolveOne(a, txHex)));
+      // Bound concurrency so a proposal-heavy tx doesn't fire a fetch per anchor
+      // at once and stampede the proxy / upstream hosts.
+      const POOL_SIZE = 5;
+      let next = 0;
+      const worker = async () => {
+        while (next < anchors.length) {
+          const anchor = anchors[next++];
+          await resolveOne(anchor, txHex);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(POOL_SIZE, anchors.length) }, worker),
+      );
     },
     [resolveOne],
   );

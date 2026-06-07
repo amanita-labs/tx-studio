@@ -268,6 +268,7 @@ function Cip169Section({ result }: { result: ResolvedGovernanceMetadata }) {
                 <code className="text-xs">{d.path}</code>
               </li>
             ))}
+            {b.differences.length > 8 && <li>… and {b.differences.length - 8} more</li>}
           </ul>
         )}
       </div>
