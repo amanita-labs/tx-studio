@@ -42,3 +42,7 @@ next-env.d.ts
 
 # playwright-cli
 .playwright-cli/
+
+# claude code (local/runtime state)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
