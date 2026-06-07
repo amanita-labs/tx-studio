@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
     NEXT_PUBLIC_GIT_COMMIT: gitCommit,
+    NEXT_PUBLIC_STATIC_EXPORT: process.env.STATIC_EXPORT === 'true' ? 'true' : 'false',
   },
   // We force webpack for both dev and build (`next dev --webpack`,
   // `next build --webpack`) because Turbopack's runtime can't resolve

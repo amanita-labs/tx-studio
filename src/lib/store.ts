@@ -5,6 +5,7 @@ import { Network, TxParseResult } from '@/domain/tx';
 import { BlockExplorerId } from '@/lib/types/block-explorer';
 import { EvalResponse } from '@/lib/types/script-eval';
 import { UplcLookup } from '@/lib/uplc-link/types';
+import type { AnchorKey, GovernanceMetadataState } from '@/lib/governance-metadata/types';
 
 export interface OnChainMeta {
   block: string;       // block hash
@@ -83,6 +84,9 @@ interface AppState {
   // uplc.link verification cache (not persisted, key = lowercased script hash)
   uplcCache: Record<string, UplcLookup>;
 
+  // Governance metadata cache (per-session, not persisted)
+  governanceMetadata: Record<AnchorKey, GovernanceMetadataState>;
+
   // Theme
   theme: 'light' | 'dark' | 'system';
 
@@ -115,6 +119,8 @@ interface AppState {
   setUplcCache: (hash: string, result: UplcLookup) => void;
   getUplcCache: (hash: string) => UplcLookup | null;
   clearUplcCacheEntry: (hash: string) => void;
+  setGovernanceMetadata: (key: AnchorKey, state: GovernanceMetadataState) => void;
+  clearGovernanceMetadata: () => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setBlockExplorer: (explorer: BlockExplorerId) => void;
   clearTx: () => void;
@@ -148,6 +154,7 @@ export const useAppStore = create<AppState>()(
       onChainMeta: null,
       evalCache: {},
       uplcCache: {},
+      governanceMetadata: {},
       theme: 'system',
       blockExplorer: 'cardanoscan',
 
@@ -186,6 +193,10 @@ export const useAppStore = create<AppState>()(
         delete next[key];
         return { uplcCache: next };
       }),
+      setGovernanceMetadata: (key, state) => set((s) => ({
+        governanceMetadata: { ...s.governanceMetadata, [key]: state },
+      })),
+      clearGovernanceMetadata: () => set({ governanceMetadata: {} }),
       setTheme: (theme: 'light' | 'dark' | 'system') => set({ theme }),
       setBlockExplorer: (explorer: BlockExplorerId) => set({ blockExplorer: explorer }),
       clearTx: () => set({
@@ -196,7 +207,8 @@ export const useAppStore = create<AppState>()(
         networkDetected: false,
         isOnChain: false,
         onChainMeta: null,
-        activeTab: 'overview'
+        activeTab: 'overview',
+        governanceMetadata: {},
       }),
       
       // Builder actions

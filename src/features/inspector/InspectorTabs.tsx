@@ -12,6 +12,8 @@ import { ScriptsTab } from './tabs/ScriptsTab';
 // import { ComparisonTab } from './tabs/ComparisonTab'; // Hidden for now
 import { SearchTab } from './tabs/SearchTab';
 import { ContentsTab } from './tabs/ContentsTab';
+import { GovernanceTab } from './tabs/GovernanceTab';
+import { txHasGovernanceAnchors } from '@/lib/governance-metadata/collect-anchors';
 import { useAppStore } from '@/lib/store';
 
 interface InspectorTabsProps {
@@ -21,20 +23,35 @@ interface InspectorTabsProps {
 
 export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
   const isOnChain = useAppStore(s => s.isOnChain);
+  const showGovernance = txHasGovernanceAnchors(tx);
+
+  // Single source of truth for the trigger row — the grid column count is
+  // derived from this list, so adding/removing a tab can't drift out of sync.
+  const triggers = [
+    { value: 'overview', label: 'Overview' },
+    { value: 'io-value', label: 'I/O & Value' },
+    { value: 'contents', label: 'Contents' },
+    ...(showGovernance ? [{ value: 'governance', label: 'Governance' }] : []),
+    { value: 'metadata', label: 'Metadata' },
+    { value: 'scripts', label: 'Scripts' },
+    { value: 'cbor', label: 'Raw' },
+    { value: 'search', label: 'Search' },
+  ];
 
   return (
     <div className="h-full">
       <Tabs defaultValue="overview" className="h-full flex flex-col">
-        <TabsList className="grid w-full grid-cols-7">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="io-value">I/O & Value</TabsTrigger>
-          <TabsTrigger value="contents">Contents</TabsTrigger>
-          <TabsTrigger value="metadata">Metadata</TabsTrigger>
-          <TabsTrigger value="scripts">Scripts</TabsTrigger>
-          <TabsTrigger value="cbor">Raw</TabsTrigger>
-          <TabsTrigger value="search">Search</TabsTrigger>
+        <TabsList
+          className="grid w-full"
+          style={{ gridTemplateColumns: `repeat(${triggers.length}, minmax(0, 1fr))` }}
+        >
+          {triggers.map((t) => (
+            <TabsTrigger key={t.value} value={t.value}>
+              {t.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
-        
+
         <div className="flex-1 overflow-hidden">
           <TabsContent value="overview" className="h-full">
             <OverviewTab tx={tx} />
@@ -45,6 +62,11 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
           <TabsContent value="contents" className="h-full">
             <ContentsTab tx={tx} />
           </TabsContent>
+          {showGovernance && (
+            <TabsContent value="governance" className="h-full">
+              <GovernanceTab tx={tx} txHex={txHex} />
+            </TabsContent>
+          )}
           <TabsContent value="metadata" className="h-full">
             <MetadataTab tx={tx} />
           </TabsContent>

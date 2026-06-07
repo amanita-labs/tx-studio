@@ -3,7 +3,16 @@
 
 import * as CSL from '@emurgo/cardano-serialization-lib-browser';
 import * as bech32Buffer from 'bech32-buffer';
+import * as cip169 from '@amanita-labs/cardano-governance-metadata/cip169';
 import type { AddressCredInfo, AddressCreds, Network, RewardAccountRef, StakeCredential } from '@/domain/tx';
+
+// Wire CSL into the governance metadata library so cip169.verifyAgainstTx
+// can decode the on-chain transaction. Done once at worker init.
+try {
+  cip169.setCardanoSerializationLib(CSL as unknown as Parameters<typeof cip169.setCardanoSerializationLib>[0]);
+} catch (err) {
+  console.warn('Failed to wire CSL into cip169:', err);
+}
 
 function cslCredToInfo(cred: CSL.Credential | undefined | null): AddressCredInfo | undefined {
   if (!cred) return undefined;
@@ -2293,6 +2302,60 @@ self.onmessage = async (event) => {
       case 'PARSE_TRANSACTION': {
         const result = await parseTransaction(data.hex, data.network || 'mainnet');
         self.postMessage({ requestId, type: 'PARSE_RESULT', data: result });
+        break;
+      }
+      case 'VERIFY_CIP169': {
+        try {
+          const { metadata, txCbor } = data as { metadata: unknown; txCbor: string };
+          const result = await cip169.verifyAgainstTx(metadata, txCbor);
+          if (!result.success) {
+            // ONCHAIN_SELECTOR_NOT_FOUND conflates "the bound item isn't in this
+            // tx" with "it is, but the library couldn't decode it" (decode skips
+            // the item silently). Re-decode to recover the `skipped` list so the
+            // caller can tell the two apart.
+            let skipped: Array<{ kind: string; reason: string }> = [];
+            if (result.error.code === 'ONCHAIN_SELECTOR_NOT_FOUND') {
+              try {
+                const decoded = cip169.decodeConwayTx(txCbor);
+                if (decoded.success) skipped = decoded.data.skipped;
+              } catch {
+                // best-effort; leave skipped empty
+              }
+            }
+            self.postMessage({
+              requestId,
+              type: 'VERIFY_CIP169_RESULT',
+              data: { binding: 'error', error: result.error.message, code: result.error.code, skipped },
+            });
+          } else if (result.data.matched) {
+            self.postMessage({
+              requestId,
+              type: 'VERIFY_CIP169_RESULT',
+              data: {
+                binding: 'ok',
+                selectorKind: result.data.selectorUsed.kind,
+              },
+            });
+          } else {
+            self.postMessage({
+              requestId,
+              type: 'VERIFY_CIP169_RESULT',
+              data: {
+                binding: 'mismatch',
+                differences: result.data.differences,
+              },
+            });
+          }
+        } catch (error) {
+          self.postMessage({
+            requestId,
+            type: 'VERIFY_CIP169_RESULT',
+            data: {
+              binding: 'error',
+              error: error instanceof Error ? error.message : 'CIP-169 verify threw',
+            },
+          });
+        }
         break;
       }
       case 'COMPUTE_HASH':
