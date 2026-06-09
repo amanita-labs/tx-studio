@@ -487,6 +487,16 @@ function GovernanceActionItem({
                   </div>
                 </div>
               )}
+              {/* Warn when a ParameterChange / TreasuryWithdrawals action omits the guardrails policy hash */}
+              {(action.data?.type === 'ParameterChange' || action.data?.type === 'TreasuryWithdrawals')
+                && !action.details?.policyHash && (
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>No guardrails script referenced.</span>
+                  </div>
+                </div>
+              )}
               {Object.entries(action.details).map(([key, value]) => {
                 // Skip governanceActionId as it's shown prominently above
                 if (key === 'governanceActionId') {
@@ -529,10 +539,36 @@ function GovernanceActionItem({
                   return null;
                 }
                 
+                // Guardrails policy hash — always shown (even when null) for
+                // ParameterChange / TreasuryWithdrawals actions.
+                if (key === 'policyHash') {
+                  const hasValue = value !== null && value !== undefined && String(value) !== '';
+                  return (
+                    <div key={key} className="col-span-2">
+                      <div className="font-medium mb-1">Guardrails Script Hash:</div>
+                      {hasValue ? (
+                        <div className="font-mono text-xs mt-1 break-all flex items-center gap-2">
+                          <span>{String(value)}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2"
+                            onClick={() => copyToClipboard(String(value), 'Guardrails Script Hash')}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="font-mono text-xs mt-1 italic text-muted-foreground">null</div>
+                      )}
+                    </div>
+                  );
+                }
+
                 if (value === null || value === undefined || String(value) === 'N/A') {
                   return null;
                 }
-                
+
                 const isParentActionId = key === 'parentActionId';
                 
                 // Get the type badge for this field
@@ -554,6 +590,7 @@ function GovernanceActionItem({
                   'constitutionHash': 'Constitution Hash',
                   'constitutionUrl': 'Constitution URI',
                   'scriptHash': 'Guardrails Script Hash',
+                  'policyHash': 'Guardrails Script Hash',
                   'membersToRemove': 'Members to Remove',
                   'membersToAdd': 'Members to Add',
                   'threshold': 'Threshold'
@@ -1607,7 +1644,14 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
       details.epoch = proposalDetails.epoch;
     }
-    
+
+    // Always surface the guardrails policy hash (may be null when none is ratified)
+    details.policyHash =
+      proposalDetails.policyHash
+      ?? rawData.governance_action?.ParameterChangeAction?.policy_hash
+      ?? rawData.governance_action?.ParameterChange?.policy_hash
+      ?? null;
+
     return details;
   };
 
@@ -1670,6 +1714,7 @@ export function ContentsTab({ tx }: ContentsTabProps) {
   const formatTreasuryWithdrawalsProposal = (proposal: any): Record<string, any> => {
     const details = formatCommonProposalFields(proposal);
     const proposalDetails = proposal.details || {};
+    const rawData = proposalDetails.raw || {};
 
     // The worker emits withdrawals as Array<{ account: RewardAccountRef|null, rawAccount: string, amount: string }>
     // (lovelace integer string for amount). Convert lovelace -> ADA string for display while
@@ -1706,6 +1751,13 @@ export function ContentsTab({ tx }: ContentsTabProps) {
     if (proposalDetails.epoch !== null && proposalDetails.epoch !== undefined) {
       details.epoch = proposalDetails.epoch;
     }
+
+    // Always surface the guardrails policy hash (may be null when none is ratified)
+    details.policyHash =
+      proposalDetails.policyHash
+      ?? rawData.governance_action?.TreasuryWithdrawalsAction?.policy_hash
+      ?? rawData.governance_action?.TreasuryWithdrawals?.policy_hash
+      ?? null;
 
     return details;
   };

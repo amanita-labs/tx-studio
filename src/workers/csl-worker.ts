@@ -1338,6 +1338,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                     details = {
                       parameterChanges: mappedParams,
                       epoch: paramChange.epoch || null,
+                      policyHash: paramChange.policy_hash || null,
                       parentActionId: extractParentActionId(paramChange.prev_gov_action_id || paramChange.parent_action_id || paramChange.gov_action_id)
                     };
                   } else if (action.HardForkInitiation || action.HardForkInitiationAction) {
@@ -1367,6 +1368,7 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                     details = {
                       withdrawals,
                       epoch: treasury.epoch || null,
+                      policyHash: treasury.policy_hash || null,
                       parentActionId: extractParentActionId(treasury.prev_gov_action_id || treasury.parent_action_id || treasury.gov_action_id)
                     };
                   } else if (action.NoConfidence || action.NoConfidenceAction) {
