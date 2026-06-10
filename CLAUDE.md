@@ -20,12 +20,18 @@ No test suite exists yet (`npm test` is a no-op).
 **Data flow:** hex input → CSL web worker → `TxParseResult` → Zustand store → inspector tabs
 
 1. User pastes hex or fetches a tx hash via Blockfrost
-2. `use-csl-worker` hook posts hex to `/src/workers/csl-worker.ts` (runs `@emurgo/cardano-serialization-lib-asmjs` off the main thread)
+2. `use-csl-worker` hook posts hex to `/src/workers/csl-worker.ts` (runs `@emurgo/cardano-serialization-lib-browser` — the wasm build — off the main thread; the build is forced through webpack because Turbopack can't resolve the wasm worker import)
 3. Worker returns a `DomainTx` (or error) wrapped in `TxParseResult`
 4. Result is stored in `useAppStore` (Zustand, `/src/lib/store.ts`)
 5. Inspector tabs read from the store and render
 
-**Server-side:** Next.js API routes under `src/app/api/blockfrost/` proxy Blockfrost calls, keeping API keys server-only. When `STATIC_EXPORT=true`, these routes are unavailable (GitHub Pages deployment).
+**Server-side:** Next.js API routes under `src/app/api/blockfrost/` proxy Blockfrost calls, keeping API keys server-only. When `STATIC_EXPORT=true`, the app builds as a fully static export (`output: 'export'`) and these routes are unavailable.
+
+## Deployment & Releases
+
+- **Production** deploys continuously to **Render** — `.github/workflows/deploy.yml` triggers a Render deploy hook on every push to `main`. (CI in `ci.yml` runs lint + type-check + build on push/PR.)
+- **Static export** (`STATIC_EXPORT=true`) is a separate, server-less build mode that disables all API routes — Blockfrost features require the Render server.
+- **Versioning:** `next.config.ts` bakes the `package.json` version and short git commit into `NEXT_PUBLIC_APP_VERSION` / `NEXT_PUBLIC_GIT_COMMIT`, surfaced in the app. To cut a release: bump `package.json`, add a `CHANGELOG.md` entry, then tag `vX.Y.Z` on `main`.
 
 ## Directory Structure
 
@@ -58,7 +64,7 @@ src/
 ├── data/
 │   └── known-labels.json  Static label data
 └── workers/
-    └── csl-worker.ts      Web worker — CSL parsing (~2300 lines)
+    └── csl-worker.ts      Web worker — CSL parsing (~2400 lines)
 ```
 
 ## Key Types (`src/domain/tx.ts`)
@@ -99,4 +105,4 @@ API response types in `src/lib/types/` follow the same discriminated-union patte
 - No test suite
 - Builder page is a non-functional stub
 - Static export (`STATIC_EXPORT=true`) disables all API routes — Blockfrost features require a server
-- CSL worker is a single large file (~2300 lines) that could benefit from splitting
+- CSL worker is a single large file (~2400 lines) that could benefit from splitting
