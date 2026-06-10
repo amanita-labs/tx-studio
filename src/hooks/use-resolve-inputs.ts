@@ -6,6 +6,7 @@ import type { DomainTx, Network } from '@/domain/tx';
 import type { BlockfrostTxUtxos, BlockfrostTxUtxoOutput } from '@/lib/types/blockfrost';
 import { useAppStore } from '@/lib/store';
 import { decomposeBech32Address } from '@/lib/utils/decompose-bech32-address';
+import { mapWithConcurrency } from '@/lib/utils/async-pool';
 import { fetchTransactionUtxosClient } from './use-blockfrost';
 
 export type InputResolutionStatus =
@@ -39,23 +40,6 @@ const MAX_CONCURRENT_RESOLUTIONS = 8;
 
 function cacheKey(network: Network, txId: string): string {
   return `${network}:${txId}`;
-}
-
-/** Run `fn` over `items` with at most `limit` concurrent in-flight calls. */
-async function mapWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>
-): Promise<void> {
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < items.length) {
-      const index = cursor++;
-      await fn(items[index]);
-    }
-  };
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
-  await Promise.all(workers);
 }
 
 function lovelaceFromAmount(amount: BlockfrostTxUtxoOutput['amount']): bigint {

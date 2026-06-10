@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Wallet, Loader2, AlertCircle, Info } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Wallet, Loader2, AlertCircle, Info, ChevronDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { computeWalletSummary } from '@/lib/wallet-summary';
 import { useResolveInputs, type InputResolutionStatus } from '@/hooks/use-resolve-inputs';
@@ -18,6 +20,9 @@ export function WalletSummaryCard({ tx }: Props) {
   const network = useAppStore((s) => s.network);
   const resolution = useResolveInputs(tx);
   const summary = useMemo(() => computeWalletSummary(tx, network), [tx, network]);
+  // Collapsed by default — input resolution still runs (it feeds the I/O lists
+  // below); only the summary UI is hidden until the user expands it.
+  const [open, setOpen] = useState(false);
 
   const showSkeleton =
     resolution.status === 'loading' &&
@@ -26,16 +31,21 @@ export function WalletSummaryCard({ tx }: Props) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
-            Wallet Summary ({summary.rows.length})
-          </span>
-          <ResolutionIndicator status={resolution.status} resolved={resolution.resolvedCount} total={resolution.totalCount} />
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader>
+          <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 text-left">
+            <CardTitle className="flex flex-1 items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                Wallet Summary ({summary.rows.length})
+              </span>
+              <ResolutionIndicator status={resolution.status} resolved={resolution.resolvedCount} total={resolution.totalCount} />
+            </CardTitle>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent>
         {resolution.status === 'unavailable' && (
           <Alert>
             <Info className="h-4 w-4" />
@@ -85,7 +95,9 @@ export function WalletSummaryCard({ tx }: Props) {
             ))}
           </div>
         )}
-      </CardContent>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }

@@ -1,7 +1,7 @@
 // src/hooks/use-blockfrost.ts
 import { useState, useCallback } from 'react';
 import { Network } from '@/domain/tx';
-import { FetchTransactionResponse, FetchTxUtxosResponse } from '@/lib/types/blockfrost';
+import { FetchTransactionResponse, FetchTxUtxosResponse, FetchAddressUtxosResponse } from '@/lib/types/blockfrost';
 import { NetworkDetectionResponse } from '@/lib/blockfrost/multi-network-search';
 
 /**
@@ -32,6 +32,49 @@ export async function fetchTransactionUtxosClient(
       return { success: false, error: errorMsg, statusCode: response.status };
     }
     const data: FetchTxUtxosResponse = await response.json();
+    return data;
+  } catch (err) {
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      return {
+        success: false,
+        error: 'Network error. API routes are not available in static export mode.',
+      };
+    }
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'An unexpected error occurred',
+    };
+  }
+}
+
+/**
+ * Standalone client-side fetcher for an address's current UTXO references.
+ * Used by useInputSpentStatus to check whether an off-chain tx's inputs are
+ * still unspent; not bound to React state so concurrent calls don't clobber.
+ */
+export async function fetchAddressUtxosClient(
+  address: string,
+  network: Network
+): Promise<FetchAddressUtxosResponse> {
+  const trimmed = address.trim();
+  if (!trimmed) {
+    return { success: false, error: 'Address is required' };
+  }
+  try {
+    const response = await fetch(
+      `/api/blockfrost/addresses/${encodeURIComponent(trimmed)}/utxos?network=${network}`
+    );
+    if (!response.ok) {
+      let errorMsg = 'Failed to fetch address UTXOs';
+      try {
+        const errorData: FetchAddressUtxosResponse = await response.json();
+        errorMsg = errorData.success === false ? errorData.error : `HTTP ${response.status}: ${response.statusText}`;
+      } catch {
+        errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+      }
+      return { success: false, error: errorMsg, statusCode: response.status };
+    }
+    const data: FetchAddressUtxosResponse = await response.json();
     return data;
   } catch (err) {
     if (err instanceof TypeError && err.message.includes('fetch')) {

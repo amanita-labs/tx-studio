@@ -92,3 +92,23 @@ export interface FetchTxUtxosError {
 }
 
 export type FetchTxUtxosResponse = FetchTxUtxosResult | FetchTxUtxosError;
+
+/** A single UTXO sitting at an address, reduced to its identifying reference. */
+export interface BlockfrostAddressUtxoRef {
+  tx_hash: string;
+  output_index: number;
+}
+
+export interface FetchAddressUtxosResult {
+  success: true;
+  address: string;
+  utxos: BlockfrostAddressUtxoRef[];
+}
+
+export interface FetchAddressUtxosError {
+  success: false;
+  error: string;
+  statusCode?: number;
+}
+
+export type FetchAddressUtxosResponse = FetchAddressUtxosResult | FetchAddressUtxosError;

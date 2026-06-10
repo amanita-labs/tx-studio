@@ -1,6 +1,6 @@
 // src/lib/blockfrost/cache.ts
 import type { MultiNetworkSearchResponse, NetworkDetectionResponse } from './multi-network-search';
-import type { BlockfrostTransaction, BlockfrostTxUtxos } from '@/lib/types/blockfrost';
+import type { BlockfrostTransaction, BlockfrostTxUtxos, BlockfrostAddressUtxoRef } from '@/lib/types/blockfrost';
 import type { ProtocolParamsSubset } from '@/lib/types/script-eval';
 import type { AllProtocolParams } from '@/lib/types/protocol-params';
 
@@ -93,12 +93,16 @@ export const CACHE_TTL_SUCCESS = 60 * 60 * 1000; // 1 hour for successful lookup
 export const CACHE_TTL_NOT_FOUND = 60 * 1000; // 1 minute for 404 results
 export const CACHE_TTL_NETWORK_DETECTION = 60 * 60 * 1000; // 1 hour for network detection
 export const CACHE_TTL_PROTOCOL_PARAMS = 4 * 60 * 60 * 1000; // 4 hours for protocol params
+// Address UTXO sets are mutable (UTXOs get spent), so cache briefly — long
+// enough to dedupe a burst of input checks, short enough to stay current.
+export const CACHE_TTL_ADDRESS_UTXOS = 2 * 60 * 1000; // 2 minutes
 
 // Typed singleton instances
 export const multiNetworkSearchCache = new BlockfrostCache<MultiNetworkSearchResponse>();
 export const networkDetectionCache = new BlockfrostCache<NetworkDetectionResponse>();
 export const transactionCache = new BlockfrostCache<{ transaction: BlockfrostTransaction; hex: string }>();
 export const transactionUtxosCache = new BlockfrostCache<BlockfrostTxUtxos>();
+export const addressUtxosCache = new BlockfrostCache<BlockfrostAddressUtxoRef[]>();
 export const protocolParamsCache = new BlockfrostCache<ProtocolParamsSubset>();
 export const allProtocolParamsCache = new BlockfrostCache<AllProtocolParams>();
 
