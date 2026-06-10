@@ -25,9 +25,37 @@ export type InputResolutionState = {
 
 const utxosCache = new Map<string, BlockfrostTxUtxos>();
 const utxosInFlight = new Map<string, Promise<BlockfrostTxUtxos>>();
+// Negative cache: remember recent failures so toggling tabs (which remounts this
+// hook) doesn't immediately re-fire the same failing requests at Blockfrost —
+// the exact behaviour that amplifies a rate-limit (429) burst. Entries expire so
+// a transient failure still gets retried after the window.
+const utxosErrorCache = new Map<string, { error: string; at: number }>();
+const NEGATIVE_CACHE_TTL_MS = 60_000;
+
+// Cap how many producer-tx UTXO fetches run at once. A consolidation tx can have
+// hundreds of inputs from distinct parents; an unbounded fan-out would fire them
+// all simultaneously and trip Blockfrost's rate limit.
+const MAX_CONCURRENT_RESOLUTIONS = 8;
 
 function cacheKey(network: Network, txId: string): string {
   return `${network}:${txId}`;
+}
+
+/** Run `fn` over `items` with at most `limit` concurrent in-flight calls. */
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      await fn(items[index]);
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
 }
 
 function lovelaceFromAmount(amount: BlockfrostTxUtxoOutput['amount']): bigint {
@@ -59,17 +87,24 @@ async function resolveOnce(network: Network, txId: string): Promise<BlockfrostTx
   if (cached) return cached;
   const inFlight = utxosInFlight.get(key);
   if (inFlight) return inFlight;
+  const negative = utxosErrorCache.get(key);
+  if (negative && Date.now() - negative.at < NEGATIVE_CACHE_TTL_MS) {
+    return { error: negative.error };
+  }
   const promise = (async () => {
     const res = await fetchTransactionUtxosClient(txId, network);
     if (!res.success) throw new Error(res.error);
     utxosCache.set(key, res.utxos);
+    utxosErrorCache.delete(key);
     return res.utxos;
   })();
   utxosInFlight.set(key, promise);
   try {
     return await promise;
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    const error = err instanceof Error ? err.message : String(err);
+    utxosErrorCache.set(key, { error, at: Date.now() });
+    return { error };
   } finally {
     utxosInFlight.delete(key);
   }
@@ -117,8 +152,7 @@ export function useResolveInputs(tx: DomainTx | null): InputResolutionState {
     let unavailable = false;
     let lastError: string | undefined;
 
-    Promise.all(
-      uniqueTxIds.map(async (sourceTxId) => {
+    mapWithConcurrency(uniqueTxIds, MAX_CONCURRENT_RESOLUTIONS, async (sourceTxId) => {
         const result = await resolveOnce(network, sourceTxId);
         if (cancelToken.cancelled) return;
 
@@ -167,7 +201,7 @@ export function useResolveInputs(tx: DomainTx | null): InputResolutionState {
           resolvedCount: resolvedNow,
           totalCount: totalRegular,
         }));
-      })
+      }
     ).then(() => {
       if (cancelToken.cancelled) return;
       setState((prev) => {
