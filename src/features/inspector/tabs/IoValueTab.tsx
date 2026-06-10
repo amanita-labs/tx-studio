@@ -3,15 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DomainTx } from '@/domain/tx';
 import { formatAda, formatAssetQuantity } from '@/lib/utils/ada';
-import { Copy, ArrowRight, Coins, Shield, ArrowDownRight, ArrowUpRight } from 'lucide-react';
+import { Copy, ArrowRight, Coins, Shield, ArrowDownRight, ArrowUpRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
 import { resolveAddressLabel } from '@/lib/labels';
 import { KnownLabelHighlight } from '@/components/known-label-highlight';
 import { useTokenRegistry } from '@/hooks/use-token-registry';
+import { useInputSpentStatus, spentKey, type SpentStatus } from '@/hooks/use-input-spent-status';
 import { useAppStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 import { AssetDisplay } from '@/components/asset-display';
+import { WalletSummaryCard } from './wallet-summary/WalletSummaryCard';
 
 interface IoValueTabProps {
   tx: DomainTx;
@@ -29,9 +32,41 @@ function truncateAddress(address: string, startLength: number = 15, endLength: n
   return `${address.slice(0, startLength)}...${address.slice(-endLength)}`;
 }
 
+/** Pill showing whether an input's UTXO has been spent or is still unspent. */
+function SpentBadge({ status }: { status?: SpentStatus }) {
+  if (!status || status === 'unknown') return null;
+  if (status === 'checking') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        checking
+      </span>
+    );
+  }
+  if (status === 'unspent') {
+    return (
+      <Badge
+        variant="outline"
+        className={cn('border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400')}
+      >
+        Unspent
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className={cn('border-muted-foreground/30 bg-muted text-muted-foreground')}
+    >
+      Spent
+    </Badge>
+  );
+}
+
 export function IoValueTab({ tx }: IoValueTabProps) {
   const { getMetadata } = useTokenRegistry(tx);
   const network = useAppStore((s) => s.network);
+  const spentStatus = useInputSpentStatus(tx);
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -44,6 +79,8 @@ export function IoValueTab({ tx }: IoValueTabProps) {
 
   return (
     <div className="h-full overflow-auto p-4 space-y-4">
+      <WalletSummaryCard tx={tx} />
+
       {/* Inputs */}
       <Card>
         <CardHeader>
@@ -69,8 +106,9 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                     <div key={index} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Input #{index}</span>
+                        <SpentBadge status={spentStatus.get(spentKey(input.txId, input.index))} />
                       </div>
-                      
+
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">Transaction ID</span>
@@ -179,7 +217,10 @@ export function IoValueTab({ tx }: IoValueTabProps) {
                     <div key={index} className="border rounded-lg p-3 space-y-2 bg-orange-50 dark:bg-orange-950/20">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Collateral Input #{index}</span>
-                        <Badge variant="secondary">Collateral</Badge>
+                        <div className="flex items-center gap-2">
+                          <SpentBadge status={spentStatus.get(spentKey(input.txId, input.index))} />
+                          <Badge variant="secondary">Collateral</Badge>
+                        </div>
                       </div>
                       
                       <div className="space-y-1">

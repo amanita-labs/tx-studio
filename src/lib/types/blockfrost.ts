@@ -63,3 +63,52 @@ export interface FetchTransactionError {
 }
 
 export type FetchTransactionResponse = FetchTransactionResult | FetchTransactionError;
+
+export interface BlockfrostTxUtxoOutput {
+  address: string;
+  amount: Array<{ unit: string; quantity: string }>;
+  output_index: number;
+  data_hash: string | null;
+  inline_datum: string | null;
+  collateral: boolean;
+  reference_script_hash: string | null;
+}
+
+export interface BlockfrostTxUtxos {
+  hash: string;
+  outputs: BlockfrostTxUtxoOutput[];
+}
+
+export interface FetchTxUtxosResult {
+  success: true;
+  hash: string;
+  utxos: BlockfrostTxUtxos;
+}
+
+export interface FetchTxUtxosError {
+  success: false;
+  error: string;
+  statusCode?: number;
+}
+
+export type FetchTxUtxosResponse = FetchTxUtxosResult | FetchTxUtxosError;
+
+/** A single UTXO sitting at an address, reduced to its identifying reference. */
+export interface BlockfrostAddressUtxoRef {
+  tx_hash: string;
+  output_index: number;
+}
+
+export interface FetchAddressUtxosResult {
+  success: true;
+  address: string;
+  utxos: BlockfrostAddressUtxoRef[];
+}
+
+export interface FetchAddressUtxosError {
+  success: false;
+  error: string;
+  statusCode?: number;
+}
+
+export type FetchAddressUtxosResponse = FetchAddressUtxosResult | FetchAddressUtxosError;
