@@ -71,8 +71,8 @@ export function WalletSummaryRow({ row, tx }: Props) {
   const network = useAppStore((s) => s.network);
   const { getMetadata } = useTokenRegistry(tx);
 
-  const explorerType: 'stakeKey' | 'address' = row.stakeCred ? 'stakeKey' : 'address';
-  const explorerParams: Record<string, string> = row.stakeCred
+  const explorerType: 'stakeKey' | 'address' = row.groupedBy === 'stake' ? 'stakeKey' : 'address';
+  const explorerParams: Record<string, string> = row.groupedBy === 'stake'
     ? { stakeKey: row.displayAddress }
     : { address: row.displayAddress };
 
@@ -119,7 +119,7 @@ export function WalletSummaryRow({ row, tx }: Props) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => copyToClipboard(row.displayAddress, row.stakeCred ? 'Stake address' : 'Address')}
+                  onClick={() => copyToClipboard(row.displayAddress, row.groupedBy === 'stake' ? 'Stake address' : 'Address')}
                 >
                   <Copy className="h-3 w-3" />
                 </Button>
@@ -166,6 +166,27 @@ export function WalletSummaryRow({ row, tx }: Props) {
           <div className="px-3 pb-3 pt-2 space-y-3 border-t bg-muted/20">
             {knownLabel && (
               <KnownLabelHighlight category={labelCategory} label={knownLabel} />
+            )}
+
+            {row.groupedBy === 'payment' && row.stakeAddress && (
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">Stake address</span>
+                <div className="flex items-center justify-between gap-2">
+                  <code className="text-xs bg-muted px-2 py-1 rounded truncate">
+                    {truncateAddress(row.stakeAddress)}
+                  </code>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(row.stakeAddress!, 'Stake address')}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                    <BlockExplorerLink type="stakeKey" params={{ stakeKey: row.stakeAddress }} />
+                  </div>
+                </div>
+              </div>
             )}
 
             {row.implicitLines.length > 0 && (
