@@ -13,6 +13,15 @@
     },
     "addr1xxyzewehw7dh78ea62mkgdnzmcdlcxqt4u39a7pqc0v0at5g9janwaum0u0nm54hvsmx9hsmlsvqhteztmuzps7cl6hq7d35th": {
       "name": "Intersect 2025 Vendor Contract"
+    },
+    "stake1784sdxt6jjennmstphgdu7l7c2scf5d02a6cve2dgn5s2kq5u3j9v": {
+      "name": "Treasury Reserve Contract 2026"
+    },
+    "addr1x84sdxt6jjennmstphgdu7l7c2scf5d02a6cve2dgn5s2k8tq6vh499n88hqkrwsmealas4psng674m4sej5638fq4vqmxs59w": {
+      "name": "Treasury Reserve Contract 2026"
+    },
+    "addr1x9d6k9z6t6fvsetj2djmerargk475lef9gfvshy4rwh4h7jm4v295h5jepjhy5m9hj86x3dtafljj2sjepwf2xa0t0aq048cay": {
+      "name": "Vendor/Project Contract 2026"
     }
   },
   "credentials": {
