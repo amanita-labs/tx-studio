@@ -138,6 +138,29 @@ interface AppState {
   disconnectWallet: () => void;
 }
 
+// Per-session caches (evalCache, uplcCache, governanceMetadata) are not
+// persisted but live for the whole session; without a bound they grow
+// unbounded as a user inspects many scripts/anchors. Cap them and evict the
+// oldest (insertion-order) entries — a simple FIFO that is good enough for
+// these lookup caches.
+const CACHE_LIMIT = 200;
+
+function withCappedEntry<T>(
+  cache: Record<string, T>,
+  key: string,
+  value: T,
+  limit = CACHE_LIMIT
+): Record<string, T> {
+  const next: Record<string, T> = { ...cache, [key]: value };
+  const keys = Object.keys(next);
+  if (keys.length > limit) {
+    for (const oldKey of keys.slice(0, keys.length - limit)) {
+      delete next[oldKey];
+    }
+  }
+  return next;
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -179,11 +202,11 @@ export const useAppStore = create<AppState>()(
       setIsOnChain: (isOnChain: boolean) => set({ isOnChain }),
       setOnChainMeta: (meta: OnChainMeta | null) => set({ onChainMeta: meta }),
       setEvalCache: (key: string, result: EvalResponse) => set((state) => ({
-        evalCache: { ...state.evalCache, [key]: result },
+        evalCache: withCappedEntry(state.evalCache, key, result),
       })),
       getEvalCache: (key: string) => get().evalCache[key] || null,
       setUplcCache: (hash: string, result: UplcLookup) => set((state) => ({
-        uplcCache: { ...state.uplcCache, [hash.toLowerCase()]: result },
+        uplcCache: withCappedEntry(state.uplcCache, hash.toLowerCase(), result),
       })),
       getUplcCache: (hash: string) => get().uplcCache[hash.toLowerCase()] || null,
       clearUplcCacheEntry: (hash: string) => set((state) => {
@@ -194,7 +217,7 @@ export const useAppStore = create<AppState>()(
         return { uplcCache: next };
       }),
       setGovernanceMetadata: (key, state) => set((s) => ({
-        governanceMetadata: { ...s.governanceMetadata, [key]: state },
+        governanceMetadata: withCappedEntry(s.governanceMetadata, key, state),
       })),
       clearGovernanceMetadata: () => set({ governanceMetadata: {} }),
       setTheme: (theme: 'light' | 'dark' | 'system') => set({ theme }),
