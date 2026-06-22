@@ -86,7 +86,14 @@ export function GovernanceTab({ tx, txHex }: { tx: DomainTx; txHex: string }) {
           </h2>
           <div className="space-y-2">
             {list.map((a) => (
-              <AnchorCard key={`${a.source.kind}:${a.key}`} anchor={a} txHex={txHex} />
+              <AnchorCard
+                key={`${a.source.kind}:${a.key}`}
+                anchor={a}
+                txHex={txHex}
+                // Collapse document bodies by default when the tx has multiple
+                // anchors, so the tab reads as a list of validations.
+                defaultMetadataOpen={anchors.length <= 1}
+              />
             ))}
           </div>
         </section>

@@ -1,11 +1,17 @@
 'use client';
 
 import type React from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useGovernanceMetadata } from '@/hooks/use-governance-metadata';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SafeMarkdown } from './SafeMarkdown';
 import type { CollectedAnchor } from '@/lib/governance-metadata/collect-anchors';
@@ -320,7 +326,22 @@ function AuthorsList({ authors }: { authors: AuthorWitness[] }) {
   );
 }
 
-export function AnchorCard({ anchor, txHex }: { anchor: CollectedAnchor; txHex: string }) {
+export function AnchorCard({
+  anchor,
+  txHex,
+  defaultMetadataOpen = true,
+}: {
+  anchor: CollectedAnchor;
+  txHex: string;
+  /**
+   * Whether the metadata document section starts expanded. The validation
+   * results (hash match, schema issues, CIP-169 binding, authors) are always
+   * visible; only the document body is collapsible. Callers collapse it by
+   * default when a tx has many anchors so the tab reads as a list of
+   * validations.
+   */
+  defaultMetadataOpen?: boolean;
+}) {
   const state = useAppStore((s) => s.governanceMetadata[anchor.key]) ?? { status: 'idle' as const };
   const { resolveOne } = useGovernanceMetadata();
 
@@ -411,15 +432,24 @@ export function AnchorCard({ anchor, txHex }: { anchor: CollectedAnchor; txHex: 
             {/* Verification checks first, before the metadata content */}
             <Cip169Section result={state.result} />
             <AuthorsList authors={state.result.authors} />
-            <div
+            {/* The document body is collapsible so a proposal-heavy tx can be
+                read as a compact list of validations. */}
+            <Collapsible
+              defaultOpen={defaultMetadataOpen}
               className={
                 state.result.hasCip169Extension || state.result.authors.length > 0
-                  ? 'border-t pt-4 mt-1'
+                  ? 'border-t pt-3 mt-1'
                   : undefined
               }
             >
-              <CipBody result={state.result} />
-            </div>
+              <CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
+                Metadata document
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3">
+                <CipBody result={state.result} />
+              </CollapsibleContent>
+            </Collapsible>
           </>
         )}
       </CardContent>
