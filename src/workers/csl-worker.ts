@@ -2308,8 +2308,22 @@ self.onmessage = async (event) => {
       }
       case 'VERIFY_CIP169': {
         try {
-          const { metadata, txCbor } = data as { metadata: unknown; txCbor: string };
-          const result = await cip169.verifyAgainstTx(metadata, txCbor);
+          const { metadata, txCbor, selectorIndex } = data as {
+            metadata: unknown;
+            txCbor: string;
+            selectorIndex?: number;
+          };
+          // selectorIndex is only set for proposal anchors (see collect-anchors),
+          // so the disambiguating selector is always a proposalProcedure. This
+          // resolves the "transaction has N proposal procedures" ambiguity for
+          // txs carrying multiple governance actions.
+          const result = await cip169.verifyAgainstTx(
+            metadata,
+            txCbor,
+            selectorIndex !== undefined
+              ? { selector: { kind: 'proposalProcedure', index: selectorIndex } }
+              : undefined,
+          );
           if (!result.success) {
             // ONCHAIN_SELECTOR_NOT_FOUND conflates "the bound item isn't in this
             // tx" with "it is, but the library couldn't decode it" (decode skips
