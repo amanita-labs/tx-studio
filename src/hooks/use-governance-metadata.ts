@@ -62,7 +62,7 @@ export function useGovernanceMetadata() {
         result.cip169 = { status: 'verifying' };
         setGovernanceMetadata(anchor.key, { status: 'resolved', result });
         try {
-          const binding = await verifyCip169(fetched.document, txHex);
+          const binding = await verifyCip169(fetched.document, txHex, anchor.selectorIndex);
           setGovernanceMetadata(anchor.key, {
             status: 'resolved',
             result: { ...result, cip169: binding },

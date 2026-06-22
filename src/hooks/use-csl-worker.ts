@@ -137,7 +137,11 @@ type Cip169WorkerResult =
   | { binding: 'mismatch'; differences: Array<{ path: string; metadataValue: unknown; actionValue: unknown }> }
   | { binding: 'error'; error: string; code?: string; skipped?: Array<{ kind: string; reason: string }> };
 
-function verifyCip169(metadata: unknown, txHex: string): Promise<Cip169Binding> {
+function verifyCip169(
+  metadata: unknown,
+  txHex: string,
+  selectorIndex?: number,
+): Promise<Cip169Binding> {
   return new Promise((resolve) => {
     const w = getWorker();
     const requestId = nextRequestId++;
@@ -178,7 +182,11 @@ function verifyCip169(metadata: unknown, txHex: string): Promise<Cip169Binding> 
       }
     });
     postWhenReady(() =>
-      w.postMessage({ requestId, type: 'VERIFY_CIP169', data: { metadata, txCbor: txHex } }),
+      w.postMessage({
+        requestId,
+        type: 'VERIFY_CIP169',
+        data: { metadata, txCbor: txHex, selectorIndex },
+      }),
     );
   });
 }

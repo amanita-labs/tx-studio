@@ -13,6 +13,13 @@ export type CollectedAnchor = {
   hash: string;
   /** Stable key for store + deduplication. */
   key: string;
+  /**
+   * Index to disambiguate the CIP-169 binding when a tx has multiple candidate
+   * on-chain items of the same kind (e.g. multiple proposal procedures).
+   * Passed to the verifier as `selector.index`. Undefined when no
+   * disambiguation is needed (e.g. voting procedures — a single map).
+   */
+  selectorIndex?: number;
 };
 
 function readAnchorFromDetails(
@@ -59,6 +66,11 @@ export function collectAllAnchors(tx: DomainTx): CollectedAnchor[] {
       url: a.url,
       hash: a.hash,
       key: `${a.url}#${a.hash}`,
+      // The proposal-list index aligns with the library's proposalProcedures
+      // index (both iterate body.voting_proposals() in order), so it can be
+      // used directly as the CIP-169 selector index to disambiguate a tx with
+      // multiple governance actions.
+      selectorIndex: i,
     });
   });
 
