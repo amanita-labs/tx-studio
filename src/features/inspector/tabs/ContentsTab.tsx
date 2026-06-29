@@ -13,6 +13,7 @@ import {
   FileText,
   Coins,
   Users,
+  Server,
   Shield,
   Clock,
   Hash,
@@ -251,6 +252,7 @@ function GovernanceActionItem({
     String(value).startsWith('cc1')
   );
   const isDrepId = (key: string, value: any) => key === 'drepId' && value !== 'N/A' && String(value).startsWith('drep1');
+  const isPoolId = (key: string, value: any) => key === 'poolId' && value !== 'N/A' && String(value).startsWith('pool1');
   const isProposalId = (key: string) => key === 'proposalId' || key === 'parentActionId';
   
   return (
@@ -580,6 +582,7 @@ function GovernanceActionItem({
                   'memberId': 'Committee Member',
                   'drepId': 'DRep ID',
                   'drepHash': 'DRep Hash',
+                  'poolId': 'Pool ID',
                   'action': 'Action',
                   'proposalId': 'Governance Action ID',
                   'parentActionId': 'Previous Governance Action ID',
@@ -1043,9 +1046,15 @@ function GovernanceActionItem({
                           />
                         )}
                         {isDrepId(key, value) && (
-                          <BlockExplorerLink 
-                            type="drep" 
+                          <BlockExplorerLink
+                            type="drep"
                             params={{ drepId: String(value) }}
+                          />
+                        )}
+                        {isPoolId(key, value) && (
+                          <BlockExplorerLink
+                            type="stakePool"
+                            params={{ poolId: String(value) }}
                           />
                         )}
                         {isProposalId(key) && (
@@ -2077,6 +2086,48 @@ export function ContentsTab({ tx }: ContentsTabProps) {
           details: extractedDetails,
           icon: <Users className="h-4 w-4" />,
           color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+          anchorMissing: vote.anchorMissing
+        });
+      });
+    }
+
+    // Analyze SPO (stake pool) votes
+    if (tx.governance.poolVotes && tx.governance.poolVotes.length > 0) {
+      tx.governance.poolVotes.forEach((vote: any, index: number) => {
+        const extractedDetails: Record<string, any> = {};
+
+        // Extract pool details
+        extractedDetails.poolId = vote.poolId || vote.poolHash || 'N/A';
+
+        // Extract action
+        extractedDetails.action = vote.action || 'Unknown';
+
+        // Extract proposal ID
+        extractedDetails.proposalId = vote.proposalId || 'N/A';
+
+        // Extract anchor details
+        if (vote.anchor) {
+          if (vote.anchor.url) {
+            extractedDetails.anchorUrl = vote.anchor.url;
+          }
+          if (vote.anchor.hash) {
+            extractedDetails.anchorHash = vote.anchor.hash;
+          }
+          if (vote.anchor.bytes) {
+            extractedDetails.anchorBytes = vote.anchor.bytes;
+          }
+        } else if (vote.anchorMissing) {
+          extractedDetails.anchorStatus = 'No anchor provided';
+        }
+
+        items.push({
+          index,
+          type: 'SPO Vote',
+          description: `Stake pool ${(extractedDetails.poolId || 'unknown').toString().slice(0, 8)}... voted ${extractedDetails.action} on governance action ${extractedDetails.proposalId.toString().slice(0, 16)}...`,
+          data: vote,
+          details: extractedDetails,
+          icon: <Server className="h-4 w-4" />,
+          color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
           anchorMissing: vote.anchorMissing
         });
       });

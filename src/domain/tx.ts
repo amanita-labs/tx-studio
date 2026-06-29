@@ -94,6 +94,18 @@ export type GovernanceVM = {
     } | null;
     anchorMissing?: boolean;
   }>;
+  poolVotes?: Array<{
+    poolId: string;
+    poolHash?: string;
+    action: "VoteYes" | "VoteNo" | "Abstain";
+    proposalId: string;
+    anchor?: {
+      url?: string;
+      hash?: string;
+      bytes?: string;
+    } | null;
+    anchorMissing?: boolean;
+  }>;
   proposals?: Array<{
     id: string;
     type: "ParameterChange" | "HardForkInitiation" | "TreasuryWithdrawals" | "NoConfidence" | "NewConstitution" | "UpdateCommittee" | "InfoAction";

@@ -434,6 +434,19 @@ export const collectTransactionLabels = (
     }
   });
 
+  tx.governance?.poolVotes?.forEach((vote, index) => {
+    const hash = vote.poolHash;
+    if (hash) {
+      addLabelSummary(
+        summaries,
+        'pool',
+        hash,
+        getKnownCredLabel(hash, 'pool', network),
+        `SPO vote #${index + 1}`,
+      );
+    }
+  });
+
   tx.governance?.committee?.members.forEach((member, index) => {
     if (member.keyHash) {
       addLabelSummary(
