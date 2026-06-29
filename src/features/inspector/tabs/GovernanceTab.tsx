@@ -18,6 +18,7 @@ const GROUP_LABELS: Record<AnchorSource['kind'], string> = {
   proposal: 'Governance actions',
   'drep-vote': 'DRep votes',
   'committee-vote': 'Committee votes',
+  'pool-vote': 'SPO votes',
   'drep-registration': 'DRep registrations',
   'drep-update': 'DRep updates',
 };
@@ -26,6 +27,7 @@ const GROUP_ORDER: AnchorSource['kind'][] = [
   'proposal',
   'drep-vote',
   'committee-vote',
+  'pool-vote',
   'drep-registration',
   'drep-update',
 ];

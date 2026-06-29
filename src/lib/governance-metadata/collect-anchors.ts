@@ -3,6 +3,7 @@ import type { DomainTx } from '@/domain/tx';
 export type AnchorSource =
   | { kind: 'drep-vote'; index: number; voter: string; proposalId: string }
   | { kind: 'committee-vote'; index: number; voter: string; proposalId: string }
+  | { kind: 'pool-vote'; index: number; voter: string; proposalId: string }
   | { kind: 'proposal'; index: number; proposalId: string; proposalType: string }
   | { kind: 'drep-registration'; certIndex: number; drepId?: string }
   | { kind: 'drep-update'; certIndex: number; drepId?: string };
@@ -50,6 +51,21 @@ export function collectAllAnchors(tx: DomainTx): CollectedAnchor[] {
         kind: 'committee-vote',
         index: i,
         voter: vote.memberId,
+        proposalId: vote.proposalId,
+      },
+      url: vote.anchor.url,
+      hash: vote.anchor.hash,
+      key: `${vote.anchor.url}#${vote.anchor.hash}`,
+    });
+  });
+
+  tx.governance?.poolVotes?.forEach((vote, i) => {
+    if (!vote.anchor?.url || !vote.anchor.hash) return;
+    out.push({
+      source: {
+        kind: 'pool-vote',
+        index: i,
+        voter: vote.poolId,
         proposalId: vote.proposalId,
       },
       url: vote.anchor.url,

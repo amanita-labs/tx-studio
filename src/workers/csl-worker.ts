@@ -254,6 +254,20 @@ function createBech32Credential(hash: string, type: string, context?: 'stake' | 
   }
 }
 
+// Encode a stake-pool key hash as a pool1... bech32 string.
+// HRP "pool", raw 28-byte payload, no header byte (key hash only).
+function createPoolBech32(hash: string): string | null {
+  if (!hash || hash.length === 0) return null;
+  try {
+    const buf = Buffer.from(hash, 'hex');
+    if (buf.length !== 28) return null;
+    return bech32Buffer.encode('pool', buf).toString();
+  } catch (error) {
+    console.warn('Failed to create pool Bech32:', error);
+    return null;
+  }
+}
+
   // Helper function to create bech32 governance action ID according to CIP-0129
   // Governance action IDs use HRP prefix "gov_action1"
   // CIP-0129: Governance action IDs are bech32-encoded with HRP "gov_action"
@@ -1066,10 +1080,18 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
         anchor?: AnchorInfo;
         anchorMissing?: boolean;
       }>;
-      committeeVotes: Array<{ 
-        memberId: string; 
+      committeeVotes: Array<{
+        memberId: string;
         memberCredential?: { type: string; hash: string; bech32?: string };
-        action: string; 
+        action: string;
+        proposalId: string;
+        anchor?: AnchorInfo;
+        anchorMissing?: boolean;
+      }>;
+      poolVotes: Array<{
+        poolId: string;
+        poolHash?: string;
+        action: string;
         proposalId: string;
         anchor?: AnchorInfo;
         anchorMissing?: boolean;
@@ -1093,10 +1115,18 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
             anchor?: AnchorInfo;
             anchorMissing?: boolean;
           }>,
-          committeeVotes: [] as Array<{ 
+          committeeVotes: [] as Array<{
             memberId: string;
             memberCredential?: { type: string; hash: string; bech32?: string };
-            action: string; 
+            action: string;
+            proposalId: string;
+            anchor?: AnchorInfo;
+            anchorMissing?: boolean;
+          }>,
+          poolVotes: [] as Array<{
+            poolId: string;
+            poolHash?: string;
+            action: string;
             proposalId: string;
             anchor?: AnchorInfo;
             anchorMissing?: boolean;
@@ -1168,6 +1198,20 @@ async function parseTransaction(hex: string, network: 'mainnet' | 'preprod' | 'p
                             hash: committeeCredential.hash,
                             bech32: committeeCredential.bech32
                           },
+                          action: action,
+                          proposalId: proposalId,
+                          anchor: anchor,
+                          anchorMissing: anchorMissing
+                        });
+                      } else if (voterType === 'pool' && governance) {
+                        // Stake pool (SPO) voter — the value is a bare Ed25519
+                        // key hash (hex), not a Key/Script credential object.
+                        const poolHash = String(procedure.voter.StakingPool ?? '');
+                        const poolId = createPoolBech32(poolHash) || poolHash;
+
+                        governance.poolVotes.push({
+                          poolId: poolId,
+                          poolHash: poolHash,
                           action: action,
                           proposalId: proposalId,
                           anchor: anchor,
