@@ -22,6 +22,15 @@
     },
     "addr1x9d6k9z6t6fvsetj2djmerargk475lef9gfvshy4rwh4h7jm4v295h5jepjhy5m9hj86x3dtafljj2sjepwf2xa0t0aq048cay": {
       "name": "Vendor/Project Contract 2026"
+    },
+    "addr1q8jkpfz203d3ltau8cpky3kqp6jzdpsuwk60e73cagplw7z43pqd9sehdj3fgafm5vcp4wxjfn6ugkggccgmptxuhutsajq5hw": {
+      "name": "OSC Andamio Owner Wallet"
+    },
+    "addr1q9uwa7u3jq404tdpllncneg4undzh7v9ve70j262uhr3cat3syyk60h4rx2r8r5mxrfwlws74yv225qetl5z7vtafmqq3ejhul": {
+      "name": "OSC Andamio Manager Wallet"
+    },
+    "addr1xxgfl09dwxujfpmtx7cjqjj5sc9tj48skugdkkukhy3j6xcmry78c25qz570etul7tfu325e968wlq9023kp67kmagxql8jstk": {
+      "name": "OSC Andamio Treasury"
     }
   },
   "credentials": {
