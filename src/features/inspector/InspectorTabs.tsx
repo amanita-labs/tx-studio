@@ -31,7 +31,7 @@ export function InspectorTabs({ tx, txHex }: InspectorTabsProps) {
     { value: 'overview', label: 'Overview' },
     { value: 'io-value', label: 'I/O & Value' },
     { value: 'contents', label: 'Contents' },
-    ...(showGovernance ? [{ value: 'governance', label: 'Governance' }] : []),
+    ...(showGovernance ? [{ value: 'governance', label: 'Gov Anchor' }] : []),
     { value: 'metadata', label: 'Metadata' },
     { value: 'scripts', label: 'Scripts' },
     { value: 'cbor', label: 'Raw' },
