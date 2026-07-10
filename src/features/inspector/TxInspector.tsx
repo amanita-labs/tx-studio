@@ -48,7 +48,10 @@ export function TxInspector() {
     const pathHash = pathname && pathname !== '/' ? pathname.slice(1) : null;
 
     // Then check query params — prefer ?cbor= (cquisitor-style) but fall back to legacy ?hex=
-    const queryHex = searchParams.get('cbor') ?? searchParams.get('hex');
+    // Normalize before storing: downstream consumers (CBOR annotator, byte
+    // view, hash computation) all expect bare hex without an 0x prefix.
+    const rawQueryHex = searchParams.get('cbor') ?? searchParams.get('hex');
+    const queryHex = rawQueryHex ? rawQueryHex.trim().replace(/^0x/i, '') : rawQueryHex;
     const queryNet = parseNetworkParam(searchParams.get('net'));
 
     // Prefer path hash over query hex

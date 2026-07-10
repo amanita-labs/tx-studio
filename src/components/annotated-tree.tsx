@@ -58,6 +58,9 @@ function TreeNode({ node, depth, onNodeHover, onNodeClick }: TreeNodeProps) {
       case 'number': return 'text-purple-500';
       case 'bytes': return 'text-orange-500';
       case 'tag': return 'text-pink-500';
+      case 'boolean': return 'text-cyan-500';
+      case 'null':
+      case 'undefined': return 'text-muted-foreground';
       default: return 'text-gray-500';
     }
   };
@@ -70,6 +73,9 @@ function TreeNode({ node, depth, onNodeHover, onNodeClick }: TreeNodeProps) {
       case 'number': return '#';
       case 'bytes': return '0x';
       case 'tag': return '&';
+      case 'boolean': return '⊤⊥';
+      case 'null': return '∅';
+      case 'undefined': return '∅';
       default: return '?';
     }
   };

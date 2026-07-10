@@ -11,9 +11,8 @@ npm run dev          # Start dev server
 npm run build        # Production build
 npm run type-check   # tsc --noEmit
 npm run lint         # ESLint
+npm test             # Vitest (config in vitest.config.ts)
 ```
-
-No test suite exists yet (`npm test` is a no-op).
 
 ## Architecture
 
@@ -102,7 +101,7 @@ API response types in `src/lib/types/` follow the same discriminated-union patte
 
 ## Current Limitations
 
-- No test suite
+- Test coverage is minimal (only `src/lib/cbor-annotator.test.ts` so far)
 - Builder page is a non-functional stub
 - Static export (`STATIC_EXPORT=true`) disables all API routes — Blockfrost features require a server
 - CSL worker is a single large file (~2400 lines) that could benefit from splitting

@@ -1,5 +1,5 @@
 // src/lib/cbor-annotator.ts
-import { decode } from 'cbor-x';
+import { bytesToHex, hexToBytes } from '@/lib/utils/hex';
 
 export interface CBORNode {
   id: string;
@@ -19,9 +19,25 @@ export interface CBORAnnotation {
   warnings: string[];
 }
 
+const BREAK = 0xff;
+
+class CBORParseError extends Error {
+  constructor(message: string, readonly offset: number) {
+    super(message);
+  }
+}
+
+interface Header {
+  majorType: number;
+  /** Argument value (length, integer value, or tag number). `null` means indefinite length. */
+  arg: bigint | null;
+  /** Offset just past the header bytes. */
+  dataStart: number;
+}
+
 export class CBORAnnotator {
   private static instance: CBORAnnotator;
-  
+
   static getInstance(): CBORAnnotator {
     if (!CBORAnnotator.instance) {
       CBORAnnotator.instance = new CBORAnnotator();
@@ -31,15 +47,9 @@ export class CBORAnnotator {
 
   async annotate(hex: string): Promise<CBORAnnotation> {
     try {
-      // Convert hex to bytes
-      const bytes = new Uint8Array(hex.length / 2);
-      for (let i = 0; i < hex.length; i += 2) {
-        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-      }
-
-      // Parse CBOR with position tracking
+      const bytes = hexToBytes(hex);
       const result = this.parseCBORWithPositions(bytes, 0);
-      
+
       return {
         nodes: result.nodes,
         totalBytes: bytes.length,
@@ -58,258 +68,238 @@ export class CBORAnnotator {
     try {
       while (offset < bytes.length) {
         const node = this.parseNode(bytes, offset);
-        if (node) {
-          nodes.push(node);
-          offset = node.endByte;
-        } else {
-          break;
-        }
+        nodes.push(node);
+        offset = node.endByte;
       }
     } catch (error) {
-      warnings.push(`Parsing stopped at byte ${offset}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const failedAt = error instanceof CBORParseError ? error.offset : offset;
+      warnings.push(`Parsing stopped at byte ${failedAt}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     return { nodes, warnings };
   }
 
-  private parseNode(bytes: Uint8Array, offset: number): CBORNode | null {
-    if (offset >= bytes.length) return null;
-
-    const firstByte = bytes[offset];
-    const majorType = (firstByte & 0xE0) >> 5;
-
-    let node: CBORNode;
-
-    switch (majorType) {
-      case 0: // Unsigned integer
-        node = this.parseUnsignedInteger(bytes, offset);
-        break;
-      case 1: // Negative integer
-        node = this.parseNegativeInteger(bytes, offset);
-        break;
-      case 2: // Byte string
-        node = this.parseByteString(bytes, offset);
-        break;
-      case 3: // Text string
-        node = this.parseTextString(bytes, offset);
-        break;
-      case 4: // Array
-        node = this.parseArray(bytes, offset);
-        break;
-      case 5: // Map/Object
-        node = this.parseMap(bytes, offset);
-        break;
-      case 6: // Tag
-        node = this.parseTag(bytes, offset);
-        break;
-      case 7: // Float/Simple/Stop
-        node = this.parseFloatOrSimple(bytes, offset);
-        break;
-      default:
-        return null;
+  private readHeader(bytes: Uint8Array, offset: number): Header {
+    if (offset >= bytes.length) {
+      throw new CBORParseError('Unexpected end of data', offset);
     }
 
-    return node;
-  }
-
-  private parseUnsignedInteger(bytes: Uint8Array, offset: number): CBORNode {
     const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let value: number;
-    let endOffset = offset + 1;
+    const majorType = (firstByte & 0xe0) >> 5;
+    const minorType = firstByte & 0x1f;
 
     if (minorType < 24) {
-      value = minorType;
-    } else if (minorType === 24) {
-      value = bytes[offset + 1];
-      endOffset = offset + 2;
-    } else if (minorType === 25) {
-      value = (bytes[offset + 1] << 8) | bytes[offset + 2];
-      endOffset = offset + 3;
-    } else if (minorType === 26) {
-      value = (bytes[offset + 1] << 24) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 8) | bytes[offset + 4];
-      endOffset = offset + 5;
-    } else {
-      value = 0; // 64-bit not supported in this simplified version
+      return { majorType, arg: BigInt(minorType), dataStart: offset + 1 };
     }
+
+    if (minorType >= 24 && minorType <= 27) {
+      const argLength = 1 << (minorType - 24); // 1, 2, 4, or 8 bytes
+      if (offset + 1 + argLength > bytes.length) {
+        throw new CBORParseError('Unexpected end of data in header argument', offset);
+      }
+      let arg = 0n;
+      for (let i = 0; i < argLength; i++) {
+        arg = (arg << 8n) | BigInt(bytes[offset + 1 + i]);
+      }
+      return { majorType, arg, dataStart: offset + 1 + argLength };
+    }
+
+    if (minorType === 31) {
+      return { majorType, arg: null, dataStart: offset + 1 };
+    }
+
+    throw new CBORParseError(`Reserved additional information value ${minorType}`, offset);
+  }
+
+  /** Convert a header argument to a number, for use as a length. */
+  private toLength(arg: bigint, bytes: Uint8Array, dataStart: number, itemOffset: number): number {
+    if (arg > BigInt(bytes.length - dataStart)) {
+      throw new CBORParseError(`Declared length ${arg} exceeds remaining data`, itemOffset);
+    }
+    return Number(arg);
+  }
+
+  /** Represent an integer as a JS number when safe, bigint otherwise. */
+  private toIntValue(arg: bigint): number | bigint {
+    return arg <= BigInt(Number.MAX_SAFE_INTEGER) && arg >= -BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(arg)
+      : arg;
+  }
+
+  private parseNode(bytes: Uint8Array, offset: number): CBORNode {
+    if (offset >= bytes.length) {
+      throw new CBORParseError('Unexpected end of data', offset);
+    }
+    if (bytes[offset] === BREAK) {
+      throw new CBORParseError('Unexpected break byte outside indefinite-length item', offset);
+    }
+
+    const header = this.readHeader(bytes, offset);
+
+    switch (header.majorType) {
+      case 0: return this.parseUnsignedInteger(header, offset);
+      case 1: return this.parseNegativeInteger(header, offset);
+      case 2: return this.parseByteString(bytes, header, offset);
+      case 3: return this.parseTextString(bytes, header, offset);
+      case 4: return this.parseArray(bytes, header, offset);
+      case 5: return this.parseMap(bytes, header, offset);
+      case 6: return this.parseTag(bytes, header, offset);
+      default: return this.parseFloatOrSimple(bytes, header, offset);
+    }
+  }
+
+  private parseUnsignedInteger(header: Header, offset: number): CBORNode {
+    if (header.arg === null) {
+      throw new CBORParseError('Indefinite length is not valid for integers', offset);
+    }
+    const value = this.toIntValue(header.arg);
 
     return {
       id: `uint-${offset}`,
       type: 'number',
       value,
       startByte: offset,
-      endByte: endOffset,
+      endByte: header.dataStart,
       label: `Unsigned Integer: ${value}`,
-      description: `8-bit unsigned integer value`
+      description: `Unsigned integer (${header.dataStart - offset} byte encoding)`
     };
   }
 
-  private parseNegativeInteger(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let value: number;
-    let endOffset = offset + 1;
-
-    if (minorType < 24) {
-      value = -(minorType + 1);
-    } else if (minorType === 24) {
-      value = -(bytes[offset + 1] + 1);
-      endOffset = offset + 2;
-    } else if (minorType === 25) {
-      value = -(((bytes[offset + 1] << 8) | bytes[offset + 2]) + 1);
-      endOffset = offset + 3;
-    } else {
-      value = 0;
+  private parseNegativeInteger(header: Header, offset: number): CBORNode {
+    if (header.arg === null) {
+      throw new CBORParseError('Indefinite length is not valid for integers', offset);
     }
+    const value = this.toIntValue(-1n - header.arg);
 
     return {
       id: `nint-${offset}`,
       type: 'number',
       value,
       startByte: offset,
-      endByte: endOffset,
+      endByte: header.dataStart,
       label: `Negative Integer: ${value}`,
-      description: `8-bit negative integer value`
+      description: `Negative integer (${header.dataStart - offset} byte encoding)`
     };
   }
 
-  private parseByteString(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let length: number;
-    let endOffset = offset + 1;
+  /**
+   * Read the chunks of an indefinite-length string (major type 2 or 3).
+   * Returns the concatenated chunk ranges and the offset past the break byte.
+   */
+  private readIndefiniteChunks(bytes: Uint8Array, offset: number, majorType: number): { ranges: Array<[number, number]>, endOffset: number } {
+    const ranges: Array<[number, number]> = [];
+    let current = offset;
 
-    if (minorType < 24) {
-      length = minorType;
-    } else if (minorType === 24) {
-      length = bytes[offset + 1];
-      endOffset = offset + 2;
-    } else if (minorType === 25) {
-      length = (bytes[offset + 1] << 8) | bytes[offset + 2];
-      endOffset = offset + 3;
-    } else {
-      length = 0;
+    while (true) {
+      if (current >= bytes.length) {
+        throw new CBORParseError('Unexpected end of data in indefinite-length string', current);
+      }
+      if (bytes[current] === BREAK) {
+        return { ranges, endOffset: current + 1 };
+      }
+      const chunk = this.readHeader(bytes, current);
+      if (chunk.majorType !== majorType || chunk.arg === null) {
+        throw new CBORParseError('Indefinite-length string chunks must be definite-length strings of the same type', current);
+      }
+      const length = this.toLength(chunk.arg, bytes, chunk.dataStart, current);
+      ranges.push([chunk.dataStart, chunk.dataStart + length]);
+      current = chunk.dataStart + length;
     }
+  }
 
-    const value = Array.from(bytes.slice(endOffset, endOffset + length))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+  /**
+   * Resolve the content ranges of a string (major type 2 or 3): a single
+   * range when definite-length, one range per chunk when indefinite.
+   */
+  private readStringBody(bytes: Uint8Array, header: Header, offset: number, majorType: number): { ranges: Array<[number, number]>, endOffset: number } {
+    if (header.arg === null) {
+      return this.readIndefiniteChunks(bytes, header.dataStart, majorType);
+    }
+    const length = this.toLength(header.arg, bytes, header.dataStart, offset);
+    return { ranges: [[header.dataStart, header.dataStart + length]], endOffset: header.dataStart + length };
+  }
 
+  private parseByteString(bytes: Uint8Array, header: Header, offset: number): CBORNode {
+    const { ranges, endOffset } = this.readStringBody(bytes, header, offset, 2);
+    const value = ranges.map(([start, stop]) => bytesToHex(bytes.subarray(start, stop))).join('');
+    const byteCount = value.length / 2;
     return {
       id: `bytes-${offset}`,
       type: 'bytes',
       value,
       startByte: offset,
-      endByte: endOffset + length,
-      label: `Byte String (${length} bytes)`,
+      endByte: endOffset,
+      label: `Byte String (${byteCount} bytes)`,
       description: `Binary data: ${value.slice(0, 32)}${value.length > 32 ? '...' : ''}`
     };
   }
 
-  private parseTextString(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let length: number;
-    let endOffset = offset + 1;
-
-    if (minorType < 24) {
-      length = minorType;
-    } else if (minorType === 24) {
-      length = bytes[offset + 1];
-      endOffset = offset + 2;
-    } else {
-      length = 0;
-    }
-
-    const value = new TextDecoder().decode(bytes.slice(endOffset, endOffset + length));
+  private parseTextString(bytes: Uint8Array, header: Header, offset: number): CBORNode {
+    const { ranges, endOffset } = this.readStringBody(bytes, header, offset, 3);
+    const value = ranges.map(([start, stop]) => new TextDecoder().decode(bytes.subarray(start, stop))).join('');
 
     return {
       id: `text-${offset}`,
       type: 'string',
       value,
       startByte: offset,
-      endByte: endOffset + length,
-      label: `Text String: "${value}"`,
+      endByte: endOffset,
+      label: `Text String: "${value.length > 48 ? value.slice(0, 48) + '...' : value}"`,
       description: `UTF-8 text string`
     };
   }
 
-  private parseArray(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let length: number;
-    let endOffset = offset + 1;
-
-    if (minorType < 24) {
-      length = minorType;
-    } else if (minorType === 24) {
-      length = bytes[offset + 1];
-      endOffset = offset + 2;
-    } else {
-      length = 0;
-    }
-
+  /**
+   * Parse the items of a container body. `count` is the number of items,
+   * or null for indefinite length (read until a break byte).
+   */
+  private parseItems(bytes: Uint8Array, offset: number, count: number | null): { children: CBORNode[], endOffset: number } {
     const children: CBORNode[] = [];
-    let currentOffset = endOffset;
+    let current = offset;
 
-    for (let i = 0; i < length && currentOffset < bytes.length; i++) {
-      const child = this.parseNode(bytes, currentOffset);
-      if (child) {
-        children.push(child);
-        currentOffset = child.endByte;
-      } else {
-        break;
+    while (count === null || children.length < count) {
+      if (current >= bytes.length) {
+        throw new CBORParseError(count === null ? 'Unexpected end of data in indefinite-length container' : 'Unexpected end of data in container', current);
       }
+      if (count === null && bytes[current] === BREAK) {
+        return { children, endOffset: current + 1 };
+      }
+      const child = this.parseNode(bytes, current);
+      children.push(child);
+      current = child.endByte;
     }
+
+    return { children, endOffset: current };
+  }
+
+  private parseArray(bytes: Uint8Array, header: Header, offset: number): CBORNode {
+    // Item counts are not validated against remaining bytes up front:
+    // parseItems fails at the exact offset where the data runs out.
+    const count = header.arg === null ? null : Number(header.arg);
+    const { children, endOffset } = this.parseItems(bytes, header.dataStart, count);
 
     return {
       id: `array-${offset}`,
       type: 'array',
       value: children.map(c => c.value),
       startByte: offset,
-      endByte: currentOffset,
+      endByte: endOffset,
       children,
-      label: `Array (${length} items)`,
-      description: `CBOR array with ${length} elements`
+      label: `Array (${children.length} items${header.arg === null ? ', indefinite' : ''})`,
+      description: `CBOR array with ${children.length} elements`
     };
   }
 
-  private parseMap(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let length: number;
-    let endOffset = offset + 1;
+  private parseMap(bytes: Uint8Array, header: Header, offset: number): CBORNode {
+    const pairCount = header.arg === null ? null : Number(header.arg);
+    const { children, endOffset } = this.parseItems(
+      bytes,
+      header.dataStart,
+      pairCount === null ? null : pairCount * 2
+    );
 
-    if (minorType < 24) {
-      length = minorType;
-    } else if (minorType === 24) {
-      length = bytes[offset + 1];
-      endOffset = offset + 2;
-    } else {
-      length = 0;
-    }
-
-    const children: CBORNode[] = [];
-    let currentOffset = endOffset;
-
-    for (let i = 0; i < length && currentOffset < bytes.length; i++) {
-      // Parse key
-      const key = this.parseNode(bytes, currentOffset);
-      if (key) {
-        children.push(key);
-        currentOffset = key.endByte;
-      } else {
-        break;
-      }
-
-      // Parse value
-      const value = this.parseNode(bytes, currentOffset);
-      if (value) {
-        children.push(value);
-        currentOffset = value.endByte;
-      } else {
-        break;
-      }
+    if (pairCount === null && children.length % 2 !== 0) {
+      throw new CBORParseError('Indefinite-length map has an odd number of items', offset);
     }
 
     return {
@@ -317,69 +307,118 @@ export class CBORAnnotator {
       type: 'object',
       value: {},
       startByte: offset,
-      endByte: currentOffset,
+      endByte: endOffset,
       children,
-      label: `Map (${length} pairs)`,
-      description: `CBOR map with ${length} key-value pairs`
+      label: `Map (${children.length / 2} pairs${header.arg === null ? ', indefinite' : ''})`,
+      description: `CBOR map with ${children.length / 2} key-value pairs`
     };
   }
 
-  private parseTag(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
-    let tagValue: number;
-    let endOffset = offset + 1;
-
-    if (minorType < 24) {
-      tagValue = minorType;
-    } else if (minorType === 24) {
-      tagValue = bytes[offset + 1];
-      endOffset = offset + 2;
-    } else {
-      tagValue = 0;
+  private parseTag(bytes: Uint8Array, header: Header, offset: number): CBORNode {
+    if (header.arg === null) {
+      throw new CBORParseError('Indefinite length is not valid for tags', offset);
     }
-
-    // Parse the tagged value
-    const taggedValue = this.parseNode(bytes, endOffset);
-    const finalEndOffset = taggedValue ? taggedValue.endByte : endOffset;
+    // semanticTag stays a JS number; leave it unset for (unrealistic) tag
+    // numbers beyond 2^53 rather than silently rounding them.
+    const semanticTag = header.arg <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(header.arg) : undefined;
+    const tagText = header.arg.toString();
+    const taggedValue = this.parseNode(bytes, header.dataStart);
 
     return {
       id: `tag-${offset}`,
       type: 'tag',
-      value: taggedValue?.value,
+      value: taggedValue.value,
       startByte: offset,
-      endByte: finalEndOffset,
-      children: taggedValue ? [taggedValue] : undefined,
-      semanticTag: tagValue,
-      label: `Tag ${tagValue}`,
-      description: `CBOR semantic tag ${tagValue}`
+      endByte: taggedValue.endByte,
+      children: [taggedValue],
+      semanticTag,
+      label: `Tag ${tagText}${semanticTag === 258 ? ' (set)' : semanticTag !== undefined && semanticTag >= 121 && semanticTag <= 127 ? ` (Plutus constructor ${semanticTag - 121})` : ''}`,
+      description: `CBOR semantic tag ${tagText}`
     };
   }
 
-  private parseFloatOrSimple(bytes: Uint8Array, offset: number): CBORNode {
-    const firstByte = bytes[offset];
-    const minorType = firstByte & 0x1F;
+  private parseFloatOrSimple(bytes: Uint8Array, header: Header, offset: number): CBORNode {
+    const minorType = bytes[offset] & 0x1f;
 
-    if (minorType < 24) {
+    // Simple values: false / true / null / undefined
+    if (minorType === 20 || minorType === 21) {
+      const value = minorType === 21;
       return {
-        id: `simple-${offset}`,
-        type: 'number',
-        value: minorType,
+        id: `bool-${offset}`,
+        type: 'boolean',
+        value,
         startByte: offset,
-        endByte: offset + 1,
-        label: `Simple Value: ${minorType}`,
-        description: `CBOR simple value`
+        endByte: header.dataStart,
+        label: `Boolean: ${value}`,
+        description: 'CBOR boolean'
+      };
+    }
+    if (minorType === 22) {
+      return {
+        id: `null-${offset}`,
+        type: 'null',
+        value: null,
+        startByte: offset,
+        endByte: header.dataStart,
+        label: 'Null',
+        description: 'CBOR null'
+      };
+    }
+    if (minorType === 23) {
+      return {
+        id: `undefined-${offset}`,
+        type: 'undefined',
+        value: undefined,
+        startByte: offset,
+        endByte: header.dataStart,
+        label: 'Undefined',
+        description: 'CBOR undefined'
       };
     }
 
+    // Floats (half / single / double precision)
+    if (minorType >= 25 && minorType <= 27) {
+      const value = this.readFloat(bytes, offset + 1, minorType);
+      return {
+        id: `float-${offset}`,
+        type: 'number',
+        value,
+        startByte: offset,
+        endByte: header.dataStart,
+        label: `Float: ${value}`,
+        description: `IEEE 754 ${minorType === 25 ? 'half' : minorType === 26 ? 'single' : 'double'}-precision float`
+      };
+    }
+
+    // Remaining cases: unassigned simple values (0-19 immediate, or one-byte via minor 24)
+    // RFC 8949 §3.3: 0xf8 followed by a byte below 32 is not well-formed
+    if (minorType === 24 && header.arg !== null && header.arg < 32n) {
+      throw new CBORParseError(`Two-byte simple value ${header.arg} is not well-formed (must be 32-255)`, offset);
+    }
+    const value = Number(header.arg);
     return {
-      id: `float-${offset}`,
+      id: `simple-${offset}`,
       type: 'number',
-      value: 0,
+      value,
       startByte: offset,
-      endByte: offset + 1,
-      label: `Float/Simple`,
-      description: `CBOR float or simple value`
+      endByte: header.dataStart,
+      label: `Simple Value: ${value}`,
+      description: 'CBOR simple value'
     };
+  }
+
+  private readFloat(bytes: Uint8Array, offset: number, minorType: number): number {
+    const view = new DataView(bytes.buffer, bytes.byteOffset);
+    if (minorType === 26) return view.getFloat32(offset);
+    if (minorType === 27) return view.getFloat64(offset);
+
+    // Half-precision: decode manually (no DataView support)
+    const half = view.getUint16(offset);
+    const sign = half & 0x8000 ? -1 : 1;
+    const exponent = (half >> 10) & 0x1f;
+    const mantissa = half & 0x03ff;
+    if (exponent === 0) return sign * mantissa * 2 ** -24;
+    if (exponent === 31) return mantissa === 0 ? sign * Infinity : NaN;
+    return sign * (1 + mantissa / 1024) * 2 ** (exponent - 15);
   }
 }
