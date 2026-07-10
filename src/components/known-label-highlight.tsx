@@ -74,6 +74,22 @@ const CATEGORY_THEMES: Record<TransactionLabelCategory, CategoryTheme> = {
   },
 };
 
+type KnownLabelBadgeProps = {
+  category: TransactionLabelCategory;
+  name: string;
+  className?: string;
+};
+
+export function KnownLabelBadge({ category, name, className }: KnownLabelBadgeProps) {
+  const theme = CATEGORY_THEMES[category];
+
+  return (
+    <Badge variant="secondary" className={cn('min-w-0 shrink max-w-[12rem] font-normal', theme.badgeClass, className)}>
+      <span className="truncate">{name}</span>
+    </Badge>
+  );
+}
+
 type KnownLabelHighlightProps = {
   category: TransactionLabelCategory;
   label: KnownLabelEntry;
