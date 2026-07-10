@@ -11,7 +11,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { BlockExplorerLink } from '@/components/block-explorer-link';
-import { KnownLabelHighlight } from '@/components/known-label-highlight';
+import { KnownLabelBadge, KnownLabelHighlight } from '@/components/known-label-highlight';
 import { AssetDisplay } from '@/components/asset-display';
 import { resolveAddressLabel, type TransactionLabelCategory } from '@/lib/labels';
 import { useTokenRegistry } from '@/hooks/use-token-registry';
@@ -114,6 +114,9 @@ export function WalletSummaryRow({ row, tx }: Props) {
                 <code className="text-xs bg-muted px-2 py-1 rounded truncate">
                   {truncateAddress(row.displayAddress)}
                 </code>
+                {knownLabel && (
+                  <KnownLabelBadge category={labelCategory} name={knownLabel.name} />
+                )}
               </div>
               <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                 <Button
